@@ -1,0 +1,56 @@
+#language-learning-tools {
+	padding: 8px var(--popup-padding);
+	border-top: 1px solid var(--divider-color);
+	background: var(--background-primary);
+}
+
+.ai-edit-controls,
+.ai-edit-preview-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+#ai-edit-preset {
+	flex: 1;
+	min-width: 0;
+}
+
+#ai-edit-instruction {
+	width: 100%;
+	min-height: 52px;
+	margin-top: 6px;
+	resize: vertical;
+}
+
+#ai-edit-preview {
+	margin-top: 8px;
+	padding: 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-primary-alt);
+}
+
+#ai-edit-preview-content {
+	max-height: 160px;
+	overflow: auto;
+	white-space: pre-wrap;
+	font-size: var(--font-ui-small);
+	line-height: 1.5;
+	user-select: text;
+}
+
+.ai-edit-preview-actions {
+	justify-content: flex-end;
+	margin-top: 8px;
+}
+
+#ai-edit-status {
+	min-height: 1.2em;
+	margin-top: 4px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	&.is-error {
+		color: var(--text-error);
+	}
+}

@@ -37,6 +37,7 @@ export let generalSettings: Settings = {
 		pinPlayer: true,
 		autoScroll: true,
 		highlightActiveLine: true,
+		learningResponseLanguage: '',
 		customCss: ''
 	},
 	stats: {
@@ -88,6 +89,7 @@ interface StorageData {
 		pinPlayer?: boolean;
 		autoScroll?: boolean;
 		highlightActiveLine?: boolean;
+		learningResponseLanguage?: string;
 		customCss?: string;
 	};
 	interpreter_settings?: {
@@ -149,6 +151,7 @@ export async function loadSettings(): Promise<Settings> {
 			pinPlayer: true,
 			autoScroll: true,
 			highlightActiveLine: true,
+			learningResponseLanguage: '',
 			customCss: ''
 		},
 		stats: {
@@ -211,6 +214,7 @@ export async function loadSettings(): Promise<Settings> {
 			pinPlayer: data.reader_settings?.pinPlayer ?? defaultSettings.readerSettings.pinPlayer,
 			autoScroll: data.reader_settings?.autoScroll ?? defaultSettings.readerSettings.autoScroll,
 			highlightActiveLine: data.reader_settings?.highlightActiveLine ?? defaultSettings.readerSettings.highlightActiveLine,
+			learningResponseLanguage: data.reader_settings?.learningResponseLanguage ?? defaultSettings.readerSettings.learningResponseLanguage,
 			customCss: data.reader_settings?.customCss ?? defaultSettings.readerSettings.customCss
 		},
 		stats: data.stats || defaultSettings.stats,
@@ -268,6 +272,7 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 			pinPlayer: generalSettings.readerSettings.pinPlayer,
 			autoScroll: generalSettings.readerSettings.autoScroll,
 			highlightActiveLine: generalSettings.readerSettings.highlightActiveLine,
+			learningResponseLanguage: generalSettings.readerSettings.learningResponseLanguage,
 			customCss: generalSettings.readerSettings.customCss
 		},
 		stats: generalSettings.stats

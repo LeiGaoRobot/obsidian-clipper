@@ -67,6 +67,7 @@ export interface ReaderSettings {
 	pinPlayer: boolean;
 	autoScroll: boolean;
 	highlightActiveLine: boolean;
+	learningResponseLanguage: string;
 	customCss: string;
 }
 

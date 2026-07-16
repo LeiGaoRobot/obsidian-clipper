@@ -357,6 +357,20 @@ export async function initializeReaderSettings() {
 		saveSettings({ ...generalSettings, readerSettings: { ...generalSettings.readerSettings, highlightActiveLine: checked } });
 	});
 
+	const learningResponseLanguageInput = document.getElementById('reader-learning-response-language') as HTMLInputElement;
+	if (learningResponseLanguageInput) {
+		learningResponseLanguageInput.value = generalSettings.readerSettings.learningResponseLanguage;
+		learningResponseLanguageInput.addEventListener('change', () => {
+			saveSettings({
+				...generalSettings,
+				readerSettings: {
+					...generalSettings.readerSettings,
+					learningResponseLanguage: learningResponseLanguageInput.value.trim()
+				}
+			});
+		});
+	}
+
 	initializeSettingToggle('reader-blend-images', generalSettings.readerSettings.blendImages, (checked) => {
 		saveSettings({ ...generalSettings, readerSettings: { ...generalSettings.readerSettings, blendImages: checked } });
 	});

@@ -26,6 +26,42 @@
 	"advanced": {
 		"message": "Advanced"
 	},
+	"aiEditContentChanged": {
+		"message": "The clipped content changed. Generate a new preview."
+	},
+	"aiEditInstruction": {
+		"message": "Tell AI how to modify the selected text or the full clipping"
+	},
+	"aiEditMissingInput": {
+		"message": "Select or enter content and provide an AI instruction."
+	},
+	"aiEditPresetBilingual": {
+		"message": "Bilingual"
+	},
+	"aiEditPresetCustom": {
+		"message": "Custom"
+	},
+	"aiEditPresetPolish": {
+		"message": "Polish"
+	},
+	"aiEditPresetSimplify": {
+		"message": "Simplify"
+	},
+	"aiEditPresetStudyNotes": {
+		"message": "Study notes"
+	},
+	"aiEditPreview": {
+		"message": "Preview AI edit"
+	},
+	"aiEditUndo": {
+		"message": "Undo"
+	},
+	"aiLanguageToolsRequireInterpreter": {
+		"message": "Enable Interpreter and configure a model before using AI language tools."
+	},
+	"aiLanguageToolsRequireModel": {
+		"message": "Enable an Interpreter model before using AI language tools."
+	},
 	"allHighlights": {
 		"message": "All highlights"
 	},
@@ -223,6 +259,9 @@
 	},
 	"embedded": {
 		"message": "Embedded"
+	},
+	"emptyResponse": {
+		"message": "The model returned an empty response."
 	},
 	"enableHighlighterDescription": {
 		"message": "Highlight content on web pages that you can save to Obsidian."
@@ -720,6 +759,9 @@
 	"readerAutoScrollDescription": {
 		"message": "Automatically scroll the transcript to follow playback."
 	},
+	"readerBilingualSubtitles": {
+		"message": "Bilingual subtitles"
+	},
 	"readerBlendImages": {
 		"message": "Blend images"
 	},
@@ -755,6 +797,9 @@
 	},
 	"readerError": {
 		"message": "Failed to extract content."
+	},
+	"readerExplainWithAi": {
+		"message": "Explain with AI"
 	},
 	"readerFont": {
 		"message": "Font options"
@@ -803,6 +848,15 @@
 	},
 	"readerImages": {
 		"message": "Images"
+	},
+	"readerLearningResponseLanguage": {
+		"message": "AI response language"
+	},
+	"readerLearningResponseLanguageDescription": {
+		"message": "Language used for subtitle translations and AI explanations. Leave empty to use your browser language."
+	},
+	"readerLearningResponseLanguagePlaceholder": {
+		"message": "e.g. Simplified Chinese"
 	},
 	"readerLineHeight": {
 		"message": "Line height"

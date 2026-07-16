@@ -93,7 +93,30 @@ article > .player-toggles {
 }
 .player-toggle-group {
 	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
 	gap: 12px;
+}
+.player-learning-action {
+	font-family: var(--font-ui);
+	font-size: var(--font-ui-small);
+	line-height: 1.2;
+	color: var(--text-muted);
+	background: var(--background-primary-alt);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	padding: 4px 8px;
+	cursor: pointer;
+	&:hover,
+	&.is-enabled {
+		color: var(--text-normal);
+		border-color: var(--text-faint);
+	}
+	&.is-loading,
+	&:disabled {
+		cursor: wait;
+		opacity: 0.7;
+	}
 }
 .player-current-pos {
 	user-select: none;
@@ -158,6 +181,69 @@ article > .player-toggles {
 		padding: 0 0.5em;
 	}
 }
+.transcript-segment-translation {
+	display: none;
+	color: var(--text-muted);
+	font-size: 0.9em;
+	line-height: 1.5;
+	margin-top: 0.35em;
+	padding-top: 0.35em;
+	border-top: 1px solid var(--background-modifier-border);
+}
+.show-bilingual-transcript .transcript-segment-translation {
+	display: block;
+}
+.language-learning-card {
+	position: fixed;
+	inset-inline-end: 20px;
+	bottom: 20px;
+	z-index: var(--layer-menu);
+	box-sizing: border-box;
+	width: min(380px, calc(100vw - 40px));
+	max-height: min(480px, calc(100vh - 40px));
+	overflow: hidden;
+	font-family: var(--font-ui);
+	font-size: var(--font-ui-small);
+	line-height: 1.5;
+	color: var(--text-normal);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+	&.is-error {
+		border-color: var(--background-modifier-error-border);
+	}
+}
+.language-learning-card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 10px 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	strong {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+}
+.language-learning-card-close {
+	flex-shrink: 0;
+	font: inherit;
+	font-size: 18px;
+	line-height: 1;
+	color: var(--text-muted);
+	background: transparent;
+	border: 0;
+	cursor: pointer;
+}
+.language-learning-card-body {
+	max-height: 400px;
+	overflow: auto;
+	padding: 12px;
+	white-space: pre-wrap;
+	user-select: text;
+}
 .transcript-segment.is-active {
 	.timestamp {
 		color: var(--text-normal);
@@ -197,6 +283,14 @@ article > .player-toggles {
 
 @media (max-width: 768px) {
 	.player-toggles {
-		display: none !important;
+		display: flex !important;
+	}
+	.player-toggle {
+		display: none;
+	}
+	.language-learning-card {
+		inset-inline: 8px;
+		bottom: max(8px, env(safe-area-inset-bottom));
+		width: auto;
 	}
 }

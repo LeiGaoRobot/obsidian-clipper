@@ -11,10 +11,21 @@ import { updateTokenCount } from './token-counter';
 const RATE_LIMIT_RESET_TIME = 60000; // 1 minute in milliseconds
 let lastRequestTime = 0;
 
+export interface LLMRequestOptions {
+	maxTokens?: number;
+	cooldownMs?: number;
+}
+
 // Store event listeners for cleanup
 const eventListeners = new WeakMap<HTMLElement, { [key: string]: EventListener }>();
 
-export async function sendToLLM(promptContext: string, content: string, promptVariables: PromptVariable[], model: ModelConfig): Promise<{ promptResponses: any[] }> {
+export async function sendToLLM(
+	promptContext: string,
+	content: string,
+	promptVariables: PromptVariable[],
+	model: ModelConfig,
+	options: LLMRequestOptions = {}
+): Promise<{ promptResponses: any[] }> {
 	debugLog('Interpreter', 'Sending request to LLM...');
 	
 	// Find the provider for this model
@@ -29,11 +40,13 @@ export async function sendToLLM(promptContext: string, content: string, promptVa
 	}
 
 	const now = Date.now();
-	if (now - lastRequestTime < RATE_LIMIT_RESET_TIME) {
-		throw new Error(`Rate limit cooldown. Please wait ${Math.ceil((RATE_LIMIT_RESET_TIME - (now - lastRequestTime)) / 1000)} seconds before trying again.`);
+	const cooldownMs = options.cooldownMs ?? RATE_LIMIT_RESET_TIME;
+	if (now - lastRequestTime < cooldownMs) {
+		throw new Error(`Rate limit cooldown. Please wait ${Math.ceil((cooldownMs - (now - lastRequestTime)) / 1000)} seconds before trying again.`);
 	}
 
 	try {
+		const maxTokens = options.maxTokens ?? 1600;
 		const systemContent = 
 			`You are a helpful assistant. Please respond with one JSON object named \`prompts_responses\` — no explanatory text before or after. Use the keys provided, e.g. \`prompt_1\`, \`prompt_2\`, and fill in the values. Values should be Markdown strings unless otherwise specified. Make your responses concise. For example, your response should look like: {"prompts_responses":{"prompt_1":"tag1, tag2, tag3","prompt_2":"- bullet1\n- bullet 2\n- bullet3"}}`;
 		
@@ -60,7 +73,7 @@ export async function sendToLLM(promptContext: string, content: string, promptVa
 					{ role: 'user', content: `${promptContext}` },
 					{ role: 'user', content: `${JSON.stringify(promptContent)}` }
 				],
-				max_tokens: 1600,
+				max_tokens: maxTokens,
 				stream: false
 			};					
 			headers = {
@@ -75,7 +88,7 @@ export async function sendToLLM(promptContext: string, content: string, promptVa
 					{ role: 'user', content: `${promptContext}` },
 					{ role: 'user', content: `${JSON.stringify(promptContent)}` }
 				],
-				max_tokens: 1600,
+				max_tokens: maxTokens,
 				stream: false
 			};
 			headers = {
@@ -86,7 +99,7 @@ export async function sendToLLM(promptContext: string, content: string, promptVa
 			requestUrl = provider.baseUrl;
 			requestBody = {
 				model: model.providerModelId,
-				max_tokens: 1600,
+				max_tokens: maxTokens,
 				messages: [
 					{ role: 'user', content: `${promptContext}` },
 					{ role: 'user', content: `${JSON.stringify(promptContent)}` }
@@ -104,7 +117,7 @@ export async function sendToLLM(promptContext: string, content: string, promptVa
 			requestUrl = provider.baseUrl;
 			requestBody = {
 				model: model.providerModelId,
-				max_tokens: 1600,
+				max_tokens: maxTokens,
 				messages: [
 					{ role: 'system', content: systemContent },
 					{ role: 'user', content: `
@@ -145,6 +158,7 @@ export async function sendToLLM(promptContext: string, content: string, promptVa
 					{ role: 'user', content: `${JSON.stringify(promptContent)}` }
 				]
 			};
+			if (options.maxTokens) requestBody.max_tokens = maxTokens;
 			headers = {
 				...headers,
 				'HTTP-Referer': 'https://obsidian.md/',

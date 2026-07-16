@@ -47,6 +47,28 @@
 			<div id="note-content-container">
 				<textarea id="note-content-field" rows="4" data-i18n="notesAboutPage"></textarea>
 			</div>
+			<div id="language-learning-tools" style="display: none;">
+				<div class="ai-edit-controls">
+					<select id="ai-edit-preset">
+						<option value="bilingual" data-i18n="aiEditPresetBilingual">Bilingual</option>
+						<option value="simplify" data-i18n="aiEditPresetSimplify">Simplify</option>
+						<option value="polish" data-i18n="aiEditPresetPolish">Polish</option>
+						<option value="study-notes" data-i18n="aiEditPresetStudyNotes">Study notes</option>
+						<option value="custom" data-i18n="aiEditPresetCustom">Custom</option>
+					</select>
+					<button id="ai-edit-preview-btn" data-i18n="aiEditPreview">Preview AI edit</button>
+					<button id="ai-edit-undo-btn" data-i18n="aiEditUndo" disabled>Undo</button>
+				</div>
+				<textarea id="ai-edit-instruction" rows="2" data-i18n="aiEditInstruction"></textarea>
+				<div id="ai-edit-preview" style="display: none;">
+					<div id="ai-edit-preview-content"></div>
+					<div class="ai-edit-preview-actions">
+						<button id="ai-edit-apply-btn" class="mod-cta" data-i18n="apply">Apply</button>
+						<button id="ai-edit-cancel-btn" data-i18n="cancel">Cancel</button>
+					</div>
+				</div>
+				<div id="ai-edit-status" aria-live="polite"></div>
+			</div>
 			<div class="clipper-footer">
 				<div class="vault-path-container">
 					<div id="vault-container" style="display: none;">

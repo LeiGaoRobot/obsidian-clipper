@@ -1,4 +1,8 @@
 import { getMessage } from './i18n';
+import {
+	TranscriptLanguageLearning,
+	wireTranscriptLanguageLearning
+} from './transcript-language-learning';
 
 // CJK-aware text boundary helpers
 const SENT_END = /[.!?。！？]/;
@@ -46,7 +50,8 @@ export function wireTranscript(
 	article: HTMLElement,
 	settings: TranscriptSettings,
 	scroll: ScrollHelper,
-	onSettingChange?: (key: keyof TranscriptSettings, value: boolean) => void
+	onSettingChange?: (key: keyof TranscriptSettings, value: boolean) => void,
+	languageLearning?: TranscriptLanguageLearning
 ): void {
 	const transcript = article.querySelector('.youtube.transcript') as HTMLElement | null;
 	if (!transcript) return;
@@ -69,6 +74,7 @@ export function wireTranscript(
 
 	let autoScrollEnabled = autoScrollDefault;
 	let highlightEnabled = highlightDefault;
+	let pendingSeekTimer: number | undefined;
 
 	const toggleBar = doc.createElement('div');
 	toggleBar.className = 'player-toggles';
@@ -183,6 +189,21 @@ export function wireTranscript(
 		seg.appendChild(strong);
 		seg.appendChild(textWrapper);
 	});
+	if (languageLearning) {
+		wireTranscriptLanguageLearning({
+			doc,
+			transcript,
+			segments,
+			controls: toggleGroup,
+			tools: languageLearning,
+			cancelPendingSeek: () => {
+				if (pendingSeekTimer !== undefined) {
+					window.clearTimeout(pendingSeekTimer);
+					pendingSeekTimer = undefined;
+				}
+			}
+		});
+	}
 	// Set timestamp column width to the widest timestamp
 	let maxWidth = 0;
 	segments.forEach(seg => {
@@ -651,14 +672,9 @@ export function wireTranscript(
 		scrubbing = false;
 	});
 
-	// Click anywhere in a segment to seek to that position
-	transcript.addEventListener('click', (e: MouseEvent) => {
-		// Don't seek if highlighter is active or user was selecting text
+	const seekFromTranscriptClick = (target: HTMLElement, clientX: number, clientY: number) => {
 		if (doc.body.classList.contains('obsidian-highlighter-active')) return;
-		const selection = window.getSelection();
-		if (selection && selection.toString().length > 0) return;
-
-		const seg = (e.target as HTMLElement).closest('.transcript-segment') as HTMLElement | null;
+		const seg = target.closest('.transcript-segment') as HTMLElement | null;
 		if (!seg) return;
 		const idx = segments.indexOf(seg);
 		if (idx < 0) return;
@@ -669,11 +685,14 @@ export function wireTranscript(
 		// Use caret position to estimate character-level progress
 		const textEl = seg.querySelector('.transcript-segment-text');
 		if (textEl) {
-			const totalLen = (textEl.textContent || '').length;
+			const originalTextNode = textEl.firstChild;
+			const totalLen = originalTextNode?.nodeType === Node.TEXT_NODE
+				? (originalTextNode.textContent || '').length
+				: 0;
 			if (totalLen > 0) {
-				const caret = getCaretNode(e.clientX, e.clientY);
+				const caret = getCaretNode(clientX, clientY);
 				let charOffset = totalLen;
-				if (caret && caret.node.nodeType === Node.TEXT_NODE && textEl.contains(caret.node)) {
+				if (caret && caret.node === originalTextNode) {
 					charOffset = caret.offset;
 				}
 				const progress = Math.min(1, Math.max(0, charOffset / totalLen));
@@ -684,7 +703,26 @@ export function wireTranscript(
 
 		// Fallback to Y position
 		const rect = seg.getBoundingClientRect();
-		const progress = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
+		const progress = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
 		seekTo(start + progress * (end - start));
+	};
+
+	// Delay single-click seeking briefly so a double-click can explain a word
+	// without also jumping playback.
+	transcript.addEventListener('click', (e: MouseEvent) => {
+		const target = e.target as HTMLElement;
+		if (target.closest('.transcript-segment-translation, .player-learning-action, .language-learning-selection-action')) return;
+		if (e.detail > 1) {
+			if (pendingSeekTimer !== undefined) window.clearTimeout(pendingSeekTimer);
+			pendingSeekTimer = undefined;
+			return;
+		}
+		const selection = doc.getSelection();
+		if (selection && !selection.isCollapsed) return;
+		const { clientX, clientY } = e;
+		pendingSeekTimer = window.setTimeout(() => {
+			pendingSeekTimer = undefined;
+			seekFromTranscriptClick(target, clientX, clientY);
+		}, 220);
 	});
 }

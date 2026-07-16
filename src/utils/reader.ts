@@ -37,6 +37,7 @@ const VIEWPORT = 'width=device-width, initial-scale=1, maximum-scale=1';
 
 import { ReaderSettings } from '../types/types';
 import { wireTranscript } from './reader-transcript';
+import { configuredLanguageLearning } from './language-learning-runtime';
 
 interface ReaderContent {
 	content: string;
@@ -163,6 +164,7 @@ export class Reader {
 		pinPlayer: true,
 		autoScroll: true,
 		highlightActiveLine: true,
+		learningResponseLanguage: '',
 		customCss: ''
 	};
 
@@ -2350,7 +2352,7 @@ export class Reader {
 			}, (key, value) => {
 				(this.settings as any)[key] = value;
 				this.saveSettings();
-			});
+			}, configuredLanguageLearning);
 
 			if (extractorType) {
 				doc.documentElement.setAttribute('data-reader-extractor', extractorType);
@@ -2392,7 +2394,7 @@ export class Reader {
 		// Idempotent: if Reader.apply runs again without a page reload (e.g.
 		// SPA navigation where we re-enter reader), don't stack a second
 		// button + three more listeners on the same document.
-		if (doc.querySelector('.obsidian-selection-action')) return;
+		if (doc.querySelector('.obsidian-selection-action:not(.language-learning-selection-action)')) return;
 		const btn = doc.createElement('button');
 		btn.type = 'button';
 		btn.className = 'obsidian-selection-action';
@@ -2423,6 +2425,11 @@ export class Reader {
 			const sel = doc.getSelection();
 			if (!sel || sel.isCollapsed || sel.rangeCount === 0) return hide();
 			const range = sel.getRangeAt(0);
+			const commonNode = range.commonAncestorContainer;
+			const commonElement = commonNode.nodeType === Node.ELEMENT_NODE
+				? commonNode as Element
+				: commonNode.parentElement;
+			if (commonElement?.closest('.youtube.transcript')) return hide();
 			const article = doc.querySelector('.obsidian-reader-content article');
 			if (!article || !article.contains(range.commonAncestorContainer)) return hide();
 			const rects = range.getClientRects();
@@ -2722,7 +2729,7 @@ export class Reader {
 		}, (key, value) => {
 			(this.settings as any)[key] = value;
 			this.saveSettings();
-		});
+		}, configuredLanguageLearning);
 
 		await this.initializeContentFeatures(doc, content.title);
 	}

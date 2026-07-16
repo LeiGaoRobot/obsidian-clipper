@@ -26,6 +26,42 @@
 	"advanced": {
 		"message": "高级"
 	},
+	"aiEditContentChanged": {
+		"message": "剪藏内容已发生变化，请重新生成预览。"
+	},
+	"aiEditInstruction": {
+		"message": "告诉 AI 如何修改选中文本或整篇剪藏内容"
+	},
+	"aiEditMissingInput": {
+		"message": "请选择或输入内容，并填写 AI 指令。"
+	},
+	"aiEditPresetBilingual": {
+		"message": "双语对照"
+	},
+	"aiEditPresetCustom": {
+		"message": "自定义"
+	},
+	"aiEditPresetPolish": {
+		"message": "润色"
+	},
+	"aiEditPresetSimplify": {
+		"message": "简化"
+	},
+	"aiEditPresetStudyNotes": {
+		"message": "学习笔记"
+	},
+	"aiEditPreview": {
+		"message": "预览 AI 修改"
+	},
+	"aiEditUndo": {
+		"message": "撤销"
+	},
+	"aiLanguageToolsRequireInterpreter": {
+		"message": "请先启用解释器并配置模型，再使用 AI 语言学习工具。"
+	},
+	"aiLanguageToolsRequireModel": {
+		"message": "请先启用一个解释器模型，再使用 AI 语言学习工具。"
+	},
 	"allHighlights": {
 		"message": "所有高亮"
 	},
@@ -223,6 +259,9 @@
 	},
 	"embedded": {
 		"message": "嵌入式"
+	},
+	"emptyResponse": {
+		"message": "模型返回了空内容。"
 	},
 	"enableHighlighterDescription": {
 		"message": "在网页上高亮内容并保存到 Obsidian。"
@@ -720,6 +759,9 @@
 	"readerAutoScrollDescription": {
 		"message": "自动滚动字幕稿以跟随播放进度。"
 	},
+	"readerBilingualSubtitles": {
+		"message": "双语字幕"
+	},
 	"readerBlendImages": {
 		"message": "融合图片"
 	},
@@ -755,6 +797,9 @@
 	},
 	"readerError": {
 		"message": "内容提取失败。"
+	},
+	"readerExplainWithAi": {
+		"message": "用 AI 解释"
 	},
 	"readerFont": {
 		"message": "字体选项"
@@ -803,6 +848,15 @@
 	},
 	"readerImages": {
 		"message": "图片"
+	},
+	"readerLearningResponseLanguage": {
+		"message": "AI 回答语言"
+	},
+	"readerLearningResponseLanguageDescription": {
+		"message": "字幕翻译和 AI 解释所使用的语言。留空则使用浏览器语言。"
+	},
+	"readerLearningResponseLanguagePlaceholder": {
+		"message": "例如：简体中文"
 	},
 	"readerLineHeight": {
 		"message": "行高"

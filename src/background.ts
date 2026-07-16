@@ -5,6 +5,8 @@ import { TextHighlightData } from './utils/highlighter';
 import { debounce } from './utils/debounce';
 import { Settings } from './types/types';
 import { debugLog } from './utils/debug';
+import { LanguageLearningRequest } from './utils/language-learning';
+import { runLanguageLearningRequest } from './utils/language-learning-service';
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
 const YOUTUBE_INNERTUBE_RULE_ID = 9002;
@@ -329,6 +331,24 @@ browser.runtime.onMessage.addListener((request: unknown) => {
 			}
 			return { ok: false, status: 0, text: '', error: 'CORS_PERMISSION_NEEDED' };
 		});
+});
+
+// Language-learning requests can originate in Reader content scripts, where
+// cross-origin model requests are subject to the page's CORS policy. Execute
+// them in the extension service worker and only use stored model configuration.
+browser.runtime.onMessage.addListener((request: unknown) => {
+	if (typeof request !== 'object' || request === null) return;
+	const message = request as { action?: string; request?: LanguageLearningRequest };
+	if (message.action !== 'languageLearningRequest') return;
+	if (!message.request || typeof message.request.context !== 'string' || !Array.isArray(message.request.prompts)) {
+		return Promise.resolve({ success: false, error: 'Invalid language-learning request.' });
+	}
+	return runLanguageLearningRequest(message.request)
+		.then(promptResponses => ({ success: true, promptResponses }))
+		.catch(error => ({
+			success: false,
+			error: error instanceof Error ? error.message : String(error)
+		}));
 });
 
 browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void): true | undefined => {
