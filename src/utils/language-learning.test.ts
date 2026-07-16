@@ -25,12 +25,30 @@ describe('Language learning assistant', () => {
 		expect({
 			output,
 			context: request?.context,
-			prompt: request?.prompts[0].prompt
+			prompt: request?.prompts[0].prompt,
+			maxTokens: request?.maxTokens
 		}).toEqual({
 			output: 'The fox jumps over the dog.',
 			context: 'The quick brown fox jumps over the lazy dog.',
-			prompt: 'Rewrite at CEFR A2 level. Return only the revised content in Markdown.'
+			prompt: 'Rewrite at CEFR A2 level. Return only the revised content in Markdown.',
+			maxTokens: 1600
 		});
+	});
+
+	test('long clipping edits request a bounded length-based output budget', async () => {
+		let request: LanguageLearningRequest | undefined;
+		const assistant = createLanguageLearningAssistant(async (nextRequest) => {
+			request = nextRequest;
+			return [{
+				key: 'prompt_1',
+				prompt: nextRequest.prompts[0].prompt,
+				user_response: 'Revised content'
+			}];
+		});
+
+		await assistant.transformContent('A'.repeat(20000), 'Create a bilingual version.');
+
+		expect(request?.maxTokens).toBe(12000);
 	});
 
 	test('user can ask for an explanation of a word in its transcript context', async () => {
@@ -122,14 +140,16 @@ describe('Language learning assistant', () => {
 		});
 	});
 
-	test('long transcripts are translated in aligned chunks within one model request', async () => {
-		let request: LanguageLearningRequest | undefined;
+	test('long transcripts are translated in bounded provider requests', async () => {
+		const requests: LanguageLearningRequest[] = [];
 		const assistant = createLanguageLearningAssistant(async (nextRequest) => {
-			request = nextRequest;
-			return [
-				{ key: 'prompt_1', prompt: nextRequest.prompts[0].prompt, user_response: '0|||第一段' },
-				{ key: 'prompt_2', prompt: nextRequest.prompts[1]?.prompt || '', user_response: '1|||第二段' }
-			];
+			requests.push(nextRequest);
+			const segmentId = nextRequest.prompts[0].prompt.includes('0|||') ? 0 : 1;
+			return [{
+				key: 'prompt_1',
+				prompt: nextRequest.prompts[0].prompt,
+				user_response: `${segmentId}|||${segmentId === 0 ? '第一段' : '第二段'}`
+			}];
 		});
 
 		const translations = await assistant.translateTranscript(
@@ -139,12 +159,14 @@ describe('Language learning assistant', () => {
 
 		expect({
 			translations,
-			promptKeys: request?.prompts.map(prompt => prompt.key),
-			maxTokens: request?.maxTokens
+			requestCount: requests.length,
+			promptsPerRequest: requests.map(request => request.prompts.length),
+			maxTokens: requests.map(request => request.maxTokens)
 		}).toEqual({
 			translations: ['第一段', '第二段'],
-			promptKeys: ['prompt_1', 'prompt_2'],
-			maxTokens: 8400
+			requestCount: 2,
+			promptsPerRequest: [1, 1],
+			maxTokens: [4200, 4200]
 		});
 	});
 

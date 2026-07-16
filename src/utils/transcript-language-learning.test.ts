@@ -6,15 +6,21 @@ vi.mock('./i18n', () => ({
 	getMessage: (key: string) => key
 }));
 
-import { wireTranscriptLanguageLearning } from './transcript-language-learning';
+import {
+	cleanupTranscriptLanguageLearning,
+	getTranscriptLearningSelection,
+	wireTranscriptLanguageLearning
+} from './transcript-language-learning';
 
-function createTranscript() {
+function createTranscript(texts = ['Hello world.']) {
 	document.body.innerHTML = `
 		<div class="player-toggle-group"></div>
 		<div class="youtube transcript">
-			<div class="transcript-segment">
-				<div class="transcript-segment-text">Hello world.</div>
-			</div>
+			${texts.map(text => `
+				<div class="transcript-segment">
+					<div class="transcript-segment-text">${text}</div>
+				</div>
+			`).join('')}
 		</div>
 	`;
 	return {
@@ -24,16 +30,25 @@ function createTranscript() {
 	};
 }
 
+function selectText(startNode: Node, start: number, endNode: Node, end: number) {
+	const range = document.createRange();
+	range.setStart(startNode, start);
+	range.setEnd(endNode, end);
+	window.getSelection()?.removeAllRanges();
+	window.getSelection()?.addRange(range);
+}
+
 describe('Transcript language learning controls', () => {
 	beforeEach(() => {
+		cleanupTranscriptLanguageLearning(document);
 		document.body.textContent = '';
 		window.getSelection()?.removeAllRanges();
 	});
 
-	test('adds aligned translations only after the bilingual button is clicked', async () => {
+	test('adds aligned translations only after an explicit bilingual action', async () => {
 		const { controls, transcript, segments } = createTranscript();
 		const translateTranscript = vi.fn().mockResolvedValue(['你好，世界。']);
-		wireTranscriptLanguageLearning({
+		const controller = wireTranscriptLanguageLearning({
 			doc: document,
 			transcript,
 			segments,
@@ -46,47 +61,118 @@ describe('Transcript language learning controls', () => {
 		});
 
 		expect(translateTranscript).not.toHaveBeenCalled();
-		(controls.querySelector('.player-learning-action') as HTMLButtonElement).click();
+		await controller.toggleBilingual();
 
-		await vi.waitFor(() => {
-			expect(segments[0].querySelector('.transcript-segment-translation')?.textContent)
-				.toBe('你好，世界。');
-		});
+		expect(segments[0].querySelector('.transcript-segment-translation')?.textContent)
+			.toBe('你好，世界。');
 		expect(translateTranscript).toHaveBeenCalledWith(['Hello world.']);
 		expect(transcript.classList.contains('show-bilingual-transcript')).toBe(true);
 	});
 
-	test('double-clicking a word asks AI for a contextual word explanation', async () => {
+	test('rejects incomplete translations and allows a complete retry', async () => {
+		const { controls, transcript, segments } = createTranscript();
+		const translateTranscript = vi.fn()
+			.mockResolvedValueOnce([''])
+			.mockResolvedValueOnce(['你好，世界。']);
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: { translateTranscript, explainSelection: vi.fn() },
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.toggleBilingual();
+		expect(segments[0].querySelector('.transcript-segment-translation')).toBeNull();
+		expect(document.querySelector('.language-learning-card-body')?.textContent)
+			.toBe('readerTranslationIncomplete');
+
+		await controller.toggleBilingual();
+		expect(segments[0].querySelector('.transcript-segment-translation')?.textContent)
+			.toBe('你好，世界。');
+		expect(translateTranscript).toHaveBeenCalledTimes(2);
+	});
+
+	test('builds contextual word and multi-segment sentence selections', () => {
+		const texts = ['Hello world.', 'How are you?'];
+		const { transcript, segments } = createTranscript(texts);
+		const firstText = segments[0].querySelector('.transcript-segment-text')?.firstChild;
+		const secondText = segments[1].querySelector('.transcript-segment-text')?.firstChild;
+		if (!firstText || !secondText) throw new Error('Missing transcript text');
+
+		selectText(firstText, 0, firstText, 5);
+		expect(getTranscriptLearningSelection(document, transcript, segments, texts)).toEqual({
+			kind: 'word',
+			text: 'Hello',
+			context: 'Hello world.'
+		});
+
+		selectText(firstText, 0, secondText, secondText.textContent?.length || 0);
+		const sentence = getTranscriptLearningSelection(document, transcript, segments, texts);
+		expect(sentence?.kind).toBe('sentence');
+		expect(sentence?.context).toBe('Hello world. How are you?');
+	});
+
+	test('caches repeated explanations for the same selection and context', async () => {
 		const { controls, transcript, segments } = createTranscript();
 		const explainSelection = vi.fn().mockResolvedValue('hello: a greeting');
-		const cancelPendingSeek = vi.fn();
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: { translateTranscript: vi.fn(), explainSelection },
+			cancelPendingSeek: vi.fn()
+		});
+		const selection = { kind: 'word' as const, text: 'Hello', context: 'Hello world.' };
+
+		await controller.explain(selection);
+		await controller.explain(selection);
+
+		expect(explainSelection).toHaveBeenCalledOnce();
+		expect(document.querySelector('.language-learning-card-body')?.textContent)
+			.toBe('hello: a greeting');
+	});
+
+	test('ignores synthetic page events that could trigger paid AI requests', async () => {
+		const { controls, transcript, segments } = createTranscript();
+		const translateTranscript = vi.fn();
+		const explainSelection = vi.fn();
 		wireTranscriptLanguageLearning({
 			doc: document,
 			transcript,
 			segments,
 			controls,
-			tools: {
-				translateTranscript: vi.fn(),
-				explainSelection
-			},
-			cancelPendingSeek
+			tools: { translateTranscript, explainSelection },
+			cancelPendingSeek: vi.fn()
 		});
-
 		const textNode = segments[0].querySelector('.transcript-segment-text')?.firstChild;
 		if (!textNode) throw new Error('Missing transcript text');
-		const range = document.createRange();
-		range.setStart(textNode, 0);
-		range.setEnd(textNode, 5);
-		window.getSelection()?.addRange(range);
-		transcript.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+		selectText(textNode, 0, textNode, 5);
 
-		await vi.waitFor(() => {
-			expect(explainSelection).toHaveBeenCalledWith({
-				kind: 'word',
-				text: 'Hello',
-				context: 'Hello world.'
-			});
+		(controls.querySelector('.player-learning-action') as HTMLButtonElement).click();
+		transcript.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+		await new Promise(resolve => window.setTimeout(resolve, 0));
+
+		expect(translateTranscript).not.toHaveBeenCalled();
+		expect(explainSelection).not.toHaveBeenCalled();
+	});
+
+	test('cleanup removes learning UI left by a previous transcript', () => {
+		const { controls, transcript, segments } = createTranscript();
+		wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: { translateTranscript: vi.fn(), explainSelection: vi.fn() },
+			cancelPendingSeek: vi.fn()
 		});
-		expect(cancelPendingSeek).toHaveBeenCalledOnce();
+
+		cleanupTranscriptLanguageLearning(document);
+
+		expect(document.querySelector('.language-learning-card')).toBeNull();
+		expect(document.querySelector('.language-learning-selection-action')).toBeNull();
 	});
 });

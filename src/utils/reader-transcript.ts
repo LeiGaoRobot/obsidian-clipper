@@ -1,6 +1,7 @@
 import { getMessage } from './i18n';
 import {
 	TranscriptLanguageLearning,
+	cleanupTranscriptLanguageLearning,
 	wireTranscriptLanguageLearning
 } from './transcript-language-learning';
 
@@ -10,6 +11,43 @@ const SOFT_STOP = /[,、，]/;
 const CJK_SENT_END = /[。！？]/;
 const CJK_PUNCT = /[。！？、，]/;
 const CJK_CHAR = /[\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/;
+
+export interface TranscriptClickGuard {
+	schedule: (action: () => boolean | void, rollback?: () => void) => void;
+	cancel: () => void;
+}
+
+export function createTranscriptClickGuard(
+	delay = 350,
+	rollbackWindow = 1500
+): TranscriptClickGuard {
+	let timer: number | undefined;
+	let rollback: (() => void) | undefined;
+	let executedAt = 0;
+
+	return {
+		schedule(action, rollbackAction) {
+			if (timer !== undefined) window.clearTimeout(timer);
+			timer = undefined;
+			rollback = rollbackAction;
+			executedAt = 0;
+			timer = window.setTimeout(() => {
+				timer = undefined;
+				if (action() !== false) executedAt = Date.now();
+			}, delay);
+		},
+		cancel() {
+			if (timer !== undefined) {
+				window.clearTimeout(timer);
+				timer = undefined;
+			} else if (rollback && executedAt > 0 && Date.now() - executedAt <= rollbackWindow) {
+				rollback();
+			}
+			rollback = undefined;
+			executedAt = 0;
+		}
+	};
+}
 
 // CJK punctuation doesn't require trailing whitespace
 function isSentBoundary(text: string, punctPos: number, nextPos: number): boolean {
@@ -53,6 +91,7 @@ export function wireTranscript(
 	onSettingChange?: (key: keyof TranscriptSettings, value: boolean) => void,
 	languageLearning?: TranscriptLanguageLearning
 ): void {
+	cleanupTranscriptLanguageLearning(doc);
 	const transcript = article.querySelector('.youtube.transcript') as HTMLElement | null;
 	if (!transcript) return;
 
@@ -74,7 +113,7 @@ export function wireTranscript(
 
 	let autoScrollEnabled = autoScrollDefault;
 	let highlightEnabled = highlightDefault;
-	let pendingSeekTimer: number | undefined;
+	const transcriptClickGuard = createTranscriptClickGuard();
 
 	const toggleBar = doc.createElement('div');
 	toggleBar.className = 'player-toggles';
@@ -196,12 +235,7 @@ export function wireTranscript(
 			segments,
 			controls: toggleGroup,
 			tools: languageLearning,
-			cancelPendingSeek: () => {
-				if (pendingSeekTimer !== undefined) {
-					window.clearTimeout(pendingSeekTimer);
-					pendingSeekTimer = undefined;
-				}
-			}
+			cancelPendingSeek: transcriptClickGuard.cancel
 		});
 	}
 	// Set timestamp column width to the widest timestamp
@@ -672,12 +706,12 @@ export function wireTranscript(
 		scrubbing = false;
 	});
 
-	const seekFromTranscriptClick = (target: HTMLElement, clientX: number, clientY: number) => {
-		if (doc.body.classList.contains('obsidian-highlighter-active')) return;
+	const seekFromTranscriptClick = (target: HTMLElement, clientX: number, clientY: number): boolean => {
+		if (doc.body.classList.contains('obsidian-highlighter-active')) return false;
 		const seg = target.closest('.transcript-segment') as HTMLElement | null;
-		if (!seg) return;
+		if (!seg) return false;
 		const idx = segments.indexOf(seg);
-		if (idx < 0) return;
+		if (idx < 0) return false;
 
 		const start = segmentTimes[idx];
 		const end = getSegmentEnd(idx);
@@ -697,7 +731,7 @@ export function wireTranscript(
 				}
 				const progress = Math.min(1, Math.max(0, charOffset / totalLen));
 				seekTo(start + progress * (end - start));
-				return;
+				return true;
 			}
 		}
 
@@ -705,24 +739,25 @@ export function wireTranscript(
 		const rect = seg.getBoundingClientRect();
 		const progress = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
 		seekTo(start + progress * (end - start));
+		return true;
 	};
 
-	// Delay single-click seeking briefly so a double-click can explain a word
-	// without also jumping playback.
+	// Delay single-click seeking so a double-click can explain a word. If the
+	// OS double-click interval is longer, restore the position after the seek.
 	transcript.addEventListener('click', (e: MouseEvent) => {
 		const target = e.target as HTMLElement;
 		if (target.closest('.transcript-segment-translation, .player-learning-action, .language-learning-selection-action')) return;
 		if (e.detail > 1) {
-			if (pendingSeekTimer !== undefined) window.clearTimeout(pendingSeekTimer);
-			pendingSeekTimer = undefined;
+			transcriptClickGuard.cancel();
 			return;
 		}
 		const selection = doc.getSelection();
 		if (selection && !selection.isCollapsed) return;
 		const { clientX, clientY } = e;
-		pendingSeekTimer = window.setTimeout(() => {
-			pendingSeekTimer = undefined;
-			seekFromTranscriptClick(target, clientX, clientY);
-		}, 220);
+		const originalTime = videoEl?.currentTime ?? (lastCurrentTime >= 0 ? lastCurrentTime : undefined);
+		transcriptClickGuard.schedule(
+			() => seekFromTranscriptClick(target, clientX, clientY),
+			originalTime === undefined ? undefined : () => seekTo(originalTime)
+		);
 	});
 }

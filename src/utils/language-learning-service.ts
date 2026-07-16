@@ -1,7 +1,8 @@
 import { LanguageLearningRequest, LanguageLearningResponse } from './language-learning';
 import { loadSettings } from './storage-utils';
+import { sendToLLM } from './llm-client';
 
-const LANGUAGE_LEARNING_COOLDOWN_MS = 750;
+const LANGUAGE_LEARNING_COOLDOWN_MS = 0;
 
 export async function runLanguageLearningRequest(
 	request: LanguageLearningRequest
@@ -17,9 +18,6 @@ export async function runLanguageLearningRequest(
 		throw new Error('No Interpreter model is enabled.');
 	}
 
-	// Keep the Interpreter UI and provider client out of the service worker's
-	// startup bundle. It is loaded only after a language-learning action.
-	const { sendToLLM } = await import('./interpreter');
 	const result = await sendToLLM(
 		request.context,
 		'',

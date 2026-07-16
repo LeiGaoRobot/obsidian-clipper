@@ -51,7 +51,8 @@ export function createLanguageLearningAssistant(
 			const prompt = `${instruction.trim()} Return only the revised content in Markdown.`;
 			const responses = await sendRequest({
 				context: content,
-				prompts: [{ key: 'prompt_1', prompt }]
+				prompts: [{ key: 'prompt_1', prompt }],
+				maxTokens: Math.min(12000, Math.max(1600, Math.ceil(content.length * 1.2)))
 			});
 			const response = responses.find(item => item.key === 'prompt_1')?.user_response;
 			return typeof response === 'string' ? response : '';
@@ -75,41 +76,45 @@ export function createLanguageLearningAssistant(
 				'Preserve meaning and tone. Do not merge or omit segments.',
 				'Return exactly one line per segment using: ID|||translation'
 			];
-			const promptGroups: string[][] = [];
+			const promptGroups: Array<{ lines: string[]; sourceChars: number }> = [];
 			let currentGroup: string[] = [];
+			let currentSourceChars = 0;
 			let currentLength = promptHeader.join('\n').length;
 			segments.forEach((segment, index) => {
 				const line = `${index}|||${segment}`;
 				if (currentGroup.length > 0 && currentLength + line.length + 1 > MAX_TRANSCRIPT_PROMPT_CHARS) {
-					promptGroups.push(currentGroup);
+					promptGroups.push({ lines: currentGroup, sourceChars: currentSourceChars });
 					currentGroup = [];
+					currentSourceChars = 0;
 					currentLength = promptHeader.join('\n').length;
 				}
 				currentGroup.push(line);
+				currentSourceChars += segment.length;
 				currentLength += line.length + 1;
 			});
-			if (currentGroup.length > 0) promptGroups.push(currentGroup);
+			if (currentGroup.length > 0) {
+				promptGroups.push({ lines: currentGroup, sourceChars: currentSourceChars });
+			}
 
-			const prompts = promptGroups.map((group, index) => ({
-				key: `prompt_${index + 1}`,
-				prompt: [...promptHeader, ...group].join('\n')
-			}));
-			const responses = await sendRequest({
-				context: 'Translate timed transcript segments without changing their alignment.',
-				prompts,
-				maxTokens: Math.min(12000, Math.max(1600, Math.ceil(
-					segments.reduce((total, segment) => total + segment.length, 0) * 1.2
-				)))
-			});
 			const translations = new Array<string>(segments.length).fill('');
-			for (const response of responses) {
-				if (typeof response.user_response !== 'string') continue;
-				for (const line of response.user_response.split('\n')) {
-					const match = line.match(/^\s*(\d+)\|\|\|(.*)$/);
-					if (!match) continue;
-					const index = Number(match[1]);
-					if (index >= 0 && index < translations.length) {
-						translations[index] = match[2].trim();
+			for (const group of promptGroups) {
+				const responses = await sendRequest({
+					context: 'Translate timed transcript segments without changing their alignment.',
+					prompts: [{
+						key: 'prompt_1',
+						prompt: [...promptHeader, ...group.lines].join('\n')
+					}],
+					maxTokens: Math.min(8000, Math.max(1600, Math.ceil(group.sourceChars * 1.2)))
+				});
+				for (const response of responses) {
+					if (typeof response.user_response !== 'string') continue;
+					for (const line of response.user_response.split('\n')) {
+						const match = line.match(/^\s*(\d+)\|\|\|(.*)$/);
+						if (!match) continue;
+						const index = Number(match[1]);
+						if (index >= 0 && index < translations.length) {
+							translations[index] = match[2].trim();
+						}
 					}
 				}
 			}

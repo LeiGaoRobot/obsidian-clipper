@@ -24,7 +24,7 @@ import { saveFile } from '../utils/file-utils';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
 import { configuredLanguageLearning } from '../utils/language-learning-runtime';
-import { replaceTextSelection } from '../utils/language-learning';
+import { initializeLanguageLearningPopup } from '../utils/language-learning-popup';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -37,13 +37,6 @@ let templates: Template[] = [];
 let currentVariables: { [key: string]: string } = {};
 let currentTabId: number | undefined;
 let lastSelectedVault: string | null = null;
-
-const AI_EDIT_PRESET_INSTRUCTIONS: Record<string, string> = {
-	bilingual: 'Create a sentence-by-sentence bilingual version. Keep each original sentence and place its {{responseLanguage}} translation immediately below it.',
-	simplify: 'Rewrite at CEFR B1 level while preserving the meaning and factual details.',
-	polish: 'Improve clarity, grammar, and natural phrasing without changing the meaning or adding facts.',
-	'study-notes': 'Create a concise language-study note in {{responseLanguage}} with a summary, key vocabulary, grammar patterns, and example sentences.'
-};
 
 const isSidePanel = window.location.pathname.includes('side-panel.html');
 const urlParams = new URLSearchParams(window.location.search);
@@ -616,137 +609,12 @@ async function initializeUI() {
 }
 
 function initializeLanguageLearningTools(): void {
-	const container = document.getElementById('language-learning-tools') as HTMLElement;
-	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
-	const presetSelect = document.getElementById('ai-edit-preset') as HTMLSelectElement;
-	const instructionField = document.getElementById('ai-edit-instruction') as HTMLTextAreaElement;
-	const previewButton = document.getElementById('ai-edit-preview-btn') as HTMLButtonElement;
-	const undoButton = document.getElementById('ai-edit-undo-btn') as HTMLButtonElement;
-	const preview = document.getElementById('ai-edit-preview') as HTMLElement;
-	const previewContent = document.getElementById('ai-edit-preview-content') as HTMLElement;
-	const applyButton = document.getElementById('ai-edit-apply-btn') as HTMLButtonElement;
-	const cancelButton = document.getElementById('ai-edit-cancel-btn') as HTMLButtonElement;
-	const status = document.getElementById('ai-edit-status') as HTMLElement;
-	if (!container || !noteContentField || !presetSelect || !instructionField || !previewButton
-		|| !undoButton || !preview || !previewContent || !applyButton || !cancelButton || !status) return;
-
 	const hasConfiguredModel = generalSettings.interpreterEnabled
 		&& generalSettings.models.some(model => model.enabled);
-	container.style.display = hasConfiguredModel ? 'block' : 'none';
-	if (!hasConfiguredModel) return;
-
-	interface PendingEdit {
-		sourceValue: string;
-		selectionStart: number;
-		selectionEnd: number;
-		output: string;
-	}
-	interface UndoEdit {
-		beforeValue: string;
-		afterValue: string;
-		selectionStart: number;
-		selectionEnd: number;
-	}
-
-	let pendingEdit: PendingEdit | null = null;
-	let undoEdit: UndoEdit | null = null;
-
-	const showStatus = (message: string, isError = false) => {
-		status.textContent = message;
-		status.classList.toggle('is-error', isError);
-	};
-	const hidePreview = () => {
-		pendingEdit = null;
-		preview.style.display = 'none';
-		previewContent.textContent = '';
-	};
-	const updateInstruction = () => {
-		instructionField.value = AI_EDIT_PRESET_INSTRUCTIONS[presetSelect.value] || '';
-	};
-
-	presetSelect.addEventListener('change', () => {
-		updateInstruction();
-		instructionField.focus();
-	});
-	updateInstruction();
-
-	previewButton.addEventListener('click', async () => {
-		hidePreview();
-		const sourceValue = noteContentField.value;
-		const hasSelection = noteContentField.selectionEnd > noteContentField.selectionStart;
-		const selectionStart = hasSelection ? noteContentField.selectionStart : 0;
-		const selectionEnd = hasSelection ? noteContentField.selectionEnd : sourceValue.length;
-		const content = sourceValue.slice(selectionStart, selectionEnd);
-		const instruction = instructionField.value.trim();
-		if (!content.trim() || !instruction) {
-			showStatus(getMessage('aiEditMissingInput'), true);
-			return;
-		}
-
-		previewButton.disabled = true;
-		showStatus(getMessage('thinking'));
-		try {
-			const output = await configuredLanguageLearning.transformContent(content, instruction);
-			if (!output.trim()) throw new Error(getMessage('emptyResponse'));
-			pendingEdit = { sourceValue, selectionStart, selectionEnd, output };
-			previewContent.textContent = output;
-			preview.style.display = 'block';
-			showStatus('');
-		} catch (error) {
-			showStatus(error instanceof Error ? error.message : getMessage('error'), true);
-		} finally {
-			previewButton.disabled = false;
-		}
-	});
-
-	applyButton.addEventListener('click', () => {
-		if (!pendingEdit) return;
-		if (noteContentField.value !== pendingEdit.sourceValue) {
-			hidePreview();
-			showStatus(getMessage('aiEditContentChanged'), true);
-			return;
-		}
-		const result = replaceTextSelection(
-			pendingEdit.sourceValue,
-			pendingEdit.selectionStart,
-			pendingEdit.selectionEnd,
-			pendingEdit.output
-		);
-		undoEdit = {
-			beforeValue: pendingEdit.sourceValue,
-			afterValue: result.value,
-			selectionStart: pendingEdit.selectionStart,
-			selectionEnd: pendingEdit.selectionEnd
-		};
-		noteContentField.value = result.value;
-		noteContentField.focus();
-		noteContentField.setSelectionRange(result.selectionStart, result.selectionEnd);
-		noteContentField.dispatchEvent(new Event('input', { bubbles: true }));
-		undoButton.disabled = false;
-		hidePreview();
-		showStatus(getMessage('done'));
-	});
-
-	cancelButton.addEventListener('click', () => {
-		hidePreview();
-		showStatus('');
-	});
-
-	undoButton.addEventListener('click', () => {
-		if (!undoEdit) return;
-		if (noteContentField.value !== undoEdit.afterValue) {
-			undoEdit = null;
-			undoButton.disabled = true;
-			showStatus(getMessage('aiEditContentChanged'), true);
-			return;
-		}
-		noteContentField.value = undoEdit.beforeValue;
-		noteContentField.focus();
-		noteContentField.setSelectionRange(undoEdit.selectionStart, undoEdit.selectionEnd);
-		noteContentField.dispatchEvent(new Event('input', { bubbles: true }));
-		undoEdit = null;
-		undoButton.disabled = true;
-		showStatus('');
+	initializeLanguageLearningPopup({
+		enabled: hasConfiguredModel,
+		transformContent: configuredLanguageLearning.transformContent,
+		getMessage
 	});
 }
 

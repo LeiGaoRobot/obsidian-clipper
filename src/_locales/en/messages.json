@@ -32,6 +32,18 @@
 	"aiEditInstruction": {
 		"message": "Tell AI how to modify the selected text or the full clipping"
 	},
+	"aiEditInstructionBilingual": {
+		"message": "Create a sentence-by-sentence bilingual version. Keep each original sentence and place its {{responseLanguage}} translation immediately below it."
+	},
+	"aiEditInstructionPolish": {
+		"message": "Improve clarity, grammar, and natural phrasing without changing the meaning or adding facts."
+	},
+	"aiEditInstructionSimplify": {
+		"message": "Rewrite at CEFR B1 level while preserving the meaning and factual details."
+	},
+	"aiEditInstructionStudyNotes": {
+		"message": "Create a concise language-study note in {{responseLanguage}} with a summary, key vocabulary, grammar patterns, and example sentences."
+	},
 	"aiEditMissingInput": {
 		"message": "Select or enter content and provide an AI instruction."
 	},
@@ -893,6 +905,9 @@
 	},
 	"readerTranscripts": {
 		"message": "Transcripts"
+	},
+	"readerTranslationIncomplete": {
+		"message": "The model missed one or more transcript segments. Try again."
 	},
 	"readerTypography": {
 		"message": "Typography"

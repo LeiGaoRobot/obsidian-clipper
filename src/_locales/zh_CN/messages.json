@@ -32,6 +32,18 @@
 	"aiEditInstruction": {
 		"message": "告诉 AI 如何修改选中文本或整篇剪藏内容"
 	},
+	"aiEditInstructionBilingual": {
+		"message": "创建逐句双语对照版本。保留每个原句，并在下方紧接其 {{responseLanguage}} 译文。"
+	},
+	"aiEditInstructionPolish": {
+		"message": "在不改变含义、不添加事实的前提下，提升清晰度、语法和表达自然度。"
+	},
+	"aiEditInstructionSimplify": {
+		"message": "在保留原意和事实细节的前提下，将内容改写为 CEFR B1 难度。"
+	},
+	"aiEditInstructionStudyNotes": {
+		"message": "使用 {{responseLanguage}} 创建简洁的语言学习笔记，包含摘要、重点词汇、语法结构和例句。"
+	},
 	"aiEditMissingInput": {
 		"message": "请选择或输入内容，并填写 AI 指令。"
 	},
@@ -893,6 +905,9 @@
 	},
 	"readerTranscripts": {
 		"message": "字幕稿"
+	},
+	"readerTranslationIncomplete": {
+		"message": "模型遗漏了一个或多个字幕片段，请重试。"
 	},
 	"readerTypography": {
 		"message": "排版"

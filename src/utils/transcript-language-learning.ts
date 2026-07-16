@@ -6,6 +6,11 @@ export interface TranscriptLanguageLearning {
 	explainSelection: (selection: LearningSelection) => Promise<string>;
 }
 
+export interface TranscriptLanguageLearningController {
+	toggleBilingual: () => Promise<void>;
+	explain: (selection: LearningSelection) => Promise<void>;
+}
+
 interface TranscriptLanguageLearningOptions {
 	doc: Document;
 	transcript: HTMLElement;
@@ -17,6 +22,13 @@ interface TranscriptLanguageLearningOptions {
 
 const selectionControllers = new WeakMap<Document, AbortController>();
 
+export function cleanupTranscriptLanguageLearning(doc: Document): void {
+	selectionControllers.get(doc)?.abort();
+	selectionControllers.delete(doc);
+	doc.querySelector('.language-learning-selection-action')?.remove();
+	doc.querySelector('.language-learning-card')?.remove();
+}
+
 function getOriginalSegmentText(segment: HTMLElement): string {
 	const textElement = segment.querySelector('.transcript-segment-text');
 	return (textElement?.firstChild?.textContent || textElement?.textContent || '').trim();
@@ -27,6 +39,40 @@ function isSingleWord(text: string): boolean {
 	return normalized.length > 0 && normalized.length <= 80 && !/\s/.test(normalized);
 }
 
+export function getTranscriptLearningSelection(
+	doc: Document,
+	transcript: HTMLElement,
+	segments: HTMLElement[],
+	originalTexts: string[]
+): LearningSelection | null {
+	const selection = doc.getSelection();
+	if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+	const text = selection.toString().trim();
+	if (!text) return null;
+	const range = selection.getRangeAt(0);
+	const findSegment = (node: Node): HTMLElement | null => {
+		const element = node.nodeType === Node.ELEMENT_NODE
+			? node as Element
+			: node.parentElement;
+		const textElement = element?.closest('.transcript-segment-text');
+		const segment = textElement?.closest('.transcript-segment') as HTMLElement | null;
+		return segment && transcript.contains(segment) ? segment : null;
+	};
+	const startSegment = findSegment(range.startContainer);
+	const endSegment = findSegment(range.endContainer);
+	if (!startSegment || !endSegment) return null;
+	const startIndex = segments.indexOf(startSegment);
+	const endIndex = segments.indexOf(endSegment);
+	if (startIndex < 0 || endIndex < 0) return null;
+	const firstIndex = Math.min(startIndex, endIndex);
+	const lastIndex = Math.max(startIndex, endIndex);
+	return {
+		kind: isSingleWord(text) ? 'word' : 'sentence',
+		text,
+		context: originalTexts.slice(firstIndex, lastIndex + 1).join(' ').trim() || text
+	};
+}
+
 export function wireTranscriptLanguageLearning({
 	doc,
 	transcript,
@@ -34,14 +80,11 @@ export function wireTranscriptLanguageLearning({
 	controls,
 	tools,
 	cancelPendingSeek
-}: TranscriptLanguageLearningOptions): void {
-	selectionControllers.get(doc)?.abort();
+}: TranscriptLanguageLearningOptions): TranscriptLanguageLearningController {
+	cleanupTranscriptLanguageLearning(doc);
 	const controller = new AbortController();
 	selectionControllers.set(doc, controller);
 	const { signal } = controller;
-
-	doc.querySelector('.language-learning-selection-action')?.remove();
-	doc.querySelector('.language-learning-card')?.remove();
 
 	const originalTexts = segments.map(getOriginalSegmentText);
 	const explanationCache = new Map<string, string>();
@@ -104,9 +147,7 @@ export function wireTranscriptLanguageLearning({
 
 	let translationsLoaded = false;
 	let translationsVisible = false;
-	bilingualButton.addEventListener('click', async (event) => {
-		event.preventDefault();
-		event.stopPropagation();
+	const toggleBilingual = async () => {
 		if (translationsLoaded) {
 			translationsVisible = !translationsVisible;
 			transcript.classList.toggle('show-bilingual-transcript', translationsVisible);
@@ -119,18 +160,20 @@ export function wireTranscriptLanguageLearning({
 		bilingualButton.textContent = getMessage('thinking');
 		try {
 			const translations = await tools.translateTranscript(originalTexts);
-			let translatedCount = 0;
-			translations.forEach((translation, index) => {
-				if (!translation || !segments[index]) return;
+			if (translations.length !== originalTexts.length || translations.some(translation => !translation.trim())) {
+				throw new Error(getMessage('readerTranslationIncomplete'));
+			}
+			const translationElements = translations.map((translation, index) => {
 				const textElement = segments[index].querySelector('.transcript-segment-text');
-				if (!textElement) return;
+				if (!textElement) throw new Error(getMessage('readerTranslationIncomplete'));
 				const translationElement = doc.createElement('div');
 				translationElement.className = 'transcript-segment-translation';
 				translationElement.textContent = translation;
-				textElement.appendChild(translationElement);
-				translatedCount++;
+				return { textElement, translationElement };
 			});
-			if (translatedCount === 0) throw new Error(getMessage('emptyResponse'));
+			translationElements.forEach(({ textElement, translationElement }) => {
+				textElement.appendChild(translationElement);
+			});
 			translationsLoaded = true;
 			translationsVisible = true;
 			transcript.classList.add('show-bilingual-transcript');
@@ -145,6 +188,12 @@ export function wireTranscriptLanguageLearning({
 			bilingualButton.classList.remove('is-loading');
 			bilingualButton.textContent = getMessage('readerBilingualSubtitles');
 		}
+	};
+	bilingualButton.addEventListener('click', (event) => {
+		if (!event.isTrusted) return;
+		event.preventDefault();
+		event.stopPropagation();
+		void toggleBilingual();
 	});
 
 	const selectionButton = doc.createElement('button');
@@ -165,26 +214,7 @@ export function wireTranscriptLanguageLearning({
 		pendingSelection = null;
 	};
 
-	const readSelection = (): LearningSelection | null => {
-		const selection = doc.getSelection();
-		if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
-		const text = selection.toString().trim();
-		if (!text) return null;
-		const range = selection.getRangeAt(0);
-		const commonNode = range.commonAncestorContainer;
-		const commonElement = commonNode.nodeType === Node.ELEMENT_NODE
-			? commonNode as Element
-			: commonNode.parentElement;
-		const textElement = commonElement?.closest('.transcript-segment-text');
-		const segment = textElement?.closest('.transcript-segment') as HTMLElement | null;
-		if (!segment || !transcript.contains(segment)) return null;
-		const segmentIndex = segments.indexOf(segment);
-		return {
-			kind: isSingleWord(text) ? 'word' : 'sentence',
-			text,
-			context: originalTexts[segmentIndex] || text
-		};
-	};
+	const readSelection = () => getTranscriptLearningSelection(doc, transcript, segments, originalTexts);
 
 	const updateSelectionButton = () => {
 		const selection = readSelection();
@@ -208,6 +238,7 @@ export function wireTranscriptLanguageLearning({
 	};
 
 	selectionButton.addEventListener('click', async (event) => {
+		if (!event.isTrusted) return;
 		event.preventDefault();
 		event.stopPropagation();
 		const selection = pendingSelection || pressedSelection;
@@ -218,6 +249,7 @@ export function wireTranscriptLanguageLearning({
 	});
 
 	transcript.addEventListener('dblclick', (event) => {
+		if (!event.isTrusted) return;
 		cancelPendingSeek();
 		event.stopPropagation();
 		window.setTimeout(() => {
@@ -242,4 +274,6 @@ export function wireTranscriptLanguageLearning({
 		}
 		selectionChangeTimer = window.setTimeout(updateSelectionButton, 200);
 	}, { signal });
+
+	return { toggleBilingual, explain };
 }
