@@ -1,13 +1,20 @@
 import { getMessage } from './i18n';
-import { LearningSelection } from './language-learning';
+import {
+	LearningSelection,
+	TranscriptReadingSegments,
+	TranscriptReadingToken,
+	isCompleteTranscriptReadings
+} from './language-learning';
 
 export interface TranscriptLanguageLearning {
 	translateTranscript: (segments: string[]) => Promise<string[]>;
+	annotateJapaneseTranscript: (segments: string[]) => Promise<TranscriptReadingSegments>;
 	explainSelection: (selection: LearningSelection) => Promise<string>;
 }
 
 export interface TranscriptLanguageLearningController {
 	toggleBilingual: () => Promise<void>;
+	toggleJapaneseReadings: () => Promise<void>;
 	explain: (selection: LearningSelection) => Promise<void>;
 }
 
@@ -26,12 +33,63 @@ export function cleanupTranscriptLanguageLearning(doc: Document): void {
 	selectionControllers.get(doc)?.abort();
 	selectionControllers.delete(doc);
 	doc.querySelector('.language-learning-selection-action')?.remove();
+	doc.querySelectorAll('.player-learning-readings').forEach(element => element.remove());
 	doc.querySelector('.language-learning-card')?.remove();
 }
 
 function getOriginalSegmentText(segment: HTMLElement): string {
 	const textElement = segment.querySelector('.transcript-segment-text');
+	const originalElement = textElement?.querySelector('.transcript-segment-original');
+	const storedOriginalText = originalElement?.getAttribute('data-original-text');
+	if (storedOriginalText != null) return storedOriginalText;
+	if (originalElement) return originalElement.textContent?.trim() || '';
 	return (textElement?.firstChild?.textContent || textElement?.textContent || '').trim();
+}
+
+const JAPANESE_KANJI = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF々]/;
+const JAPANESE_KANA = /[\u3040-\u30FF]/;
+
+export function containsJapaneseKanji(texts: string[]): boolean {
+	return texts.some(text => JAPANESE_KANA.test(text))
+		&& texts.some(text => JAPANESE_KANJI.test(text));
+}
+
+function renderTranscriptReadings(
+	doc: Document,
+	textElement: Element,
+	tokens: TranscriptReadingToken[],
+	showReadings: boolean
+): void {
+	const originalElement = doc.createElement('span');
+	originalElement.className = 'transcript-segment-original';
+	originalElement.setAttribute('data-original-text', tokens.map(token => token.text).join(''));
+	if (showReadings) {
+		tokens.forEach(token => {
+			if (!token.reading) {
+				originalElement.appendChild(doc.createTextNode(token.text));
+				return;
+			}
+			const ruby = doc.createElement('ruby');
+			const base = doc.createElement('span');
+			const reading = doc.createElement('rt');
+			base.textContent = token.text;
+			reading.textContent = token.reading;
+			ruby.append(base, reading);
+			originalElement.appendChild(ruby);
+		});
+	} else {
+		originalElement.textContent = tokens.map(token => token.text).join('');
+	}
+
+	const translationElement = textElement.querySelector('.transcript-segment-translation');
+	Array.from(textElement.childNodes).forEach(node => {
+		if (node !== translationElement) node.remove();
+	});
+	if (translationElement) {
+		textElement.insertBefore(originalElement, translationElement);
+	} else {
+		textElement.appendChild(originalElement);
+	}
 }
 
 function isSingleWord(text: string): boolean {
@@ -196,6 +254,59 @@ export function wireTranscriptLanguageLearning({
 		void toggleBilingual();
 	});
 
+	const readingsButton = doc.createElement('button');
+	readingsButton.type = 'button';
+	readingsButton.className = 'player-learning-action player-learning-readings';
+	readingsButton.textContent = getMessage('readerJapaneseReadings');
+	readingsButton.hidden = !containsJapaneseKanji(originalTexts);
+	controls.appendChild(readingsButton);
+
+	let japaneseReadings: TranscriptReadingSegments | null = null;
+	let readingsVisible = false;
+	const renderReadings = (show: boolean) => {
+		if (!japaneseReadings) return;
+		japaneseReadings.forEach((tokens, index) => {
+			const textElement = segments[index].querySelector('.transcript-segment-text');
+			if (textElement) renderTranscriptReadings(doc, textElement, tokens, show);
+		});
+		readingsVisible = show;
+		transcript.classList.toggle('show-japanese-readings', show);
+		readingsButton.classList.toggle('is-enabled', show);
+	};
+	const toggleJapaneseReadings = async () => {
+		if (japaneseReadings) {
+			renderReadings(!readingsVisible);
+			return;
+		}
+
+		readingsButton.disabled = true;
+		readingsButton.classList.add('is-loading');
+		readingsButton.textContent = getMessage('thinking');
+		try {
+			const readings = await tools.annotateJapaneseTranscript(originalTexts);
+			if (!isCompleteTranscriptReadings(readings, originalTexts)) {
+				throw new Error(getMessage('readerReadingIncomplete'));
+			}
+			japaneseReadings = readings;
+			renderReadings(true);
+		} catch (error) {
+			cardTitle.textContent = getMessage('readerJapaneseReadings');
+			cardBody.textContent = error instanceof Error ? error.message : getMessage('error');
+			card.classList.add('is-error');
+			card.style.display = 'block';
+		} finally {
+			readingsButton.disabled = false;
+			readingsButton.classList.remove('is-loading');
+			readingsButton.textContent = getMessage('readerJapaneseReadings');
+		}
+	};
+	readingsButton.addEventListener('click', (event) => {
+		if (!event.isTrusted) return;
+		event.preventDefault();
+		event.stopPropagation();
+		void toggleJapaneseReadings();
+	});
+
 	const selectionButton = doc.createElement('button');
 	selectionButton.type = 'button';
 	selectionButton.className = 'obsidian-selection-action language-learning-selection-action';
@@ -275,5 +386,5 @@ export function wireTranscriptLanguageLearning({
 		selectionChangeTimer = window.setTimeout(updateSelectionButton, 200);
 	}, { signal });
 
-	return { toggleBilingual, explain };
+	return { toggleBilingual, toggleJapaneseReadings, explain };
 }

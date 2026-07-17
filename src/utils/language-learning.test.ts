@@ -75,7 +75,7 @@ describe('Language learning assistant', () => {
 		}).toEqual({
 			output: '**encounter** /ɪnˈkaʊntər/ — 遇到',
 			context: 'Selected word: encountered\nContext: I encountered an unfamiliar word.',
-			prompt: 'Explain the selected word for a language learner in Simplified Chinese. Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.'
+			prompt: 'Explain the selected word for a language learner in Simplified Chinese. Use only Simplified Chinese for all explanation text, labels, and translations. Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.'
 		});
 	});
 
@@ -103,7 +103,7 @@ describe('Language learning assistant', () => {
 		}).toEqual({
 			output: '自然翻译：我偶然遇到了一个生词。',
 			context: 'Selected sentence: I encountered an unfamiliar word.\nContext: I encountered an unfamiliar word.',
-			prompt: 'Explain the selected sentence for a language learner in Simplified Chinese. Include a natural translation, its grammar structure, and the key expressions in context. Return concise plain text.'
+			prompt: 'Explain the selected sentence for a language learner in Simplified Chinese. Use only Simplified Chinese for all explanation text, labels, and translations. Include a natural translation, its grammar structure, and the key expressions in context. Return concise plain text.'
 		});
 	});
 
@@ -136,6 +136,46 @@ describe('Language learning assistant', () => {
 				'Return exactly one line per segment using: ID|||translation',
 				'0|||Hello.',
 				'1|||How are you?'
+			].join('\n')
+		});
+	});
+
+	test('annotates Japanese kanji with aligned hiragana readings', async () => {
+		let request: LanguageLearningRequest | undefined;
+		const assistant = createLanguageLearningAssistant(async (nextRequest) => {
+			request = nextRequest;
+			return [{
+				key: 'prompt_1',
+				prompt: nextRequest.prompts[0].prompt,
+				user_response: '0|||[{"text":"私","reading":"わたし"},{"text":"は","reading":""},{"text":"日本語","reading":"にほんご"},{"text":"を","reading":""},{"text":"勉強","reading":"べんきょう"},{"text":"します。","reading":""}]'
+			}];
+		});
+
+		const readings = await assistant.annotateJapaneseTranscript(['私は日本語を勉強します。']);
+
+		expect({
+			readings,
+			context: request?.context,
+			prompt: request?.prompts[0].prompt
+		}).toEqual({
+			readings: [[
+				{ text: '私', reading: 'わたし' },
+				{ text: 'は', reading: '' },
+				{ text: '日本語', reading: 'にほんご' },
+				{ text: 'を', reading: '' },
+				{ text: '勉強', reading: 'べんきょう' },
+				{ text: 'します。', reading: '' }
+			]],
+			context: 'Annotate Japanese transcript segments with aligned ruby readings.',
+			prompt: [
+				'Annotate each Japanese transcript segment with hiragana readings for every kanji.',
+				'Preserve every segment exactly and do not merge or omit text.',
+				'Return exactly one line per segment using: ID|||JSON',
+				'The JSON must be an array of objects with "text" and "reading" fields.',
+				'Concatenate all "text" fields to reproduce the source exactly.',
+				'Use an empty reading for kana, Latin letters, numbers, spaces, and punctuation.',
+				'Split mixed kanji and kana into separate objects so every kanji has its own reading.',
+				'0|||私は日本語を勉強します。'
 			].join('\n')
 		});
 	});

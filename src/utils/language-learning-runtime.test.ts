@@ -96,9 +96,30 @@ describe('Configured language learning runtime', () => {
 				context: 'Selected word: encountered\nContext: I encountered an unfamiliar word.',
 				prompts: [{
 					key: 'prompt_1',
-					prompt: 'Explain the selected word for a language learner in Simplified Chinese. Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.'
+					prompt: 'Explain the selected word for a language learner in Simplified Chinese. Use only Simplified Chinese for all explanation text, labels, and translations. Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.'
 				}]
 			}
+		});
+	});
+
+	test('sends Japanese reading work through the extension background', async () => {
+		mocks.sendMessage.mockResolvedValue({
+			success: true,
+			promptResponses: [{
+				key: 'prompt_1',
+				prompt: 'annotate',
+				user_response: '0|||[{"text":"日本語","reading":"にほんご"}]'
+			}]
+		});
+
+		const output = await configuredLanguageLearning.annotateJapaneseTranscript(['日本語']);
+
+		expect(output).toEqual([[{ text: '日本語', reading: 'にほんご' }]]);
+		expect(mocks.sendMessage).toHaveBeenCalledWith({
+			action: 'languageLearningRequest',
+			request: expect.objectContaining({
+				context: 'Annotate Japanese transcript segments with aligned ruby readings.'
+			})
 		});
 	});
 });

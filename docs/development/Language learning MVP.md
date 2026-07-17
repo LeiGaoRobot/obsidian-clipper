@@ -7,6 +7,7 @@ This document describes the implemented language-learning MVP and the interfaces
 
 - Let users revise selected or complete clipped Markdown through a preview-and-apply workflow.
 - Add manually triggered, segment-aligned bilingual YouTube transcripts.
+- Add manually triggered hiragana readings for Japanese kanji in YouTube transcripts.
 - Explain a double-clicked word or a selected phrase or sentence in transcript context.
 - Reuse the existing Interpreter provider, model, and credential configuration, or use the configured local Grok/Codex CLI execution mode.
 - Keep every remote action explicit so the extension does not create surprise model costs.
@@ -23,10 +24,10 @@ This document describes the implemented language-learning MVP and the interfaces
 
 | Module | Interface and responsibility |
 | --- | --- |
-| `src/utils/language-learning.ts` | Pure `LanguageLearningAssistant` interface for content transformation, selection explanation, and aligned transcript translation |
+| `src/utils/language-learning.ts` | Pure `LanguageLearningAssistant` interface for content transformation, selection explanation, aligned transcript translation, and Japanese readings |
 | `src/utils/language-learning-runtime.ts` | `configuredLanguageLearning`, the configured interface used by Popup and Reader callers |
 | `src/utils/language-learning-popup.ts` | Popup and side-panel preview, apply, cancel, and undo state |
-| `src/utils/transcript-language-learning.ts` | Bilingual controls, selection extraction, explanation card, caching, and cleanup |
+| `src/utils/transcript-language-learning.ts` | Bilingual and Japanese-reading controls, selection extraction, explanation card, caching, and cleanup |
 | `src/utils/reader-transcript.ts` | Player integration and single-click versus double-click seek coordination |
 | `src/utils/language-learning-service.ts` | Background validation, stored-model resolution, and local CLI dispatch |
 | `src/utils/llm-client.ts` | DOM-free provider adapter and response parser shared with Interpreter |
@@ -44,7 +45,7 @@ Popup or Reader
   → configured Interpreter provider or local CLI
 ```
 
-The interface is intentionally small. Popup and Reader know only how to transform content, explain a selection, or translate ordered segments. They do not know provider URLs, credentials, request formats, or response parsing rules.
+The interface is intentionally small. Popup and Reader know only how to transform content, explain a selection, translate ordered segments, or annotate Japanese readings. They do not know provider URLs, credentials, request formats, or response parsing rules.
 
 ## Core interfaces
 
@@ -53,6 +54,7 @@ The interface is intentionally small. Popup and Reader know only how to transfor
 - `transformContent(content, instruction)` returns revised Markdown.
 - `explainSelection(selection, responseLanguage)` returns a contextual explanation.
 - `translateTranscript(segments, targetLanguage)` returns translations in the same order and length as the source segments.
+- `annotateJapaneseTranscript(segments)` returns source-aligned text/reading tokens for Japanese kanji.
 
 This seam is also the primary pure-test surface. Runtime configuration and DOM behavior are tested separately.
 
@@ -64,6 +66,7 @@ Remote work starts only after a user invokes an explicit action:
 
 - Selecting **Preview AI edit**.
 - Selecting **Bilingual subtitles** before translations exist.
+- Selecting **Japanese readings** before readings exist.
 - Double-clicking a transcript word.
 - Selecting **Explain with AI** for a transcript selection.
 
@@ -86,6 +89,7 @@ Credentials stay in the existing Interpreter settings. Language-learning message
 Each source segment is sent as `ID|||text`, where `ID` is its global source index. Responses must use `ID|||translation`. Parsing places each response back into an array at that index, so model reordering cannot change subtitle timing.
 
 Prompt groups target a character-count limit and are sent sequentially. Each source segment remains atomic, so one segment longer than the limit can produce an oversized group. The Reader UI accepts the result only when the returned array length matches the source length and every segment is non-empty. Otherwise, it displays an error and keeps the action retryable.
+Japanese reading responses also reconstruct each source segment from returned text tokens before ruby elements are committed to the DOM; incomplete or misaligned responses are rejected.
 
 ### Safe content application
 
@@ -104,6 +108,7 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 ## Reader interaction details
 
 - Original segment text is captured before translations are appended.
+- Japanese readings are rendered as ruby elements only after the explicit **Japanese readings** action; the original text remains selectable and can be toggled back to its unannotated form.
 - Cross-segment selections find both range endpoints and build context from every covered source segment.
 - Word explanations are cached by selection kind, selected text, and context for the current wired transcript.
 - An `AbortController` removes document and transcript listeners when Reader content changes.
@@ -160,6 +165,7 @@ Background or provider changes also require an unpacked Chromium smoke test that
 
 - Reader results are not persisted. Persistence should be added behind a separate storage interface rather than inside transcript DOM code.
 - The response language is shared by translations and explanations. Separate source, translation, and explanation language settings may be added without changing the assistant interface.
+- Explanation prompts explicitly require the configured response language for explanation text, labels, and translations.
 - Transcript translation retries the complete operation. Per-batch retry metadata would belong inside the assistant implementation.
 - Explanation cards are plain text. Structured learning objects should be introduced only when there is a second adapter, such as flashcard export or vocabulary storage.
 - There is no request-cost estimate. Any estimate must account for multiple transcript batches and provider-specific tokenization.

@@ -22,13 +22,91 @@ export interface LearningSelection {
 	context: string;
 }
 
+export interface TranscriptReadingToken {
+	text: string;
+	reading: string;
+}
+
+export type TranscriptReadingSegments = TranscriptReadingToken[][];
+
 export interface LanguageLearningAssistant {
 	transformContent(content: string, instruction: string): Promise<string>;
 	explainSelection(selection: LearningSelection, responseLanguage: string): Promise<string>;
 	translateTranscript(segments: string[], targetLanguage: string): Promise<string[]>;
+	annotateJapaneseTranscript(segments: string[]): Promise<TranscriptReadingSegments>;
 }
 
 const MAX_TRANSCRIPT_PROMPT_CHARS = 6000;
+const JAPANESE_KANJI = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF々]/;
+
+interface TranscriptPromptGroup {
+	lines: string[];
+	sourceChars: number;
+}
+
+function buildTranscriptPromptGroups(
+	segments: string[],
+	promptHeader: string[]
+): TranscriptPromptGroup[] {
+	const promptGroups: TranscriptPromptGroup[] = [];
+	let currentGroup: string[] = [];
+	let currentSourceChars = 0;
+	let currentLength = promptHeader.join('\n').length;
+	segments.forEach((segment, index) => {
+		const line = `${index}|||${segment}`;
+		if (currentGroup.length > 0 && currentLength + line.length + 1 > MAX_TRANSCRIPT_PROMPT_CHARS) {
+			promptGroups.push({ lines: currentGroup, sourceChars: currentSourceChars });
+			currentGroup = [];
+			currentSourceChars = 0;
+			currentLength = promptHeader.join('\n').length;
+		}
+		currentGroup.push(line);
+		currentSourceChars += segment.length;
+		currentLength += line.length + 1;
+	});
+	if (currentGroup.length > 0) {
+		promptGroups.push({ lines: currentGroup, sourceChars: currentSourceChars });
+	}
+	return promptGroups;
+}
+
+function parseTranscriptReadingTokens(value: string): TranscriptReadingToken[] | null {
+	let json = value.trim();
+	if (json.startsWith('```')) {
+		json = json.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+	}
+	try {
+		const parsed: unknown = JSON.parse(json);
+		if (!Array.isArray(parsed)) return null;
+		const tokens: TranscriptReadingToken[] = [];
+		for (const item of parsed) {
+			if (!item || typeof item !== 'object') return null;
+			const candidate = item as { text?: unknown; reading?: unknown };
+			if (
+				typeof candidate.text !== 'string'
+				|| typeof candidate.reading !== 'string'
+				|| !candidate.text
+			) return null;
+			tokens.push({ text: candidate.text, reading: candidate.reading });
+		}
+		return tokens;
+	} catch {
+		return null;
+	}
+}
+
+export function isCompleteTranscriptReadings(
+	readings: TranscriptReadingSegments,
+	segments: string[]
+): boolean {
+	return readings.length === segments.length && readings.every((tokens, index) => {
+		const source = segments[index];
+		if (!source) return tokens.length === 0;
+		return tokens.length > 0
+			&& tokens.map(token => token.text).join('') === source
+			&& tokens.every(token => !JAPANESE_KANJI.test(token.text) || Boolean(token.reading.trim()));
+	});
+}
 
 export function replaceTextSelection(
 	value: string,
@@ -59,9 +137,10 @@ export function createLanguageLearningAssistant(
 		},
 
 		async explainSelection(selection: LearningSelection, responseLanguage: string): Promise<string> {
+			const languageInstruction = `Use only ${responseLanguage} for all explanation text, labels, and translations.`;
 			const prompt = selection.kind === 'word'
-				? `Explain the selected word for a language learner in ${responseLanguage}. Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.`
-				: `Explain the selected sentence for a language learner in ${responseLanguage}. Include a natural translation, its grammar structure, and the key expressions in context. Return concise plain text.`;
+				? `Explain the selected word for a language learner in ${responseLanguage}. ${languageInstruction} Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.`
+				: `Explain the selected sentence for a language learner in ${responseLanguage}. ${languageInstruction} Include a natural translation, its grammar structure, and the key expressions in context. Return concise plain text.`;
 			const responses = await sendRequest({
 				context: `Selected ${selection.kind}: ${selection.text}\nContext: ${selection.context}`,
 				prompts: [{ key: 'prompt_1', prompt }]
@@ -70,31 +149,51 @@ export function createLanguageLearningAssistant(
 			return typeof response === 'string' ? response : '';
 		},
 
+		async annotateJapaneseTranscript(segments: string[]): Promise<TranscriptReadingSegments> {
+			const promptHeader = [
+				'Annotate each Japanese transcript segment with hiragana readings for every kanji.',
+				'Preserve every segment exactly and do not merge or omit text.',
+				'Return exactly one line per segment using: ID|||JSON',
+				'The JSON must be an array of objects with "text" and "reading" fields.',
+				'Concatenate all "text" fields to reproduce the source exactly.',
+				'Use an empty reading for kana, Latin letters, numbers, spaces, and punctuation.',
+				'Split mixed kanji and kana into separate objects so every kanji has its own reading.'
+			];
+			const promptGroups = buildTranscriptPromptGroups(segments, promptHeader);
+			const readings: TranscriptReadingSegments = segments.map(() => []);
+			for (const group of promptGroups) {
+				const responses = await sendRequest({
+					context: 'Annotate Japanese transcript segments with aligned ruby readings.',
+					prompts: [{
+						key: 'prompt_1',
+						prompt: [...promptHeader, ...group.lines].join('\n')
+					}],
+					maxTokens: Math.min(12000, Math.max(2000, Math.ceil(group.sourceChars * 2.5)))
+				});
+				for (const response of responses) {
+					if (typeof response.user_response !== 'string') continue;
+					for (const line of response.user_response.split('\n')) {
+						const match = line.match(/^\s*(\d+)\|\|\|(.*)$/);
+						if (!match) continue;
+						const index = Number(match[1]);
+						if (index < 0 || index >= segments.length) continue;
+						const tokens = parseTranscriptReadingTokens(match[2]);
+						if (tokens && isCompleteTranscriptReadings([tokens], [segments[index]])) {
+							readings[index] = tokens;
+						}
+					}
+				}
+			}
+			return readings;
+		},
+
 		async translateTranscript(segments: string[], targetLanguage: string): Promise<string[]> {
 			const promptHeader = [
 				`Translate each transcript segment into ${targetLanguage}.`,
 				'Preserve meaning and tone. Do not merge or omit segments.',
 				'Return exactly one line per segment using: ID|||translation'
 			];
-			const promptGroups: Array<{ lines: string[]; sourceChars: number }> = [];
-			let currentGroup: string[] = [];
-			let currentSourceChars = 0;
-			let currentLength = promptHeader.join('\n').length;
-			segments.forEach((segment, index) => {
-				const line = `${index}|||${segment}`;
-				if (currentGroup.length > 0 && currentLength + line.length + 1 > MAX_TRANSCRIPT_PROMPT_CHARS) {
-					promptGroups.push({ lines: currentGroup, sourceChars: currentSourceChars });
-					currentGroup = [];
-					currentSourceChars = 0;
-					currentLength = promptHeader.join('\n').length;
-				}
-				currentGroup.push(line);
-				currentSourceChars += segment.length;
-				currentLength += line.length + 1;
-			});
-			if (currentGroup.length > 0) {
-				promptGroups.push({ lines: currentGroup, sourceChars: currentSourceChars });
-			}
+			const promptGroups = buildTranscriptPromptGroups(segments, promptHeader);
 
 			const translations = new Array<string>(segments.length).fill('');
 			for (const group of promptGroups) {

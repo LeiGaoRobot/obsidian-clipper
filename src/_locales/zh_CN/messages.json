@@ -834,6 +834,9 @@
 	"readerExplainWithAi": {
 		"message": "用 AI 解释"
 	},
+	"readerJapaneseReadings": {
+		"message": "日语读音"
+	},
 	"readerFont": {
 		"message": "字体选项"
 	},
@@ -929,6 +932,9 @@
 	},
 	"readerTranslationIncomplete": {
 		"message": "模型遗漏了一个或多个字幕片段，请重试。"
+	},
+	"readerReadingIncomplete": {
+		"message": "模型遗漏了一个或多个字幕片段的读音，请重试。"
 	},
 	"readerTypography": {
 		"message": "排版"

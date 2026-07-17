@@ -17,6 +17,8 @@ The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clippe
 
 If the response-language field is empty, Web Clipper uses your browser language. The setting controls transcript translations, word and sentence explanations, and presets that use a response language.
 
+Word and sentence explanations instruct the model to use this language for all explanation text, labels, and translations.
+
 ## Revise clipped content with AI
 
 The AI editing controls appear in the extension popup and side panel when Interpreter is enabled and either an API model or a configured local CLI mode is available.
@@ -46,8 +48,10 @@ Web Clipper translates the transcript in aligned batches. Each translation remai
 
 After translations load, select **Bilingual subtitles** again to hide or show them without another model request.
 
+For Japanese transcripts, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. The control is hidden when the transcript does not appear to contain Japanese kanji.
+
 > [!note] Temporary Reader content
-> Bilingual transcript lines are displayed for the current Reader session. They are not persisted across a reload and are not automatically added to the clipping.
+> Bilingual transcript lines and Japanese readings are displayed for the current Reader session. They are not persisted across a reload and are not automatically added to the clipping.
 
 ## Explain a word
 
@@ -78,6 +82,7 @@ The following actions can create model-provider usage:
 
 - Generating an AI-edit preview.
 - Translating a transcript. A long transcript can create multiple sequential requests.
+- Generating Japanese readings for a transcript. A long transcript can create multiple sequential requests.
 - Explaining a new word, phrase, or sentence that is not already cached for the session.
 
 Applying, cancelling, undoing, hiding, or showing an existing result does not make another model request.

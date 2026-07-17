@@ -179,6 +179,12 @@ article > .player-toggles {
 		min-width: 0;
 		border-radius: var(--radius-s);
 		padding: 0 0.5em;
+		rt {
+			color: var(--text-muted);
+			font-size: 0.65em;
+			line-height: 1;
+			user-select: none;
+		}
 	}
 }
 .transcript-segment-translation {

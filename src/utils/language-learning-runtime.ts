@@ -2,6 +2,7 @@ import browser from './browser-polyfill';
 import {
 	LanguageLearningResponse,
 	LearningSelection,
+	TranscriptReadingSegments,
 	createLanguageLearningAssistant
 } from './language-learning';
 import { getMessage } from './i18n';
@@ -53,6 +54,11 @@ export const configuredLanguageLearning = {
 	async explainSelection(selection: LearningSelection): Promise<string> {
 		const { assistant, responseLanguage } = await loadConfiguredAssistant();
 		return assistant.explainSelection(selection, responseLanguage);
+	},
+
+	async annotateJapaneseTranscript(segments: string[]): Promise<TranscriptReadingSegments> {
+		const { assistant } = await loadConfiguredAssistant();
+		return assistant.annotateJapaneseTranscript(segments);
 	},
 
 	async translateTranscript(segments: string[]): Promise<string[]> {

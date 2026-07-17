@@ -834,6 +834,9 @@
 	"readerExplainWithAi": {
 		"message": "Explain with AI"
 	},
+	"readerJapaneseReadings": {
+		"message": "Japanese readings"
+	},
 	"readerFont": {
 		"message": "Font options"
 	},
@@ -929,6 +932,9 @@
 	},
 	"readerTranslationIncomplete": {
 		"message": "The model missed one or more transcript segments. Try again."
+	},
+	"readerReadingIncomplete": {
+		"message": "The model missed readings for one or more transcript segments. Try again."
 	},
 	"readerTypography": {
 		"message": "Typography"
