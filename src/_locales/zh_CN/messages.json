@@ -68,6 +68,9 @@
 	"aiEditUndo": {
 		"message": "撤销"
 	},
+	"aiRequestCancelled": {
+		"message": "AI 请求已取消。"
+	},
 	"aiLanguageToolsRequireInterpreter": {
 		"message": "请先启用解释器并配置模型，再使用 AI 语言学习工具。"
 	},
@@ -840,11 +843,26 @@
 	"readerJapaneseReadingsProgress": {
 		"message": "正在生成读音（$1/$2）…"
 	},
+	"readerAiCancelled": {
+		"message": "AI 请求已取消。"
+	},
 	"readerEditReadings": {
 		"message": "编辑读音"
 	},
 	"readerFinishReadingEdit": {
 		"message": "完成编辑"
+	},
+	"readerReadingEditLabel": {
+		"message": "编辑 $1 的读音"
+	},
+	"readerRegenerateReadings": {
+		"message": "重新生成读音"
+	},
+	"readerRegenerateReadingsConfirm": {
+		"message": "要重新生成日语读音吗？这会再次发起 AI 请求。"
+	},
+	"readerRetry": {
+		"message": "重试"
 	},
 	"readerFont": {
 		"message": "字体选项"
@@ -903,6 +921,12 @@
 	"readerLearningResponseLanguagePlaceholder": {
 		"message": "例如：简体中文"
 	},
+	"readerLearningResponseLanguageBrowser": {
+		"message": "留空时将使用浏览器语言。"
+	},
+	"readerLearningResponseLanguageEffective": {
+		"message": "回答将使用：$1。"
+	},
 	"readerLineHeight": {
 		"message": "行高"
 	},
@@ -938,6 +962,9 @@
 	},
 	"readerTranscripts": {
 		"message": "字幕稿"
+	},
+	"readerTranslationProgress": {
+		"message": "正在翻译字幕（$1/$2）…"
 	},
 	"readerTranslationIncomplete": {
 		"message": "模型遗漏了一个或多个字幕片段，请重试。"

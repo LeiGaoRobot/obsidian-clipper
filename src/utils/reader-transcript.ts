@@ -75,6 +75,7 @@ interface TranscriptSettings {
 	pinPlayer: boolean;
 	autoScroll: boolean;
 	highlightActiveLine: boolean;
+	learningResponseLanguage?: string;
 }
 
 interface ScrollHelper {
@@ -232,10 +233,11 @@ export function wireTranscript(
 		wireTranscriptLanguageLearning({
 			doc,
 			transcript,
-			segments,
-			controls: toggleGroup,
-			tools: languageLearning,
-			cancelPendingSeek: transcriptClickGuard.cancel
+				segments,
+				controls: toggleGroup,
+				tools: languageLearning,
+				responseLanguage: settings.learningResponseLanguage,
+				cancelPendingSeek: transcriptClickGuard.cancel
 		});
 	}
 	// Set timestamp column width to the widest timestamp

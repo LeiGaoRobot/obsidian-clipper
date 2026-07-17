@@ -1,9 +1,10 @@
 import { replaceTextSelection } from './language-learning';
+import { isRequestCancelled } from './request-cancellation';
 
 interface LanguageLearningPopupOptions {
 	doc?: Document;
 	enabled: boolean;
-	transformContent: (content: string, instruction: string) => Promise<string>;
+	transformContent: (content: string, instruction: string, signal?: AbortSignal) => Promise<string>;
 	getMessage: (key: string) => string;
 }
 
@@ -30,9 +31,10 @@ export function initializeLanguageLearningPopup({
 	const previewContent = doc.getElementById('ai-edit-preview-content') as HTMLElement;
 	const applyButton = doc.getElementById('ai-edit-apply-btn') as HTMLButtonElement;
 	const cancelButton = doc.getElementById('ai-edit-cancel-btn') as HTMLButtonElement;
+	const cancelRequestButton = doc.getElementById('ai-edit-cancel-request-btn') as HTMLButtonElement;
 	const status = doc.getElementById('ai-edit-status') as HTMLElement;
 	if (!container || !noteContentField || !presetSelect || !instructionField || !previewButton
-		|| !undoButton || !preview || !previewContent || !applyButton || !cancelButton || !status) return;
+		|| !undoButton || !preview || !previewContent || !applyButton || !cancelButton || !cancelRequestButton || !status) return;
 
 	container.style.display = enabled ? 'block' : 'none';
 	if (!enabled) return;
@@ -52,6 +54,7 @@ export function initializeLanguageLearningPopup({
 
 	let pendingEdit: PendingEdit | null = null;
 	let undoEdit: UndoEdit | null = null;
+	let activeRequest: AbortController | null = null;
 
 	const showStatus = (message: string, isError = false) => {
 		status.textContent = message;
@@ -87,19 +90,35 @@ export function initializeLanguageLearningPopup({
 		}
 
 		previewButton.disabled = true;
+		previewButton.setAttribute('aria-busy', 'true');
+		cancelRequestButton.hidden = false;
 		showStatus(getMessage('thinking'));
+		const requestController = new AbortController();
+		activeRequest = requestController;
 		try {
-			const output = await transformContent(content, instruction);
+			const output = await transformContent(content, instruction, requestController.signal);
 			if (!output.trim()) throw new Error(getMessage('emptyResponse'));
 			pendingEdit = { sourceValue, selectionStart, selectionEnd, output };
 			previewContent.textContent = output;
 			preview.style.display = 'block';
 			showStatus('');
 		} catch (error) {
-			showStatus(error instanceof Error ? error.message : getMessage('error'), true);
+			showStatus(
+				isRequestCancelled(error) || requestController.signal.aborted
+					? getMessage('aiRequestCancelled')
+					: error instanceof Error ? error.message : getMessage('error'),
+				!isRequestCancelled(error) && !requestController.signal.aborted
+			);
 		} finally {
+			if (activeRequest === requestController) activeRequest = null;
 			previewButton.disabled = false;
+			previewButton.removeAttribute('aria-busy');
+			cancelRequestButton.hidden = true;
 		}
+	});
+
+	cancelRequestButton.addEventListener('click', () => {
+		activeRequest?.abort();
 	});
 
 	applyButton.addEventListener('click', () => {

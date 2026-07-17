@@ -1,5 +1,6 @@
 import { ModelConfig, PromptVariable } from '../types/types';
 import { debugLog } from './debug';
+import { RequestCancelledError, throwIfRequestAborted } from './request-cancellation';
 import { generalSettings } from './storage-utils';
 
 const RATE_LIMIT_RESET_TIME = 60000; // 1 minute in milliseconds
@@ -10,6 +11,7 @@ export interface LLMRequestOptions {
 	maxTokens?: number;
 	cooldownMs?: number;
 	timeoutMs?: number;
+	signal?: AbortSignal;
 }
 
 export async function sendToLLM(
@@ -39,8 +41,15 @@ export async function sendToLLM(
 	}
 
 	const timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_LLM_REQUEST_TIMEOUT_MS);
+	throwIfRequestAborted(options.signal);
 	const abortController = new AbortController();
-	const timeout = setTimeout(() => abortController.abort(), timeoutMs);
+	let timedOut = false;
+	const abortFromCaller = () => abortController.abort();
+	options.signal?.addEventListener('abort', abortFromCaller, { once: true });
+	const timeout = setTimeout(() => {
+		timedOut = true;
+		abortController.abort();
+	}, timeoutMs);
 
 	try {
 		const maxTokens = options.maxTokens ?? 1600;
@@ -172,6 +181,7 @@ export async function sendToLLM(
 			body: JSON.stringify(requestBody),
 			signal: abortController.signal
 		});
+		throwIfRequestAborted(options.signal);
 
 		if (!response.ok) {
 			const errorText = await response.text();
@@ -239,12 +249,14 @@ export async function sendToLLM(
 		return parseLLMResponse(llmResponseContent, promptVariables);
 	} catch (error) {
 		console.error(`Error sending to ${provider.name} LLM:`, error);
-		if (abortController.signal.aborted) {
+		if (timedOut) {
 			throw new Error(`Interpreter request timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`);
 		}
+		if (options.signal?.aborted) throw new RequestCancelledError();
 		throw error;
 	} finally {
 		clearTimeout(timeout);
+		options.signal?.removeEventListener('abort', abortFromCaller);
 	}
 }
 

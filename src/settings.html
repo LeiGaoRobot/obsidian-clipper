@@ -469,9 +469,20 @@
 										<div class="setting-item-info">
 											<label for="reader-learning-response-language" data-i18n="readerLearningResponseLanguage">AI response language</label>
 											<div class="setting-item-description" data-i18n="readerLearningResponseLanguageDescription">Language used for subtitle translations and AI explanations. Leave empty to use your browser language.</div>
+											<div id="reader-learning-response-language-effective" class="setting-item-description" aria-live="polite"></div>
 										</div>
 										<div class="setting-item-control">
-											<input type="text" id="reader-learning-response-language" data-i18n="readerLearningResponseLanguagePlaceholder" />
+											<input type="text" id="reader-learning-response-language" list="reader-learning-response-language-options" aria-describedby="reader-learning-response-language-effective" data-i18n="readerLearningResponseLanguagePlaceholder" />
+											<datalist id="reader-learning-response-language-options">
+												<option value="English"></option>
+												<option value="Simplified Chinese"></option>
+												<option value="Traditional Chinese"></option>
+												<option value="Japanese"></option>
+												<option value="Korean"></option>
+												<option value="Spanish"></option>
+												<option value="French"></option>
+												<option value="German"></option>
+											</datalist>
 										</div>
 									</div>
 								</div>

@@ -54,8 +54,8 @@ The interface is intentionally small. Popup and Reader know only how to transfor
 
 - `transformContent(content, instruction)` returns revised Markdown.
 - `explainSelection(selection, responseLanguage)` returns a contextual explanation.
-- `translateTranscript(segments, targetLanguage)` returns translations in the same order and length as the source segments.
-- `annotateJapaneseTranscript(segments, onProgress?)` returns source-aligned text/reading tokens for Japanese kanji and reports sequential batch progress.
+- `translateTranscript(segments, targetLanguage, onProgress?, signal?)` returns translations in the same order and length as the source segments and reports sequential batch progress.
+- `annotateJapaneseTranscript(segments, onProgress?, signal?)` returns source-aligned text/reading tokens for Japanese kanji and reports sequential batch progress.
 
 This seam is also the primary pure-test surface. Runtime configuration and DOM behavior are tested separately.
 
@@ -92,7 +92,9 @@ Each source segment is sent as `ID|||text`, where `ID` is its global source inde
 Prompt groups target a character-count limit and are sent sequentially. Each source segment remains atomic, so one segment longer than the limit can produce an oversized group. The Reader UI accepts the result only when the returned array length matches the source length and every segment is non-empty. Otherwise, it displays an error and keeps the action retryable.
 Japanese reading responses also reconstruct each source segment from returned text tokens before ruby elements are committed to the DOM; incomplete or misaligned responses are rejected.
 
-Reading batches report `completed` and `total` counts to the Reader while they run. A complete result is cached by the exact ordered transcript text for the current extension session. Editing a ruby reading updates that cache only when all kanji readings remain complete; an incomplete correction invalidates the cached result.
+Translation and reading batches report `completed` and `total` counts to the Reader while they run. Both complete results are cached by the exact ordered transcript text (and response language for translations) for the current extension session. Editing a ruby reading updates that cache only when all kanji readings remain complete; an incomplete correction invalidates the cached result. Reader request controllers abort API fetches and prevent late results from being applied. Native CLI cancellation stops the extension-side wait; the host process is not forcibly terminated by the browser messaging API.
+
+Page-owned AI controls expose a visible cancel action while a request is active. Failed transcript requests remain retryable through the error card. Japanese readings additionally expose an explicit regenerate action because a corrected or context-sensitive reading may require a fresh model request. Editable ruby readings use textbox semantics and labels so keyboard and assistive-technology users can correct them.
 
 ### Safe content application
 

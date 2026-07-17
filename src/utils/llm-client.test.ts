@@ -90,4 +90,32 @@ describe('LLM client', () => {
 		await rejection;
 		expect(requestSignal?.aborted).toBe(true);
 	});
+
+	test('aborts a provider request when the caller cancels it', async () => {
+		const abortController = new AbortController();
+		let requestSignal: AbortSignal | undefined;
+		fetchMock.mockImplementation((_url: string, init: RequestInit) => new Promise((_, reject) => {
+			requestSignal = init.signal as AbortSignal;
+			requestSignal.addEventListener('abort', () => reject(new Error('aborted')));
+		}));
+		vi.stubGlobal('fetch', fetchMock);
+
+		const request = sendToLLM(
+			'smoke context',
+			'',
+			[{ key: 'prompt_1', prompt: 'Return smoke.' }],
+			{
+				id: 'model-1',
+				providerId: 'provider-1',
+				providerModelId: 'test-model',
+				name: 'Test model',
+				enabled: true
+			},
+			{ cooldownMs: 0, signal: abortController.signal }
+		);
+
+		abortController.abort();
+		await expect(request).rejects.toThrow('cancelled');
+		expect(requestSignal?.aborted).toBe(true);
+	});
 });

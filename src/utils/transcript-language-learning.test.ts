@@ -14,6 +14,7 @@ import {
 	getTranscriptLearningSelection,
 	wireTranscriptLanguageLearning
 } from './transcript-language-learning';
+import { RequestCancelledError } from './request-cancellation';
 
 function createTranscript(texts = ['Hello world.']) {
 	document.body.innerHTML = `
@@ -70,7 +71,11 @@ describe('Transcript language learning controls', () => {
 
 		expect(segments[0].querySelector('.transcript-segment-translation')?.textContent)
 			.toBe('你好，世界。');
-		expect(translateTranscript).toHaveBeenCalledWith(['Hello world.']);
+		expect(translateTranscript).toHaveBeenCalledWith(
+			['Hello world.'],
+			expect.any(Function),
+			expect.any(AbortSignal)
+		);
 		expect(transcript.classList.contains('show-bilingual-transcript')).toBe(true);
 	});
 
@@ -105,7 +110,8 @@ describe('Transcript language learning controls', () => {
 
 		expect(annotateJapaneseTranscript).toHaveBeenCalledWith(
 			['私は日本語を勉強します。'],
-			expect.any(Function)
+			expect.any(Function),
+			expect.any(AbortSignal)
 		);
 		expect(transcript.classList.contains('show-japanese-readings')).toBe(true);
 		expect(transcript.querySelector('ruby rt')?.textContent).toBe('わたし');
@@ -182,6 +188,83 @@ describe('Transcript language learning controls', () => {
 		]);
 	});
 
+	test('caches completed translations across Reader rewiring and reports progress', async () => {
+		const first = createTranscript(['Hello world.']);
+		const progressLabels: string[] = [];
+		const translateTranscript = vi.fn(async (
+			_segments: string[],
+			onProgress?: (progress: { completed: number; total: number }) => void
+		) => {
+			onProgress?.({ completed: 0, total: 1 });
+			progressLabels.push(first.controls.querySelector('.player-learning-progress')?.textContent || '');
+			onProgress?.({ completed: 1, total: 1 });
+			return ['你好，世界。'];
+		});
+		const firstController = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript: first.transcript,
+			segments: first.segments,
+			controls: first.controls,
+			responseLanguage: 'Simplified Chinese',
+			tools: {
+				translateTranscript,
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn()
+			},
+			cancelPendingSeek: vi.fn()
+		});
+		await firstController.toggleBilingual();
+		expect(progressLabels).toEqual(['readerTranslationProgress:0,1']);
+
+		const second = createTranscript(['Hello world.']);
+		const secondTranslate = vi.fn();
+		const secondController = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript: second.transcript,
+			segments: second.segments,
+			controls: second.controls,
+			responseLanguage: 'Simplified Chinese',
+			tools: {
+				translateTranscript: secondTranslate,
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn()
+			},
+			cancelPendingSeek: vi.fn()
+		});
+		await secondController.toggleBilingual();
+
+		expect(secondTranslate).not.toHaveBeenCalled();
+		expect(second.segments[0].querySelector('.transcript-segment-translation')?.textContent)
+			.toBe('你好，世界。');
+	});
+
+	test('cancels an in-flight translation without showing an error card', async () => {
+		const { controls, transcript, segments } = createTranscript();
+		const translateTranscript = vi.fn((_segments: string[], _onProgress?: unknown, signal?: AbortSignal) => new Promise<string[]>((_, reject) => {
+			signal?.addEventListener('abort', () => reject(new RequestCancelledError()), { once: true });
+		}));
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript,
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn()
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		const request = controller.toggleBilingual();
+		controller.cancelActiveRequest();
+		await request;
+
+		expect((document.querySelector('.language-learning-card') as HTMLElement).style.display).toBe('none');
+		expect(controls.querySelector('.player-learning-progress')?.textContent)
+			.toBe('readerAiCancelled');
+	});
+
 	test('allows reading corrections and reuses them after Reader rewiring', async () => {
 		const { controls, transcript, segments } = createTranscript(['私は日本語を勉強します。']);
 		const readings = [[
@@ -212,6 +295,9 @@ describe('Transcript language learning controls', () => {
 		editButton.click();
 		const firstReading = transcript.querySelector('ruby rt') as HTMLElement;
 		expect(firstReading.getAttribute('contenteditable')).toBe('true');
+		expect(firstReading.getAttribute('role')).toBe('textbox');
+		expect(firstReading.getAttribute('aria-label')).toBe('readerReadingEditLabel:私');
+		expect(firstReading.getAttribute('tabindex')).toBe('0');
 		firstReading.textContent = 'ワタシ';
 		firstReading.dispatchEvent(new Event('input', { bubbles: true }));
 		editButton.click();
@@ -235,6 +321,43 @@ describe('Transcript language learning controls', () => {
 
 		expect(secondAnnotateJapaneseTranscript).not.toHaveBeenCalled();
 		expect(transcript.querySelector('ruby rt')?.textContent).toBe('ワタシ');
+	});
+
+	test('regenerates readings only after an explicit controller action', async () => {
+		const { controls, transcript, segments } = createTranscript(['日本語を勉強します。']);
+		const readings = [[
+			{ text: '日本語', reading: 'にほんご' },
+			{ text: 'を', reading: '' },
+			{ text: '勉強', reading: 'べんきょう' },
+			{ text: 'します。', reading: '' }
+		]];
+		const regenerated = [[
+			{ text: '日本語', reading: 'にほんご' },
+			{ text: 'を', reading: '' },
+			{ text: '勉強', reading: 'べんきょう' },
+			{ text: 'します。', reading: '' }
+		]];
+		const annotateJapaneseTranscript = vi.fn()
+			.mockResolvedValueOnce(readings)
+			.mockResolvedValueOnce(regenerated);
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.toggleJapaneseReadings();
+		await controller.regenerateJapaneseReadings();
+
+		expect(annotateJapaneseTranscript).toHaveBeenCalledTimes(2);
+		expect(transcript.querySelector('ruby rt')?.textContent).toBe('にほんご');
 	});
 
 	test('rejects incomplete Japanese readings and allows a retry', async () => {
@@ -292,6 +415,7 @@ describe('Transcript language learning controls', () => {
 		expect(segments[0].querySelector('.transcript-segment-translation')).toBeNull();
 		expect(document.querySelector('.language-learning-card-body')?.textContent)
 			.toBe('readerTranslationIncomplete');
+		expect((document.querySelector('.language-learning-card-retry') as HTMLButtonElement).hidden).toBe(false);
 
 		await controller.toggleBilingual();
 		expect(segments[0].querySelector('.transcript-segment-translation')?.textContent)

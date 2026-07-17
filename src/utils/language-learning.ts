@@ -1,4 +1,5 @@
 import { PromptVariable } from '../types/types';
+import { throwIfRequestAborted } from './request-cancellation';
 
 export interface LanguageLearningResponse {
 	key: string;
@@ -13,7 +14,8 @@ export interface LanguageLearningRequest {
 }
 
 export type SendLanguageLearningRequest = (
-	request: LanguageLearningRequest
+	request: LanguageLearningRequest,
+	signal?: AbortSignal
 ) => Promise<LanguageLearningResponse[]>;
 
 export interface LearningSelection {
@@ -35,14 +37,22 @@ export interface TranscriptReadingProgress {
 }
 
 export type TranscriptReadingProgressHandler = (progress: TranscriptReadingProgress) => void;
+export type TranscriptTranslationProgress = TranscriptReadingProgress;
+export type TranscriptTranslationProgressHandler = (progress: TranscriptTranslationProgress) => void;
 
 export interface LanguageLearningAssistant {
-	transformContent(content: string, instruction: string): Promise<string>;
-	explainSelection(selection: LearningSelection, responseLanguage: string): Promise<string>;
-	translateTranscript(segments: string[], targetLanguage: string): Promise<string[]>;
+	transformContent(content: string, instruction: string, signal?: AbortSignal): Promise<string>;
+	explainSelection(selection: LearningSelection, responseLanguage: string, signal?: AbortSignal): Promise<string>;
+	translateTranscript(
+		segments: string[],
+		targetLanguage: string,
+		onProgress?: TranscriptTranslationProgressHandler,
+		signal?: AbortSignal
+	): Promise<string[]>;
 	annotateJapaneseTranscript(
 		segments: string[],
-		onProgress?: TranscriptReadingProgressHandler
+		onProgress?: TranscriptReadingProgressHandler,
+		signal?: AbortSignal
 	): Promise<TranscriptReadingSegments>;
 }
 
@@ -135,18 +145,21 @@ export function createLanguageLearningAssistant(
 	sendRequest: SendLanguageLearningRequest
 ): LanguageLearningAssistant {
 	return {
-		async transformContent(content: string, instruction: string): Promise<string> {
+		async transformContent(content: string, instruction: string, signal?: AbortSignal): Promise<string> {
+			throwIfRequestAborted(signal);
 			const prompt = `${instruction.trim()} Return only the revised content in Markdown.`;
 			const responses = await sendRequest({
 				context: content,
 				prompts: [{ key: 'prompt_1', prompt }],
 				maxTokens: Math.min(12000, Math.max(1600, Math.ceil(content.length * 1.2)))
-			});
+			}, signal);
+			throwIfRequestAborted(signal);
 			const response = responses.find(item => item.key === 'prompt_1')?.user_response;
 			return typeof response === 'string' ? response : '';
 		},
 
-		async explainSelection(selection: LearningSelection, responseLanguage: string): Promise<string> {
+		async explainSelection(selection: LearningSelection, responseLanguage: string, signal?: AbortSignal): Promise<string> {
+			throwIfRequestAborted(signal);
 			const languageInstruction = `Use only ${responseLanguage} for all explanation text, labels, and translations.`;
 			const prompt = selection.kind === 'word'
 				? `Explain the selected word for a language learner in ${responseLanguage}. ${languageInstruction} Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.`
@@ -154,15 +167,18 @@ export function createLanguageLearningAssistant(
 			const responses = await sendRequest({
 				context: `Selected ${selection.kind}: ${selection.text}\nContext: ${selection.context}`,
 				prompts: [{ key: 'prompt_1', prompt }]
-			});
+			}, signal);
+			throwIfRequestAborted(signal);
 			const response = responses.find(item => item.key === 'prompt_1')?.user_response;
 			return typeof response === 'string' ? response : '';
 		},
 
 		async annotateJapaneseTranscript(
 			segments: string[],
-			onProgress?: TranscriptReadingProgressHandler
+			onProgress?: TranscriptReadingProgressHandler,
+			signal?: AbortSignal
 		): Promise<TranscriptReadingSegments> {
+			throwIfRequestAborted(signal);
 			const promptHeader = [
 				'Annotate each Japanese transcript segment with hiragana readings for every kanji.',
 				'Preserve every segment exactly and do not merge or omit text.',
@@ -178,6 +194,7 @@ export function createLanguageLearningAssistant(
 				onProgress?.({ completed: 0, total: promptGroups.length });
 			}
 			for (const [groupIndex, group] of promptGroups.entries()) {
+				throwIfRequestAborted(signal);
 				const responses = await sendRequest({
 					context: 'Annotate Japanese transcript segments with aligned ruby readings.',
 					prompts: [{
@@ -185,7 +202,8 @@ export function createLanguageLearningAssistant(
 						prompt: [...promptHeader, ...group.lines].join('\n')
 					}],
 					maxTokens: Math.min(12000, Math.max(2000, Math.ceil(group.sourceChars * 2.5)))
-				});
+				}, signal);
+				throwIfRequestAborted(signal);
 				for (const response of responses) {
 					if (typeof response.user_response !== 'string') continue;
 					for (const line of response.user_response.split('\n')) {
@@ -204,7 +222,13 @@ export function createLanguageLearningAssistant(
 			return readings;
 		},
 
-		async translateTranscript(segments: string[], targetLanguage: string): Promise<string[]> {
+		async translateTranscript(
+			segments: string[],
+			targetLanguage: string,
+			onProgress?: TranscriptTranslationProgressHandler,
+			signal?: AbortSignal
+		): Promise<string[]> {
+			throwIfRequestAborted(signal);
 			const promptHeader = [
 				`Translate each transcript segment into ${targetLanguage}.`,
 				'Preserve meaning and tone. Do not merge or omit segments.',
@@ -213,7 +237,11 @@ export function createLanguageLearningAssistant(
 			const promptGroups = buildTranscriptPromptGroups(segments, promptHeader);
 
 			const translations = new Array<string>(segments.length).fill('');
-			for (const group of promptGroups) {
+			if (promptGroups.length > 0) {
+				onProgress?.({ completed: 0, total: promptGroups.length });
+			}
+			for (const [groupIndex, group] of promptGroups.entries()) {
+				throwIfRequestAborted(signal);
 				const responses = await sendRequest({
 					context: 'Translate timed transcript segments without changing their alignment.',
 					prompts: [{
@@ -221,7 +249,8 @@ export function createLanguageLearningAssistant(
 						prompt: [...promptHeader, ...group.lines].join('\n')
 					}],
 					maxTokens: Math.min(8000, Math.max(1600, Math.ceil(group.sourceChars * 1.2)))
-				});
+				}, signal);
+				throwIfRequestAborted(signal);
 				for (const response of responses) {
 					if (typeof response.user_response !== 'string') continue;
 					for (const line of response.user_response.split('\n')) {
@@ -233,6 +262,7 @@ export function createLanguageLearningAssistant(
 						}
 					}
 				}
+				onProgress?.({ completed: groupIndex + 1, total: promptGroups.length });
 			}
 			return translations;
 		}

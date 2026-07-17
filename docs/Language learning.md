@@ -13,7 +13,7 @@ The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clippe
 
 1. Open Web Clipper **Settings**.
 2. In **Interpreter**, enable Interpreter and either configure at least one enabled provider and model, or choose a local **Grok CLI**/**Codex CLI** execution mode. For Native Messaging setup, see [[Interpret web pages#Local Grok and Codex CLI modes|Local Grok and Codex CLI modes]].
-3. In **Reader** → **Transcripts**, optionally enter an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`.
+3. In **Reader** → **Transcripts**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`.
 
 If the response-language field is empty, Web Clipper uses your browser language. The setting controls transcript translations, word and sentence explanations, and presets that use a response language.
 
@@ -44,11 +44,11 @@ The preview stores a snapshot of the clipping. If the clipping changes before yo
 
 Open Reader on a YouTube page that has an available transcript, then select **Bilingual subtitles** in the transcript controls.
 
-Web Clipper translates the transcript in aligned batches. Each translation remains attached to its original timed segment. Long transcripts may require multiple sequential model requests; the control shows the current batch while they run. If the model omits a segment, Web Clipper shows an incomplete-translation error and lets you retry instead of treating the partial result as complete.
+Web Clipper translates the transcript in aligned batches. Each translation remains attached to its original timed segment. Long transcripts may require multiple sequential model requests; the control shows the current batch while they run. You can cancel an in-flight request. A completed translation is reused for the same transcript and response language during the current Reader session. If the model omits a segment, Web Clipper shows an error card with **Retry** instead of treating the partial result as complete.
 
 After translations load, select **Bilingual subtitles** again to hide or show them without another model request.
 
-For Japanese transcripts, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. The control is hidden when the transcript does not appear to contain Japanese kanji. After readings load, select **Edit readings**, then edit a reading directly above its kanji and select **Done editing**. A successful result, including your corrections, is reused for the same transcript during the current Reader session.
+For Japanese transcripts, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. The control is hidden when the transcript does not appear to contain Japanese kanji. After readings load, select **Edit readings**, then edit a reading directly above its kanji and select **Done editing**. Select **Regenerate readings** when the model chose the wrong reading; this explicitly starts another AI request. A successful result, including your corrections, is reused for the same transcript during the current Reader session.
 
 > [!note] Temporary Reader content
 > Bilingual transcript lines and Japanese readings are displayed for the current Reader session. They are not persisted across a reload and are not automatically added to the clipping. Manual reading corrections are session-local too.
@@ -68,7 +68,7 @@ Double-clicking a word does not intentionally seek playback. The Reader delays o
 
 Select a phrase, sentence, or text spanning adjacent transcript segments. Then select **Explain with AI** next to the selection.
 
-The explanation includes a natural translation, the grammar structure, and important expressions in context. The same selection and context are cached for the current Reader session, so reopening the same explanation does not create another model request.
+The explanation includes a natural translation, the grammar structure, and important expressions in context. The same selection kind, text, and context are cached for the current Reader session, so reopening the same explanation does not create another model request. New explanations can be cancelled and failed explanations can be retried from the card.
 
 The selection action also works with touch selection on mobile browsers that support Reader transcripts.
 
@@ -86,6 +86,8 @@ The following actions can create model-provider usage:
 - Explaining a new word, phrase, or sentence that is not already cached for the session.
 
 Applying, cancelling, undoing, hiding, or showing an existing result does not make another model request.
+
+Cancelling a Reader request stops the extension from waiting for or applying that result. In API mode it also aborts the provider fetch. In local CLI mode, the extension stops waiting immediately, but the Native Messaging host may continue until the CLI process exits.
 
 ## Troubleshoot language learning
 

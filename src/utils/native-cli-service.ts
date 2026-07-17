@@ -3,6 +3,7 @@ import type { PromptVariable } from '../types/types';
 import { buildNativeCliRequest, NATIVE_CLI_HOST_NAME } from './native-cli-contract';
 import type { NativeCliHostResponse, NativeCliRequest } from './native-cli-contract';
 import { parsePromptResponses } from './cli-execution-contract';
+import { isRequestCancelled, raceWithRequestCancellation } from './request-cancellation';
 
 export class NativeCliUnavailableError extends Error {
 	constructor(message: string) {
@@ -11,15 +12,22 @@ export class NativeCliUnavailableError extends Error {
 	}
 }
 
-export async function sendNativeCliRequest(request: NativeCliRequest): Promise<NativeCliHostResponse> {
+export async function sendNativeCliRequest(
+	request: NativeCliRequest,
+	signal?: AbortSignal
+): Promise<NativeCliHostResponse> {
 	if (typeof browser.runtime.sendNativeMessage !== 'function') {
 		throw new NativeCliUnavailableError('Native Messaging is not available in this browser.');
 	}
 
 	let response: NativeCliHostResponse;
 	try {
-		response = await browser.runtime.sendNativeMessage(NATIVE_CLI_HOST_NAME, request) as NativeCliHostResponse;
+		response = await raceWithRequestCancellation(
+			browser.runtime.sendNativeMessage(NATIVE_CLI_HOST_NAME, request) as Promise<NativeCliHostResponse>,
+			signal
+		);
 	} catch (error) {
+		if (isRequestCancelled(error)) throw error;
 		throw new NativeCliUnavailableError(error instanceof Error ? error.message : String(error));
 	}
 
@@ -32,8 +40,9 @@ export async function sendNativeCliRequest(request: NativeCliRequest): Promise<N
 export async function executeNativeCliForPrompts(
 	mode: 'grok' | 'codex',
 	context: string,
-	promptVariables: PromptVariable[]
+	promptVariables: PromptVariable[],
+	signal?: AbortSignal
 ): Promise<Record<string, unknown>> {
-	const response = await sendNativeCliRequest(buildNativeCliRequest(mode, context, promptVariables));
+	const response = await sendNativeCliRequest(buildNativeCliRequest(mode, context, promptVariables), signal);
 	return parsePromptResponses(response.stdout || '', promptVariables);
 }

@@ -68,6 +68,9 @@
 	"aiEditUndo": {
 		"message": "Undo"
 	},
+	"aiRequestCancelled": {
+		"message": "AI request cancelled."
+	},
 	"aiLanguageToolsRequireInterpreter": {
 		"message": "Enable Interpreter and configure a model before using AI language tools."
 	},
@@ -840,11 +843,26 @@
 	"readerJapaneseReadingsProgress": {
 		"message": "Generating readings ($1/$2)…"
 	},
+	"readerAiCancelled": {
+		"message": "AI request cancelled."
+	},
 	"readerEditReadings": {
 		"message": "Edit readings"
 	},
 	"readerFinishReadingEdit": {
 		"message": "Done editing"
+	},
+	"readerReadingEditLabel": {
+		"message": "Edit reading for $1"
+	},
+	"readerRegenerateReadings": {
+		"message": "Regenerate readings"
+	},
+	"readerRegenerateReadingsConfirm": {
+		"message": "Generate the Japanese readings again? This will make another AI request."
+	},
+	"readerRetry": {
+		"message": "Retry"
 	},
 	"readerFont": {
 		"message": "Font options"
@@ -903,6 +921,12 @@
 	"readerLearningResponseLanguagePlaceholder": {
 		"message": "e.g. Simplified Chinese"
 	},
+	"readerLearningResponseLanguageBrowser": {
+		"message": "Responses will use your browser language when this is empty."
+	},
+	"readerLearningResponseLanguageEffective": {
+		"message": "Responses will use $1."
+	},
 	"readerLineHeight": {
 		"message": "Line height"
 	},
@@ -938,6 +962,9 @@
 	},
 	"readerTranscripts": {
 		"message": "Transcripts"
+	},
+	"readerTranslationProgress": {
+		"message": "Translating subtitles ($1/$2)…"
 	},
 	"readerTranslationIncomplete": {
 		"message": "The model missed one or more transcript segments. Try again."

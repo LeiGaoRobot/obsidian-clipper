@@ -90,7 +90,7 @@ describe('Configured language learning runtime', () => {
 		});
 
 		expect(output).toBe('encounter: 遇到');
-		expect(mocks.sendMessage).toHaveBeenCalledWith({
+		expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
 			action: 'languageLearningRequest',
 			request: {
 				context: 'Selected word: encountered\nContext: I encountered an unfamiliar word.',
@@ -99,7 +99,7 @@ describe('Configured language learning runtime', () => {
 					prompt: 'Explain the selected word for a language learner in Simplified Chinese. Use only Simplified Chinese for all explanation text, labels, and translations. Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.'
 				}]
 			}
-		});
+		}));
 	});
 
 		test('sends Japanese reading work through the extension background', async () => {
@@ -125,9 +125,36 @@ describe('Configured language learning runtime', () => {
 		]);
 		expect(mocks.sendMessage).toHaveBeenCalledWith({
 			action: 'languageLearningRequest',
+			requestId: expect.any(String),
 			request: expect.objectContaining({
 				context: 'Annotate Japanese transcript segments with aligned ruby readings.'
 			})
 		});
+	});
+
+	test('sends a cancellation message when an active request is aborted', async () => {
+		const abortController = new AbortController();
+		let resolveRequest: ((response: unknown) => void) | undefined;
+		mocks.sendMessage.mockImplementation((message: { action: string }) => {
+			if (message.action === 'languageLearningCancel') return Promise.resolve({ success: true });
+			return new Promise(resolve => { resolveRequest = resolve; });
+		});
+
+		const request = configuredLanguageLearning.explainSelection({
+			kind: 'word',
+			text: 'encountered',
+			context: 'I encountered an unfamiliar word.'
+		}, abortController.signal);
+		await vi.waitFor(() => expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+			action: 'languageLearningRequest'
+		})));
+		abortController.abort();
+
+		await expect(request).rejects.toThrow('cancelled');
+		expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+			action: 'languageLearningCancel',
+			requestId: expect.any(String)
+		}));
+		resolveRequest?.({ success: false });
 	});
 });

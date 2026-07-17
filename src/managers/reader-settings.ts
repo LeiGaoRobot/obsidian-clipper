@@ -358,9 +358,20 @@ export async function initializeReaderSettings() {
 	});
 
 	const learningResponseLanguageInput = document.getElementById('reader-learning-response-language') as HTMLInputElement;
+	const learningResponseLanguageEffective = document.getElementById('reader-learning-response-language-effective');
 	if (learningResponseLanguageInput) {
 		learningResponseLanguageInput.value = generalSettings.readerSettings.learningResponseLanguage;
+		const updateLearningResponseLanguageEffective = () => {
+			if (!learningResponseLanguageEffective) return;
+			const language = learningResponseLanguageInput.value.trim();
+			learningResponseLanguageEffective.textContent = language
+				? getMessage('readerLearningResponseLanguageEffective', language)
+				: getMessage('readerLearningResponseLanguageBrowser');
+		};
+		updateLearningResponseLanguageEffective();
+		learningResponseLanguageInput.addEventListener('input', updateLearningResponseLanguageEffective);
 		learningResponseLanguageInput.addEventListener('change', () => {
+			updateLearningResponseLanguageEffective();
 			saveSettings({
 				...generalSettings,
 				readerSettings: {

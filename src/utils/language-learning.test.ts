@@ -1,9 +1,10 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
 	createLanguageLearningAssistant,
 	LanguageLearningRequest,
 	replaceTextSelection
 } from './language-learning';
+import { RequestCancelledError } from './request-cancellation';
 
 describe('Language learning assistant', () => {
 	test('user can transform clipped content with a direct AI instruction', async () => {
@@ -222,6 +223,44 @@ describe('Language learning assistant', () => {
 			promptsPerRequest: [1, 1],
 			maxTokens: [4200, 4200]
 		});
+	});
+
+	test('reports translation progress for sequential batches', async () => {
+		const progress: Array<{ completed: number; total: number }> = [];
+		const assistant = createLanguageLearningAssistant(async () => []);
+		const segments = ['A'.repeat(3500), 'B'.repeat(3500)];
+
+		await assistant.translateTranscript(segments, 'Simplified Chinese', next => progress.push(next));
+
+		expect(progress).toEqual([
+			{ completed: 0, total: 2 },
+			{ completed: 1, total: 2 },
+			{ completed: 2, total: 2 }
+		]);
+	});
+
+	test('stops before the next transcript batch when cancelled', async () => {
+		const abortController = new AbortController();
+		const requests: LanguageLearningRequest[] = [];
+		const sendRequest = vi.fn(async (request: LanguageLearningRequest, signal?: AbortSignal) => {
+			requests.push(request);
+			expect(signal).toBe(abortController.signal);
+			return [];
+		});
+		const assistant = createLanguageLearningAssistant(sendRequest);
+		const progress: Array<{ completed: number; total: number }> = [];
+
+		await expect(assistant.translateTranscript(
+			['A'.repeat(3500), 'B'.repeat(3500)],
+			'Simplified Chinese',
+			next => {
+				progress.push(next);
+				if (next.completed === 1) abortController.abort();
+			},
+			abortController.signal
+		)).rejects.toBeInstanceOf(RequestCancelledError);
+
+		expect(requests).toHaveLength(1);
 	});
 
 	test('AI edits replace only the selected clipped text', () => {

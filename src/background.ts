@@ -12,6 +12,7 @@ import { NativeCliUnavailableError, sendNativeCliRequest } from './utils/native-
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
 const YOUTUBE_INNERTUBE_RULE_ID = 9002;
+const activeLanguageLearningRequests = new Map<string, AbortController>();
 
 // Chrome: declarativeNetRequest to rewrite Referer on YouTube embeds.
 // Safari/Firefox use the native video element instead (see reader.ts).
@@ -361,17 +362,35 @@ browser.runtime.onMessage.addListener((request: unknown) => {
 // them in the extension service worker and only use stored model configuration.
 browser.runtime.onMessage.addListener((request: unknown) => {
 	if (typeof request !== 'object' || request === null) return;
-	const message = request as { action?: string; request?: LanguageLearningRequest };
+	const message = request as { action?: string; request?: LanguageLearningRequest; requestId?: string };
+	if (message.action === 'languageLearningCancel') {
+		if (!message.requestId) {
+			return Promise.resolve({ success: false, error: 'Invalid language-learning request ID.' });
+		}
+		activeLanguageLearningRequests.get(message.requestId)?.abort();
+		return Promise.resolve({ success: true });
+	}
 	if (message.action !== 'languageLearningRequest') return;
 	if (!message.request || typeof message.request.context !== 'string' || !Array.isArray(message.request.prompts)) {
 		return Promise.resolve({ success: false, error: 'Invalid language-learning request.' });
 	}
-	return runLanguageLearningRequest(message.request)
+	const requestId = message.requestId || `language-learning-legacy-${Date.now()}-${Math.random()}`;
+	if (activeLanguageLearningRequests.has(requestId)) {
+		return Promise.resolve({ success: false, error: 'A language-learning request with this ID is already running.' });
+	}
+	const requestController = new AbortController();
+	activeLanguageLearningRequests.set(requestId, requestController);
+	return runLanguageLearningRequest(message.request, requestController.signal)
 		.then(promptResponses => ({ success: true, promptResponses }))
 		.catch(error => ({
 			success: false,
 			error: error instanceof Error ? error.message : String(error)
-		}));
+		}))
+		.finally(() => {
+			if (activeLanguageLearningRequests.get(requestId) === requestController) {
+				activeLanguageLearningRequests.delete(requestId);
+			}
+		});
 });
 
 browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void): true | undefined => {
