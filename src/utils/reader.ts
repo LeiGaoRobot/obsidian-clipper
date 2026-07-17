@@ -165,6 +165,7 @@ export class Reader {
 		pinPlayer: true,
 		autoScroll: true,
 		highlightActiveLine: true,
+		transcriptLayout: 'reading',
 		learningResponseLanguage: '',
 		customCss: ''
 	};
@@ -828,10 +829,21 @@ export class Reader {
 
 
 	private static getStickyOffset(): number {
+		const layout = document.querySelector('.transcript-study-layout') as HTMLElement | null;
 		const player = document.querySelector('.pin-player') as HTMLElement | null;
+		const toggles = document.querySelector('.transcript-study-layout > .player-toggles') as HTMLElement | null;
+		const isWideLayout = !window.matchMedia('(max-width: 1050px)').matches;
+		const isWideFocusLayout = layout?.classList.contains('transcript-layout-focus') && isWideLayout;
+		const isWideNotebookLayout = layout?.classList.contains('transcript-layout-notebook') && isWideLayout;
+		if (isWideFocusLayout && toggles) return toggles.getBoundingClientRect().height + 16;
+		// The notebook controls occupy their own left rail, so they do not cover
+		// the transcript column and must not inflate its playback scroll offset.
+		if (isWideNotebookLayout) return player ? player.getBoundingClientRect().height + 24 : 16;
+		if (player && toggles) {
+			return player.getBoundingClientRect().height + toggles.getBoundingClientRect().height + 24;
+		}
 		if (player) return player.getBoundingClientRect().height + 16;
-		// When pin-player is off, the toggles bar is sticky independently
-		const toggles = document.querySelector('article > .player-toggles') as HTMLElement | null;
+		// When pin-player is off, the controls bar is sticky independently.
 		if (toggles) return toggles.getBoundingClientRect().height + 32;
 		return 0;
 	}

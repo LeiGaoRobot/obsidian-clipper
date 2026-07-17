@@ -53,6 +53,7 @@ export interface Rating {
 export type SaveBehavior = 'addToObsidian' | 'saveFile' | 'copyToClipboard';
 
 export type InterpreterExecutionMode = 'api' | 'grok' | 'codex';
+export type TranscriptLayoutMode = 'reading' | 'notebook' | 'focus';
 
 export interface ReaderSettings {
 	fontSize: number;
@@ -69,6 +70,7 @@ export interface ReaderSettings {
 	pinPlayer: boolean;
 	autoScroll: boolean;
 	highlightActiveLine: boolean;
+	transcriptLayout: TranscriptLayoutMode;
 	learningResponseLanguage: string;
 	customCss: string;
 }

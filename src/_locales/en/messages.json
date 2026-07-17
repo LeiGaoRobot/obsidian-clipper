@@ -840,6 +840,18 @@
 	"readerJapaneseReadings": {
 		"message": "Japanese readings"
 	},
+	"readerTranscriptLayout": {
+		"message": "Transcript layout"
+	},
+	"readerTranscriptLayoutReading": {
+		"message": "Reading"
+	},
+	"readerTranscriptLayoutNotebook": {
+		"message": "Notebook"
+	},
+	"readerTranscriptLayoutFocus": {
+		"message": "Split view"
+	},
 	"readerJapaneseReadingsProgress": {
 		"message": "Generating readings ($1/$2)…"
 	},

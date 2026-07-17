@@ -1,5 +1,5 @@
 import browser from './browser-polyfill';
-import { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating, InterpreterExecutionMode } from '../types/types';
+import { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating, InterpreterExecutionMode, TranscriptLayoutMode } from '../types/types';
 import { debugLog } from './debug';
 import { copyToClipboard } from 'core/popup';
 
@@ -38,6 +38,7 @@ export let generalSettings: Settings = {
 		pinPlayer: true,
 		autoScroll: true,
 		highlightActiveLine: true,
+		transcriptLayout: 'reading',
 		learningResponseLanguage: '',
 		customCss: ''
 	},
@@ -90,6 +91,7 @@ interface StorageData {
 		pinPlayer?: boolean;
 		autoScroll?: boolean;
 		highlightActiveLine?: boolean;
+		transcriptLayout?: TranscriptLayoutMode;
 		learningResponseLanguage?: string;
 		customCss?: string;
 	};
@@ -154,6 +156,7 @@ export async function loadSettings(): Promise<Settings> {
 			pinPlayer: true,
 			autoScroll: true,
 			highlightActiveLine: true,
+			transcriptLayout: 'reading',
 			learningResponseLanguage: '',
 			customCss: ''
 		},
@@ -221,6 +224,9 @@ export async function loadSettings(): Promise<Settings> {
 			pinPlayer: data.reader_settings?.pinPlayer ?? defaultSettings.readerSettings.pinPlayer,
 			autoScroll: data.reader_settings?.autoScroll ?? defaultSettings.readerSettings.autoScroll,
 			highlightActiveLine: data.reader_settings?.highlightActiveLine ?? defaultSettings.readerSettings.highlightActiveLine,
+			transcriptLayout: data.reader_settings?.transcriptLayout === 'notebook' || data.reader_settings?.transcriptLayout === 'focus'
+				? data.reader_settings.transcriptLayout
+				: defaultSettings.readerSettings.transcriptLayout,
 			learningResponseLanguage: data.reader_settings?.learningResponseLanguage ?? defaultSettings.readerSettings.learningResponseLanguage,
 			customCss: data.reader_settings?.customCss ?? defaultSettings.readerSettings.customCss
 		},
@@ -280,6 +286,7 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 			pinPlayer: generalSettings.readerSettings.pinPlayer,
 			autoScroll: generalSettings.readerSettings.autoScroll,
 			highlightActiveLine: generalSettings.readerSettings.highlightActiveLine,
+			transcriptLayout: generalSettings.readerSettings.transcriptLayout,
 			learningResponseLanguage: generalSettings.readerSettings.learningResponseLanguage,
 			customCss: generalSettings.readerSettings.customCss
 		},

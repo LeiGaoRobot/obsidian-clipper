@@ -44,6 +44,8 @@ The preview stores a snapshot of the clipping. If the clipping changes before yo
 
 Open Reader on a YouTube page that has an available transcript, then select **Bilingual subtitles** in the transcript controls.
 
+Use the transcript layout switcher to choose **Reading**, **Notebook**, or **Split view**. Reading keeps the video above a centered transcript, Notebook moves the learning controls into a left study rail, and Split view keeps the player beside the transcript on wider screens. Web Clipper remembers the selected layout. Changing layouts only rearranges the existing player, controls, transcript, and explanation state; it does not start an AI request. On narrower screens, Notebook and Split view fall back to a single-column layout.
+
 Web Clipper translates the transcript in aligned batches. Each translation remains attached to its original timed segment. Long transcripts may require multiple sequential model requests; the control shows the current batch while they run. You can cancel an in-flight request. A completed translation is reused for the same transcript and response language during the current Reader session. If the model omits a segment, Web Clipper shows an error card with **Retry** instead of treating the partial result as complete.
 
 After translations load, select **Bilingual subtitles** again to hide or show them without another model request.

@@ -4,6 +4,12 @@ import {
 	cleanupTranscriptLanguageLearning,
 	wireTranscriptLanguageLearning
 } from './transcript-language-learning';
+import type { TranscriptLayoutMode } from '../types/types';
+import {
+	clearTranscriptLayoutMode,
+	createTranscriptLayoutSwitcher,
+	normalizeTranscriptLayoutMode
+} from './transcript-layout';
 
 // CJK-aware text boundary helpers
 const SENT_END = /[.!?。！？]/;
@@ -11,6 +17,7 @@ const SOFT_STOP = /[,、，]/;
 const CJK_SENT_END = /[。！？]/;
 const CJK_PUNCT = /[。！？、，]/;
 const CJK_CHAR = /[\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/;
+const transcriptLayoutResizeObservers = new WeakMap<Document, ResizeObserver>();
 
 export interface TranscriptClickGuard {
 	schedule: (action: () => boolean | void, rollback?: () => void) => void;
@@ -75,8 +82,14 @@ interface TranscriptSettings {
 	pinPlayer: boolean;
 	autoScroll: boolean;
 	highlightActiveLine: boolean;
+	transcriptLayout: TranscriptLayoutMode;
 	learningResponseLanguage?: string;
 }
+
+type TranscriptSettingChange = <K extends keyof TranscriptSettings>(
+	key: K,
+	value: TranscriptSettings[K]
+) => void;
 
 interface ScrollHelper {
 	getStickyOffset: () => number;
@@ -89,10 +102,13 @@ export function wireTranscript(
 	article: HTMLElement,
 	settings: TranscriptSettings,
 	scroll: ScrollHelper,
-	onSettingChange?: (key: keyof TranscriptSettings, value: boolean) => void,
+	onSettingChange?: TranscriptSettingChange,
 	languageLearning?: TranscriptLanguageLearning
 ): void {
 	cleanupTranscriptLanguageLearning(doc);
+	clearTranscriptLayoutMode(doc);
+	transcriptLayoutResizeObservers.get(doc)?.disconnect();
+	transcriptLayoutResizeObservers.delete(doc);
 	const transcript = article.querySelector('.youtube.transcript') as HTMLElement | null;
 	if (!transcript) return;
 
@@ -103,14 +119,26 @@ export function wireTranscript(
 	const playerEl = (videoWrapper || iframe || thumbnailLink) as HTMLElement | null;
 	if (!playerEl) return;
 
-	// Wrap player in a container with toggle controls
+	const playerParent = playerEl.parentNode;
+	if (!playerParent) return;
+
+	// Keep the player, controls, and transcript in one layout surface so the
+	// same live transcript can move between reading, notebook, and split views.
+	const layoutRoot = doc.createElement('section');
+	layoutRoot.className = 'transcript-study-layout';
+	layoutRoot.setAttribute('aria-label', getMessage('readerTranscripts'));
+	playerParent.insertBefore(layoutRoot, playerEl);
+
 	const playerContainer = doc.createElement('div');
 	const pinDefault = settings.pinPlayer;
 	const autoScrollDefault = settings.autoScroll;
 	const highlightDefault = settings.highlightActiveLine;
+	const initialLayout = normalizeTranscriptLayoutMode(settings.transcriptLayout);
 	playerContainer.className = 'player-container' + (pinDefault ? ' pin-player' : '');
-	playerEl.parentNode!.insertBefore(playerContainer, playerEl);
+	layoutRoot.classList.toggle('is-player-pinned', pinDefault);
+	layoutRoot.appendChild(playerContainer);
 	playerContainer.appendChild(playerEl);
+	layoutRoot.appendChild(transcript);
 
 	let autoScrollEnabled = autoScrollDefault;
 	let highlightEnabled = highlightDefault;
@@ -122,6 +150,9 @@ export function wireTranscript(
 	const createToggle = (label: string, defaultOn: boolean, onChange: (on: boolean) => void) => {
 		const wrapper = doc.createElement('label');
 		wrapper.className = 'player-toggle' + (defaultOn ? ' is-enabled' : '');
+		wrapper.setAttribute('role', 'switch');
+		wrapper.setAttribute('aria-checked', String(defaultOn));
+		wrapper.setAttribute('tabindex', '0');
 
 		const toggle = doc.createElement('div');
 		toggle.className = 'player-toggle-switch';
@@ -136,11 +167,20 @@ export function wireTranscript(
 		wrapper.appendChild(text);
 		wrapper.appendChild(toggle);
 
-		wrapper.addEventListener('click', (e) => {
-			e.preventDefault();
+		const toggleValue = () => {
 			input.checked = !input.checked;
 			wrapper.classList.toggle('is-enabled', input.checked);
+			wrapper.setAttribute('aria-checked', String(input.checked));
 			onChange(input.checked);
+		};
+		wrapper.addEventListener('click', (e) => {
+			e.preventDefault();
+			toggleValue();
+		});
+		wrapper.addEventListener('keydown', event => {
+			if (event.key !== 'Enter' && event.key !== ' ') return;
+			event.preventDefault();
+			toggleValue();
 		});
 
 		return wrapper;
@@ -148,11 +188,7 @@ export function wireTranscript(
 
 	const pinToggle = createToggle(getMessage('readerPinPlayer'), pinDefault, (on) => {
 		playerContainer.classList.toggle('pin-player', on);
-		if (on) {
-			playerContainer.appendChild(toggleBar);
-		} else {
-			playerContainer.after(toggleBar);
-		}
+		layoutRoot.classList.toggle('is-player-pinned', on);
 		// Reset nav scroll tracking so hide-on-scroll-down works immediately
 		window.dispatchEvent(new CustomEvent('reader-show-nav'));
 		onSettingChange?.('pinPlayer', on);
@@ -186,9 +222,42 @@ export function wireTranscript(
 	toggleGroup.appendChild(autoScrollToggle);
 	toggleGroup.appendChild(highlightToggle);
 
+	const placeToggleBar = (mode: TranscriptLayoutMode) => {
+		if (mode === 'reading') {
+			playerContainer.appendChild(toggleBar);
+		} else {
+			layoutRoot.insertBefore(toggleBar, transcript);
+		}
+	};
+	const layoutSwitcher = createTranscriptLayoutSwitcher({
+		doc,
+		root: layoutRoot,
+		initialMode: initialLayout,
+		groupLabel: getMessage('readerTranscriptLayout'),
+		labels: {
+			reading: getMessage('readerTranscriptLayoutReading'),
+			notebook: getMessage('readerTranscriptLayoutNotebook'),
+			focus: getMessage('readerTranscriptLayoutFocus')
+		},
+		onChange: mode => {
+			placeToggleBar(mode);
+			onSettingChange?.('transcriptLayout', mode);
+			window.dispatchEvent(new CustomEvent('reader-show-nav'));
+		}
+	});
+	toggleBar.appendChild(layoutSwitcher.element);
 	toggleBar.appendChild(toggleGroup);
+	placeToggleBar(initialLayout);
 
-	playerContainer.appendChild(toggleBar);
+	const updatePlayerHeight = () => {
+		layoutRoot.style.setProperty('--transcript-player-height', `${Math.ceil(playerContainer.getBoundingClientRect().height)}px`);
+	};
+	updatePlayerHeight();
+	if (typeof ResizeObserver !== 'undefined') {
+		const resizeObserver = new ResizeObserver(updatePlayerHeight);
+		resizeObserver.observe(playerContainer);
+		transcriptLayoutResizeObservers.set(doc, resizeObserver);
+	}
 
 	if (iframe) {
 		// Enable JS API on the embed

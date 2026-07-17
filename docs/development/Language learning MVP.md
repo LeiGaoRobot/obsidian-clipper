@@ -29,6 +29,7 @@ This document describes the implemented language-learning MVP and the interfaces
 | `src/utils/language-learning-runtime.ts` | `configuredLanguageLearning`, the configured interface used by Popup and Reader callers |
 | `src/utils/language-learning-popup.ts` | Popup and side-panel preview, apply, cancel, and undo state |
 | `src/utils/transcript-language-learning.ts` | Bilingual and Japanese-reading controls, selection extraction, explanation card, caching, and cleanup |
+| `src/utils/transcript-layout.ts` | Pure Reader transcript-layout switching, selected-state semantics, and layout class management |
 | `src/utils/reader-transcript.ts` | Player integration and single-click versus double-click seek coordination |
 | `src/utils/language-learning-service.ts` | Background validation, stored-model resolution, and local CLI dispatch |
 | `src/utils/llm-client.ts` | DOM-free provider adapter and response parser shared with Interpreter |
@@ -112,6 +113,8 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 
 ## Reader interaction details
 
+- The Reader exposes **Reading**, **Notebook**, and **Split view** layouts. The selected mode is stored in `readerSettings.transcriptLayout`; switching modes moves the existing controls without recreating transcript, translation, reading, or explanation state and never sends a provider request.
+- Notebook and Split view use wider Reader content widths on desktop and fall back to the single-column reading flow below the responsive breakpoint.
 - Original segment text is captured before translations are appended.
 - Japanese readings are rendered as ruby elements only after the explicit **Japanese readings** action; the original text remains selectable and can be toggled back to its unannotated form.
 - **Edit readings** puts ruby annotations into a local content-editable mode. Corrections do not create a provider request and are reused after Reader SPA rewiring while the ordered transcript text is unchanged.
@@ -152,6 +155,7 @@ Focused coverage lives in:
 - `src/utils/language-learning-popup.test.ts`
 - `src/utils/transcript-language-learning.test.ts`
 - `src/utils/reader-transcript.test.ts`
+- `src/utils/transcript-layout.test.ts`
 - `src/utils/llm-client.test.ts`
 - `src/webpack-config.test.ts`
 

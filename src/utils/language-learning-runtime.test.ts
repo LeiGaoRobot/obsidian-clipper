@@ -52,6 +52,7 @@ const settings: Settings = {
 		pinPlayer: true,
 		autoScroll: true,
 		highlightActiveLine: true,
+		transcriptLayout: 'reading',
 		learningResponseLanguage: 'Simplified Chinese',
 		customCss: ''
 	},

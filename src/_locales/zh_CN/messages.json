@@ -840,6 +840,18 @@
 	"readerJapaneseReadings": {
 		"message": "日语读音"
 	},
+	"readerTranscriptLayout": {
+		"message": "字幕布局"
+	},
+	"readerTranscriptLayoutReading": {
+		"message": "阅读"
+	},
+	"readerTranscriptLayoutNotebook": {
+		"message": "笔记"
+	},
+	"readerTranscriptLayoutFocus": {
+		"message": "分屏"
+	},
 	"readerJapaneseReadingsProgress": {
 		"message": "正在生成读音（$1/$2）…"
 	},
