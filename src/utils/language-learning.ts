@@ -29,11 +29,21 @@ export interface TranscriptReadingToken {
 
 export type TranscriptReadingSegments = TranscriptReadingToken[][];
 
+export interface TranscriptReadingProgress {
+	completed: number;
+	total: number;
+}
+
+export type TranscriptReadingProgressHandler = (progress: TranscriptReadingProgress) => void;
+
 export interface LanguageLearningAssistant {
 	transformContent(content: string, instruction: string): Promise<string>;
 	explainSelection(selection: LearningSelection, responseLanguage: string): Promise<string>;
 	translateTranscript(segments: string[], targetLanguage: string): Promise<string[]>;
-	annotateJapaneseTranscript(segments: string[]): Promise<TranscriptReadingSegments>;
+	annotateJapaneseTranscript(
+		segments: string[],
+		onProgress?: TranscriptReadingProgressHandler
+	): Promise<TranscriptReadingSegments>;
 }
 
 const MAX_TRANSCRIPT_PROMPT_CHARS = 6000;
@@ -149,7 +159,10 @@ export function createLanguageLearningAssistant(
 			return typeof response === 'string' ? response : '';
 		},
 
-		async annotateJapaneseTranscript(segments: string[]): Promise<TranscriptReadingSegments> {
+		async annotateJapaneseTranscript(
+			segments: string[],
+			onProgress?: TranscriptReadingProgressHandler
+		): Promise<TranscriptReadingSegments> {
 			const promptHeader = [
 				'Annotate each Japanese transcript segment with hiragana readings for every kanji.',
 				'Preserve every segment exactly and do not merge or omit text.',
@@ -161,7 +174,10 @@ export function createLanguageLearningAssistant(
 			];
 			const promptGroups = buildTranscriptPromptGroups(segments, promptHeader);
 			const readings: TranscriptReadingSegments = segments.map(() => []);
-			for (const group of promptGroups) {
+			if (promptGroups.length > 0) {
+				onProgress?.({ completed: 0, total: promptGroups.length });
+			}
+			for (const [groupIndex, group] of promptGroups.entries()) {
 				const responses = await sendRequest({
 					context: 'Annotate Japanese transcript segments with aligned ruby readings.',
 					prompts: [{
@@ -183,6 +199,7 @@ export function createLanguageLearningAssistant(
 						}
 					}
 				}
+				onProgress?.({ completed: groupIndex + 1, total: promptGroups.length });
 			}
 			return readings;
 		},

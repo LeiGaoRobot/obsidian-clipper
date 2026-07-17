@@ -196,6 +196,14 @@ article > .player-toggles {
 	padding-top: 0.35em;
 	border-top: 1px solid var(--background-modifier-border);
 }
+.transcript.is-editing-japanese-readings .transcript-segment-text rt[contenteditable="true"] {
+	color: var(--text-normal);
+	cursor: text;
+	outline: 1px solid var(--interactive-accent);
+	outline-offset: 2px;
+	user-select: text;
+	-webkit-user-select: text;
+}
 .show-bilingual-transcript .transcript-segment-translation {
 	display: block;
 }

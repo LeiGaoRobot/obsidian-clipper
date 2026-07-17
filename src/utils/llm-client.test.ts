@@ -19,6 +19,7 @@ import { sendToLLM } from './llm-client';
 
 describe('LLM client', () => {
 	afterEach(() => {
+		vi.useRealTimers();
 		vi.unstubAllGlobals();
 		fetchMock.mockReset();
 	});
@@ -59,5 +60,34 @@ describe('LLM client', () => {
 			prompt: 'Return smoke.',
 			user_response: 'smoke-ok'
 		}]);
+	});
+
+	test('aborts a provider request when the configured timeout expires', async () => {
+		vi.useFakeTimers();
+		let requestSignal: AbortSignal | undefined;
+		fetchMock.mockImplementation((_url: string, init: RequestInit) => new Promise((_, reject) => {
+			requestSignal = init.signal as AbortSignal;
+			requestSignal.addEventListener('abort', () => reject(new Error('aborted')));
+		}));
+		vi.stubGlobal('fetch', fetchMock);
+
+		const request = sendToLLM(
+			'smoke context',
+			'',
+			[{ key: 'prompt_1', prompt: 'Return smoke.' }],
+			{
+				id: 'model-1',
+				providerId: 'provider-1',
+				providerModelId: 'test-model',
+				name: 'Test model',
+				enabled: true
+			},
+			{ cooldownMs: 0, timeoutMs: 50 }
+		);
+
+		const rejection = expect(request).rejects.toThrow('timed out');
+		await vi.advanceTimersByTimeAsync(50);
+		await rejection;
+		expect(requestSignal?.aborted).toBe(true);
 	});
 });

@@ -44,14 +44,14 @@ The preview stores a snapshot of the clipping. If the clipping changes before yo
 
 Open Reader on a YouTube page that has an available transcript, then select **Bilingual subtitles** in the transcript controls.
 
-Web Clipper translates the transcript in aligned batches. Each translation remains attached to its original timed segment. Long transcripts may require multiple model requests. If the model omits a segment, Web Clipper shows an incomplete-translation error and lets you retry instead of treating the partial result as complete.
+Web Clipper translates the transcript in aligned batches. Each translation remains attached to its original timed segment. Long transcripts may require multiple sequential model requests; the control shows the current batch while they run. If the model omits a segment, Web Clipper shows an incomplete-translation error and lets you retry instead of treating the partial result as complete.
 
 After translations load, select **Bilingual subtitles** again to hide or show them without another model request.
 
-For Japanese transcripts, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. The control is hidden when the transcript does not appear to contain Japanese kanji.
+For Japanese transcripts, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. The control is hidden when the transcript does not appear to contain Japanese kanji. After readings load, select **Edit readings**, then edit a reading directly above its kanji and select **Done editing**. A successful result, including your corrections, is reused for the same transcript during the current Reader session.
 
 > [!note] Temporary Reader content
-> Bilingual transcript lines and Japanese readings are displayed for the current Reader session. They are not persisted across a reload and are not automatically added to the clipping.
+> Bilingual transcript lines and Japanese readings are displayed for the current Reader session. They are not persisted across a reload and are not automatically added to the clipping. Manual reading corrections are session-local too.
 
 ## Explain a word
 
@@ -107,8 +107,9 @@ Check the provider URL, API key, enabled model, quota, local-model server, or Na
 
 ## Current limitations
 
-- Reader translations and explanation caches are session-local.
+- Reader translations, explanations, and Japanese reading results are session-local.
 - AI output quality and language accuracy depend on the selected model.
+- Japanese names and context-dependent kanji readings may need manual correction.
 - Transcript translation does not currently support editing an individual translated segment.
 - Vocabulary is not automatically saved to a flashcard or spaced-repetition system.
 

@@ -8,6 +8,7 @@ This document describes the implemented language-learning MVP and the interfaces
 - Let users revise selected or complete clipped Markdown through a preview-and-apply workflow.
 - Add manually triggered, segment-aligned bilingual YouTube transcripts.
 - Add manually triggered hiragana readings for Japanese kanji in YouTube transcripts.
+- Let users correct generated Japanese readings directly in the Reader.
 - Explain a double-clicked word or a selected phrase or sentence in transcript context.
 - Reuse the existing Interpreter provider, model, and credential configuration, or use the configured local Grok/Codex CLI execution mode.
 - Keep every remote action explicit so the extension does not create surprise model costs.
@@ -54,7 +55,7 @@ The interface is intentionally small. Popup and Reader know only how to transfor
 - `transformContent(content, instruction)` returns revised Markdown.
 - `explainSelection(selection, responseLanguage)` returns a contextual explanation.
 - `translateTranscript(segments, targetLanguage)` returns translations in the same order and length as the source segments.
-- `annotateJapaneseTranscript(segments)` returns source-aligned text/reading tokens for Japanese kanji.
+- `annotateJapaneseTranscript(segments, onProgress?)` returns source-aligned text/reading tokens for Japanese kanji and reports sequential batch progress.
 
 This seam is also the primary pure-test surface. Runtime configuration and DOM behavior are tested separately.
 
@@ -91,6 +92,8 @@ Each source segment is sent as `ID|||text`, where `ID` is its global source inde
 Prompt groups target a character-count limit and are sent sequentially. Each source segment remains atomic, so one segment longer than the limit can produce an oversized group. The Reader UI accepts the result only when the returned array length matches the source length and every segment is non-empty. Otherwise, it displays an error and keeps the action retryable.
 Japanese reading responses also reconstruct each source segment from returned text tokens before ruby elements are committed to the DOM; incomplete or misaligned responses are rejected.
 
+Reading batches report `completed` and `total` counts to the Reader while they run. A complete result is cached by the exact ordered transcript text for the current extension session. Editing a ruby reading updates that cache only when all kanji readings remain complete; an incomplete correction invalidates the cached result.
+
 ### Safe content application
 
 An AI-edit preview records the full source value and replacement range. Apply succeeds only when the current note-content value still equals that source snapshot. Replacement updates only the selected range, and undo restores the pre-apply value once.
@@ -109,6 +112,7 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 
 - Original segment text is captured before translations are appended.
 - Japanese readings are rendered as ruby elements only after the explicit **Japanese readings** action; the original text remains selectable and can be toggled back to its unannotated form.
+- **Edit readings** puts ruby annotations into a local content-editable mode. Corrections do not create a provider request and are reused after Reader SPA rewiring while the ordered transcript text is unchanged.
 - Cross-segment selections find both range endpoints and build context from every covered source segment.
 - Word explanations are cached by selection kind, selected text, and context for the current wired transcript.
 - An `AbortController` removes document and transcript listeners when Reader content changes.
@@ -125,6 +129,7 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 | Incomplete transcript response | No translation nodes are committed; the user can retry |
 | Clipping changed after preview | Apply is rejected and the preview is cleared |
 | Provider request failure | The background returns an error for the calling UI to display |
+| Provider request timeout | The background aborts the request after the default LLM timeout and returns a retryable timeout error |
 | Final response parsing failure | The LLM client returns an empty response set; callers display an empty- or incomplete-response error |
 | Reader SPA navigation | Old controls, cards, and listeners are cleaned up |
 
@@ -164,6 +169,7 @@ Background or provider changes also require an unpacked Chromium smoke test that
 ## Known limitations and future seams
 
 - Reader results are not persisted. Persistence should be added behind a separate storage interface rather than inside transcript DOM code.
+- Japanese readings are model-generated and can be ambiguous for names or polyphonic kanji; the Reader supports session-local manual correction but does not persist a dictionary.
 - The response language is shared by translations and explanations. Separate source, translation, and explanation language settings may be added without changing the assistant interface.
 - Explanation prompts explicitly require the configured response language for explanation text, labels, and translations.
 - Transcript translation retries the complete operation. Per-batch retry metadata would belong inside the assistant implementation.

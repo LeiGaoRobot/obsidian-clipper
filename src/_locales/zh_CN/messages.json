@@ -837,6 +837,15 @@
 	"readerJapaneseReadings": {
 		"message": "日语读音"
 	},
+	"readerJapaneseReadingsProgress": {
+		"message": "正在生成读音（$1/$2）…"
+	},
+	"readerEditReadings": {
+		"message": "编辑读音"
+	},
+	"readerFinishReadingEdit": {
+		"message": "完成编辑"
+	},
 	"readerFont": {
 		"message": "字体选项"
 	},

@@ -102,7 +102,7 @@ describe('Configured language learning runtime', () => {
 		});
 	});
 
-	test('sends Japanese reading work through the extension background', async () => {
+		test('sends Japanese reading work through the extension background', async () => {
 		mocks.sendMessage.mockResolvedValue({
 			success: true,
 			promptResponses: [{
@@ -112,9 +112,17 @@ describe('Configured language learning runtime', () => {
 			}]
 		});
 
-		const output = await configuredLanguageLearning.annotateJapaneseTranscript(['日本語']);
+		const progress: Array<{ completed: number; total: number }> = [];
+		const output = await configuredLanguageLearning.annotateJapaneseTranscript(
+			['日本語'],
+			next => progress.push(next)
+		);
 
 		expect(output).toEqual([[{ text: '日本語', reading: 'にほんご' }]]);
+		expect(progress).toEqual([
+			{ completed: 0, total: 1 },
+			{ completed: 1, total: 1 }
+		]);
 		expect(mocks.sendMessage).toHaveBeenCalledWith({
 			action: 'languageLearningRequest',
 			request: expect.objectContaining({

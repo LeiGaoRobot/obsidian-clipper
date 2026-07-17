@@ -837,6 +837,15 @@
 	"readerJapaneseReadings": {
 		"message": "Japanese readings"
 	},
+	"readerJapaneseReadingsProgress": {
+		"message": "Generating readings ($1/$2)…"
+	},
+	"readerEditReadings": {
+		"message": "Edit readings"
+	},
+	"readerFinishReadingEdit": {
+		"message": "Done editing"
+	},
 	"readerFont": {
 		"message": "Font options"
 	},

@@ -3,11 +3,13 @@ import { debugLog } from './debug';
 import { generalSettings } from './storage-utils';
 
 const RATE_LIMIT_RESET_TIME = 60000; // 1 minute in milliseconds
+export const DEFAULT_LLM_REQUEST_TIMEOUT_MS = 60000;
 let lastRequestTime = 0;
 
 export interface LLMRequestOptions {
 	maxTokens?: number;
 	cooldownMs?: number;
+	timeoutMs?: number;
 }
 
 export async function sendToLLM(
@@ -35,6 +37,10 @@ export async function sendToLLM(
 	if (now - lastRequestTime < cooldownMs) {
 		throw new Error(`Rate limit cooldown. Please wait ${Math.ceil((cooldownMs - (now - lastRequestTime)) / 1000)} seconds before trying again.`);
 	}
+
+	const timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_LLM_REQUEST_TIMEOUT_MS);
+	const abortController = new AbortController();
+	const timeout = setTimeout(() => abortController.abort(), timeoutMs);
 
 	try {
 		const maxTokens = options.maxTokens ?? 1600;
@@ -163,7 +169,8 @@ export async function sendToLLM(
 		const response = await fetch(requestUrl, {
 			method: 'POST',
 			headers: headers,
-			body: JSON.stringify(requestBody)
+			body: JSON.stringify(requestBody),
+			signal: abortController.signal
 		});
 
 		if (!response.ok) {
@@ -232,7 +239,12 @@ export async function sendToLLM(
 		return parseLLMResponse(llmResponseContent, promptVariables);
 	} catch (error) {
 		console.error(`Error sending to ${provider.name} LLM:`, error);
+		if (abortController.signal.aborted) {
+			throw new Error(`Interpreter request timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`);
+		}
 		throw error;
+	} finally {
+		clearTimeout(timeout);
 	}
 }
 

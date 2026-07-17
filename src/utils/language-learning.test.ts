@@ -180,6 +180,20 @@ describe('Language learning assistant', () => {
 		});
 	});
 
+	test('reports progress for sequential Japanese reading batches', async () => {
+		const progress: Array<{ completed: number; total: number }> = [];
+		const assistant = createLanguageLearningAssistant(async () => []);
+		const segments = ['日'.repeat(3500), '日'.repeat(3500)];
+
+		await assistant.annotateJapaneseTranscript(segments, next => progress.push(next));
+
+		expect(progress).toEqual([
+			{ completed: 0, total: 2 },
+			{ completed: 1, total: 2 },
+			{ completed: 2, total: 2 }
+		]);
+	});
+
 	test('long transcripts are translated in bounded provider requests', async () => {
 		const requests: LanguageLearningRequest[] = [];
 		const assistant = createLanguageLearningAssistant(async (nextRequest) => {

@@ -3,11 +3,14 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('./i18n', () => ({
-	getMessage: (key: string) => key
+	getMessage: (key: string, substitutions?: string | string[]) => substitutions
+		? `${key}:${Array.isArray(substitutions) ? substitutions.join(',') : substitutions}`
+		: key
 }));
 
 import {
 	cleanupTranscriptLanguageLearning,
+	clearTranscriptLanguageLearningCache,
 	getTranscriptLearningSelection,
 	wireTranscriptLanguageLearning
 } from './transcript-language-learning';
@@ -41,6 +44,7 @@ function selectText(startNode: Node, start: number, endNode: Node, end: number) 
 describe('Transcript language learning controls', () => {
 	beforeEach(() => {
 		cleanupTranscriptLanguageLearning(document);
+		clearTranscriptLanguageLearningCache();
 		document.body.textContent = '';
 		window.getSelection()?.removeAllRanges();
 	});
@@ -99,7 +103,10 @@ describe('Transcript language learning controls', () => {
 
 		await controller.toggleJapaneseReadings();
 
-		expect(annotateJapaneseTranscript).toHaveBeenCalledWith(['私は日本語を勉強します。']);
+		expect(annotateJapaneseTranscript).toHaveBeenCalledWith(
+			['私は日本語を勉強します。'],
+			expect.any(Function)
+		);
 		expect(transcript.classList.contains('show-japanese-readings')).toBe(true);
 		expect(transcript.querySelector('ruby rt')?.textContent).toBe('わたし');
 		expect(transcript.querySelectorAll('ruby')).toHaveLength(3);
@@ -128,7 +135,106 @@ describe('Transcript language learning controls', () => {
 			cancelPendingSeek: vi.fn()
 		});
 		await secondController.toggleJapaneseReadings();
-		expect(secondAnnotateJapaneseTranscript).toHaveBeenCalledWith(['私は日本語を勉強します。']);
+		expect(secondAnnotateJapaneseTranscript).not.toHaveBeenCalled();
+		expect(transcript.querySelector('ruby rt')?.textContent).toBe('わたし');
+	});
+
+	test('shows progress while generating readings in multiple batches', async () => {
+		const { controls, transcript, segments } = createTranscript(['私は日本語を勉強します。']);
+		let readingButton: HTMLButtonElement;
+		const progressLabels: string[] = [];
+		const annotateJapaneseTranscript = vi.fn(async (
+			_segments: string[],
+			onProgress?: (progress: { completed: number; total: number }) => void
+		) => {
+			onProgress?.({ completed: 0, total: 2 });
+			progressLabels.push(readingButton.textContent || '');
+			onProgress?.({ completed: 1, total: 2 });
+			progressLabels.push(readingButton.textContent || '');
+			return [[
+				{ text: '私', reading: 'わたし' },
+				{ text: 'は', reading: '' },
+				{ text: '日本語', reading: 'にほんご' },
+				{ text: 'を', reading: '' },
+				{ text: '勉強', reading: 'べんきょう' },
+				{ text: 'します。', reading: '' }
+			]];
+		});
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript
+			},
+			cancelPendingSeek: vi.fn()
+		});
+		readingButton = controls.querySelector('.player-learning-readings') as HTMLButtonElement;
+
+		await controller.toggleJapaneseReadings();
+
+		expect(progressLabels).toEqual([
+			'readerJapaneseReadingsProgress:0,2',
+			'readerJapaneseReadingsProgress:1,2'
+		]);
+	});
+
+	test('allows reading corrections and reuses them after Reader rewiring', async () => {
+		const { controls, transcript, segments } = createTranscript(['私は日本語を勉強します。']);
+		const readings = [[
+			{ text: '私', reading: 'わたし' },
+			{ text: 'は', reading: '' },
+			{ text: '日本語', reading: 'にほんご' },
+			{ text: 'を', reading: '' },
+			{ text: '勉強', reading: 'べんきょう' },
+			{ text: 'します。', reading: '' }
+		]];
+		const annotateJapaneseTranscript = vi.fn().mockResolvedValue(readings);
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.toggleJapaneseReadings();
+		const editButton = controls.querySelector('.player-learning-readings-edit') as HTMLButtonElement;
+		expect(editButton.hidden).toBe(false);
+		editButton.click();
+		const firstReading = transcript.querySelector('ruby rt') as HTMLElement;
+		expect(firstReading.getAttribute('contenteditable')).toBe('true');
+		firstReading.textContent = 'ワタシ';
+		firstReading.dispatchEvent(new Event('input', { bubbles: true }));
+		editButton.click();
+		expect(transcript.querySelector('ruby rt')?.getAttribute('contenteditable')).toBe('false');
+		expect(transcript.querySelector('ruby rt')?.textContent).toBe('ワタシ');
+
+		const secondAnnotateJapaneseTranscript = vi.fn();
+		const secondController = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: secondAnnotateJapaneseTranscript
+			},
+			cancelPendingSeek: vi.fn()
+		});
+		await secondController.toggleJapaneseReadings();
+
+		expect(secondAnnotateJapaneseTranscript).not.toHaveBeenCalled();
+		expect(transcript.querySelector('ruby rt')?.textContent).toBe('ワタシ');
 	});
 
 	test('rejects incomplete Japanese readings and allows a retry', async () => {

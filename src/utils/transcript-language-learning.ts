@@ -1,6 +1,7 @@
 import { getMessage } from './i18n';
 import {
 	LearningSelection,
+	TranscriptReadingProgress,
 	TranscriptReadingSegments,
 	TranscriptReadingToken,
 	isCompleteTranscriptReadings
@@ -8,7 +9,10 @@ import {
 
 export interface TranscriptLanguageLearning {
 	translateTranscript: (segments: string[]) => Promise<string[]>;
-	annotateJapaneseTranscript: (segments: string[]) => Promise<TranscriptReadingSegments>;
+	annotateJapaneseTranscript: (
+		segments: string[],
+		onProgress?: (progress: TranscriptReadingProgress) => void
+	) => Promise<TranscriptReadingSegments>;
 	explainSelection: (selection: LearningSelection) => Promise<string>;
 }
 
@@ -28,12 +32,46 @@ interface TranscriptLanguageLearningOptions {
 }
 
 const selectionControllers = new WeakMap<Document, AbortController>();
+const MAX_JAPANESE_READING_CACHE_ENTRIES = 20;
+const japaneseReadingCache = new Map<string, TranscriptReadingSegments>();
+
+function getJapaneseReadingCacheKey(segments: string[]): string {
+	return JSON.stringify(segments);
+}
+
+function cloneTranscriptReadings(readings: TranscriptReadingSegments): TranscriptReadingSegments {
+	return readings.map(tokens => tokens.map(token => ({ ...token })));
+}
+
+function getCachedJapaneseReadings(segments: string[]): TranscriptReadingSegments | null {
+	const cached = japaneseReadingCache.get(getJapaneseReadingCacheKey(segments));
+	return cached ? cloneTranscriptReadings(cached) : null;
+}
+
+function cacheJapaneseReadings(segments: string[], readings: TranscriptReadingSegments): void {
+	const key = getJapaneseReadingCacheKey(segments);
+	if (japaneseReadingCache.has(key)) japaneseReadingCache.delete(key);
+	japaneseReadingCache.set(key, cloneTranscriptReadings(readings));
+	while (japaneseReadingCache.size > MAX_JAPANESE_READING_CACHE_ENTRIES) {
+		const oldestKey = japaneseReadingCache.keys().next().value;
+		if (oldestKey === undefined) break;
+		japaneseReadingCache.delete(oldestKey);
+	}
+}
+
+function removeCachedJapaneseReadings(segments: string[]): void {
+	japaneseReadingCache.delete(getJapaneseReadingCacheKey(segments));
+}
+
+export function clearTranscriptLanguageLearningCache(): void {
+	japaneseReadingCache.clear();
+}
 
 export function cleanupTranscriptLanguageLearning(doc: Document): void {
 	selectionControllers.get(doc)?.abort();
 	selectionControllers.delete(doc);
 	doc.querySelector('.language-learning-selection-action')?.remove();
-	doc.querySelectorAll('.player-learning-readings').forEach(element => element.remove());
+	doc.querySelectorAll('.player-learning-readings, .player-learning-readings-edit').forEach(element => element.remove());
 	doc.querySelector('.language-learning-card')?.remove();
 }
 
@@ -58,14 +96,16 @@ function renderTranscriptReadings(
 	doc: Document,
 	textElement: Element,
 	tokens: TranscriptReadingToken[],
-	showReadings: boolean
+	showReadings: boolean,
+	editable: boolean,
+	onReadingInput?: (tokenIndex: number, reading: string) => void
 ): void {
 	const originalElement = doc.createElement('span');
 	originalElement.className = 'transcript-segment-original';
 	originalElement.setAttribute('data-original-text', tokens.map(token => token.text).join(''));
 	if (showReadings) {
-		tokens.forEach(token => {
-			if (!token.reading) {
+		tokens.forEach((token, tokenIndex) => {
+			if (!token.reading && !JAPANESE_KANJI.test(token.text)) {
 				originalElement.appendChild(doc.createTextNode(token.text));
 				return;
 			}
@@ -74,6 +114,12 @@ function renderTranscriptReadings(
 			const reading = doc.createElement('rt');
 			base.textContent = token.text;
 			reading.textContent = token.reading;
+			reading.setAttribute('contenteditable', editable ? 'true' : 'false');
+			if (editable) {
+				reading.addEventListener('input', () => {
+					onReadingInput?.(tokenIndex, reading.textContent?.trim() || '');
+				});
+			}
 			ruby.append(base, reading);
 			originalElement.appendChild(ruby);
 		});
@@ -261,33 +307,84 @@ export function wireTranscriptLanguageLearning({
 	readingsButton.hidden = !containsJapaneseKanji(originalTexts);
 	controls.appendChild(readingsButton);
 
+	const readingsEditButton = doc.createElement('button');
+	readingsEditButton.type = 'button';
+	readingsEditButton.className = 'player-learning-action player-learning-readings-edit';
+	readingsEditButton.textContent = getMessage('readerEditReadings');
+	readingsEditButton.hidden = true;
+	controls.appendChild(readingsEditButton);
+
 	let japaneseReadings: TranscriptReadingSegments | null = null;
 	let readingsVisible = false;
+	let readingEditMode = false;
+	const updateReadingsEditButton = () => {
+		readingsEditButton.hidden = !japaneseReadings || !readingsVisible;
+		readingsEditButton.textContent = readingEditMode
+			? getMessage('readerFinishReadingEdit')
+			: getMessage('readerEditReadings');
+		readingsEditButton.classList.toggle('is-enabled', readingEditMode);
+	};
+	const updateReading = (segmentIndex: number, tokenIndex: number, reading: string) => {
+		const token = japaneseReadings?.[segmentIndex]?.[tokenIndex];
+		if (!token || !japaneseReadings) return;
+		token.reading = reading;
+		if (isCompleteTranscriptReadings(japaneseReadings, originalTexts)) {
+			cacheJapaneseReadings(originalTexts, japaneseReadings);
+		} else {
+			removeCachedJapaneseReadings(originalTexts);
+		}
+	};
 	const renderReadings = (show: boolean) => {
 		if (!japaneseReadings) return;
+		if (!show) readingEditMode = false;
 		japaneseReadings.forEach((tokens, index) => {
 			const textElement = segments[index].querySelector('.transcript-segment-text');
-			if (textElement) renderTranscriptReadings(doc, textElement, tokens, show);
+			if (textElement) {
+				renderTranscriptReadings(
+					doc,
+					textElement,
+					tokens,
+					show,
+					readingEditMode,
+					(tokenIndex, reading) => updateReading(index, tokenIndex, reading)
+				);
+			}
 		});
 		readingsVisible = show;
 		transcript.classList.toggle('show-japanese-readings', show);
+		transcript.classList.toggle('is-editing-japanese-readings', show && readingEditMode);
 		readingsButton.classList.toggle('is-enabled', show);
+		updateReadingsEditButton();
+	};
+	const setReadingProgress = (progress: TranscriptReadingProgress) => {
+		readingsButton.textContent = getMessage('readerJapaneseReadingsProgress', [
+			String(progress.completed),
+			String(progress.total)
+		]);
 	};
 	const toggleJapaneseReadings = async () => {
 		if (japaneseReadings) {
 			renderReadings(!readingsVisible);
 			return;
 		}
+		const cachedReadings = getCachedJapaneseReadings(originalTexts);
+		if (cachedReadings && isCompleteTranscriptReadings(cachedReadings, originalTexts)) {
+			japaneseReadings = cachedReadings;
+			renderReadings(true);
+			return;
+		}
+		if (cachedReadings) removeCachedJapaneseReadings(originalTexts);
 
 		readingsButton.disabled = true;
 		readingsButton.classList.add('is-loading');
 		readingsButton.textContent = getMessage('thinking');
 		try {
-			const readings = await tools.annotateJapaneseTranscript(originalTexts);
+			const readings = await tools.annotateJapaneseTranscript(originalTexts, setReadingProgress);
 			if (!isCompleteTranscriptReadings(readings, originalTexts)) {
 				throw new Error(getMessage('readerReadingIncomplete'));
 			}
 			japaneseReadings = readings;
+			cacheJapaneseReadings(originalTexts, readings);
 			renderReadings(true);
 		} catch (error) {
 			cardTitle.textContent = getMessage('readerJapaneseReadings');
@@ -300,6 +397,13 @@ export function wireTranscriptLanguageLearning({
 			readingsButton.textContent = getMessage('readerJapaneseReadings');
 		}
 	};
+	readingsEditButton.addEventListener('click', event => {
+		event.preventDefault();
+		event.stopPropagation();
+		if (!japaneseReadings || !readingsVisible) return;
+		readingEditMode = !readingEditMode;
+		renderReadings(true);
+	});
 	readingsButton.addEventListener('click', (event) => {
 		if (!event.isTrusted) return;
 		event.preventDefault();
