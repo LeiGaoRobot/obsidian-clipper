@@ -31,6 +31,7 @@ import { saveFile } from './file-utils';
 import { parseForClip } from './clip-utils';
 import { updateSidebarWidth, addResizeHandle, cleanupResizeHandlers } from './iframe-resize';
 import { setElementHTML, setSVGChildren, serializeChildren } from './dom-utils';
+import { cloneBodyIfSafe } from './reader-dom-cleanup';
 
 // Mobile viewport settings
 const VIEWPORT = 'width=device-width, initial-scale=1, maximum-scale=1';
@@ -1406,13 +1407,9 @@ export class Reader {
 			const scripts = doc.querySelectorAll('script:not([type="application/ld+json"])');
 			scripts.forEach(el => el.remove());
 
-			// Replace body with a clone to remove all event listeners.
-			// Skip when the clipper iframe is present — cloning creates a
-			// new iframe element which reloads and loses user edits.
-			if (!doc.getElementById('obsidian-clipper-container')) {
-				const newBody = doc.body.cloneNode(true);
-				doc.body.parentNode?.replaceChild(newBody, doc.body);
-			}
+			// Replace body with a clone to remove all event listeners. Keep the
+			// live document intact when cloning would recreate an iframe.
+			cloneBodyIfSafe(doc);
 
 			// Block inline event handlers and dynamic scripts
 			const meta = doc.createElement('meta');
