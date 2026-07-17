@@ -12,6 +12,9 @@ Interpreter is a [[Introduction to Obsidian Web Clipper|Web Clipper]] feature th
 
 Interpreter leverages language models to process information on a web page, and return results using [[Variables]] that you can add to your [[Obsidian Web Clipper/Templates|Web Clipper Templates]].
 
+> [!tip] Language learning
+> The same configured providers and models power AI clipping edits, bilingual YouTube transcripts, and contextual word or sentence explanations. See [[Language learning]].
+
 ![[web-clipper-interpreter-demo.mp4#interface]]
 
 ## Examples of prompts
