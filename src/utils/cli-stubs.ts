@@ -19,7 +19,7 @@ export const generalSettings: Settings = {
 	interpreterModel: '',
 	models: [],
 	providers: [],
-	interpreterEnabled: false,
+	interpreterEnabled: true,
 	interpreterAutoRun: false,
 	defaultPromptContext: '',
 	propertyTypes: [],

@@ -3,6 +3,12 @@
 import { parseHTML } from 'linkedom';
 import { clip, matchTemplate, DocumentParser } from './api';
 import { openInObsidian } from './utils/cli-utils';
+import {
+	CliExecutionMode,
+	collectPromptVariables,
+	executePromptVariables,
+	replacePromptVariables
+} from './utils/cli-execution';
 import { Template } from './types/types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -19,6 +25,7 @@ interface CliArgs {
 	open: boolean;
 	silent: boolean;
 	uri: boolean;
+	executionMode?: CliExecutionMode;
 	propertyTypesPath?: string;
 	htmlPath?: string;
 }
@@ -36,6 +43,7 @@ Options:
       --open                   Send to Obsidian instead of writing file
       --uri                    Use URI scheme instead of Obsidian CLI
       --silent                 Suppress Obsidian focus (URI mode)
+      --execution-mode <mode>  Resolve template prompts with grok or codex CLI
       --property-types <path>  JSON mapping property names to types
   -h, --help                   Show this help message
 `.trim();
@@ -51,6 +59,7 @@ function parseArgs(argv: string[]): CliArgs {
 	let open = false;
 	let silent = false;
 	let uri = false;
+	let executionMode: CliExecutionMode | undefined;
 	let propertyTypesPath: string | undefined;
 	let htmlPath: string | undefined;
 
@@ -85,6 +94,17 @@ function parseArgs(argv: string[]): CliArgs {
 			case '--uri':
 				uri = true;
 				break;
+			case '--execution-mode': {
+				if (i + 1 >= args.length) { console.error('Error: --execution-mode requires grok or codex'); process.exit(1); }
+				const value = args[++i];
+				if (value !== 'grok' && value !== 'codex') {
+					console.error(`Error: unsupported execution mode: ${value}`);
+					printUsage();
+					process.exit(1);
+				}
+				executionMode = value;
+				break;
+			}
 			case '--html':
 				if (i + 1 >= args.length) { console.error('Error: --html requires a value'); process.exit(1); }
 				htmlPath = args[++i];
@@ -116,7 +136,7 @@ function parseArgs(argv: string[]): CliArgs {
 		process.exit(1);
 	}
 
-	return { url, templatePath, outputPath, vault, open, silent, uri, propertyTypesPath, htmlPath };
+	return { url, templatePath, outputPath, vault, open, silent, uri, executionMode, propertyTypesPath, htmlPath };
 }
 
 // ---------------------------------------------------------------------------
@@ -237,12 +257,30 @@ async function main(): Promise<void> {
 		parsedDocument,
 	});
 
+	let fullContent = result.fullContent;
+	let noteName = result.noteName;
+	if (args.executionMode) {
+		const promptVariables = collectPromptVariables([
+			template.noteContentFormat,
+			...template.properties.map(property => property.value),
+			template.noteNameFormat
+		]);
+		if (promptVariables.length === 0) {
+			throw new Error('--execution-mode requires at least one template prompt variable.');
+		}
+
+		const context = result.variables.content || result.variables.fullHtml || '';
+		const promptResponses = await executePromptVariables(args.executionMode, context, promptVariables);
+		fullContent = replacePromptVariables(fullContent, promptVariables, promptResponses, args.url);
+		noteName = replacePromptVariables(noteName, promptVariables, promptResponses, args.url);
+	}
+
 	// Output
 	if (args.open) {
 		const vault = args.vault || template.vault || '';
 		const obsResult = await openInObsidian(
-			result.fullContent,
-			result.noteName,
+			fullContent,
+			noteName,
 			template.path || '',
 			vault,
 			template.behavior || 'create',
@@ -251,10 +289,10 @@ async function main(): Promise<void> {
 		);
 		console.error(obsResult);
 	} else if (args.outputPath) {
-		fs.writeFileSync(path.resolve(args.outputPath), result.fullContent, 'utf-8');
+		fs.writeFileSync(path.resolve(args.outputPath), fullContent, 'utf-8');
 		console.error(`Written to ${args.outputPath}`);
 	} else {
-		process.stdout.write(result.fullContent);
+		process.stdout.write(fullContent);
 	}
 }
 

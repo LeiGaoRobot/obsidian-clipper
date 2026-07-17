@@ -53,6 +53,23 @@ This will create three directories:
 - `dist_firefox/` for the Firefox version
 - `dist_safari/` for the Safari version
 
+### Resolve template prompts with a local CLI
+
+The Node CLI can resolve `{{"prompt"}}` template variables through a locally installed and authenticated AI CLI. Build it first:
+
+```
+npm run build:cli
+```
+
+Then choose a headless execution mode:
+
+```
+node dist/cli.cjs <url> --template <template.json> --execution-mode grok
+node dist/cli.cjs <url> --template <template.json> --execution-mode codex
+```
+
+The `grok` mode runs Grok in single-turn mode. The `codex` mode runs Codex with an ephemeral, read-only sandbox. Both modes require the corresponding CLI to be available on `PATH` and already authenticated. Without `--execution-mode`, prompt variables keep their existing unresolved behavior.
+
 ### Install the extension locally
 
 For Chromium browsers, such as Chrome, Brave, Edge, and Arc:
