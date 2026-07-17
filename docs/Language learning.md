@@ -12,14 +12,14 @@ The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clippe
 ## Set up language learning
 
 1. Open Web Clipper **Settings**.
-2. In **Interpreter**, enable Interpreter and configure at least one enabled provider and model. For setup instructions, see [[Interpret web pages#Get started|Get started with Interpreter]].
+2. In **Interpreter**, enable Interpreter and either configure at least one enabled provider and model, or choose a local **Grok CLI**/**Codex CLI** execution mode. For Native Messaging setup, see [[Interpret web pages#Local Grok and Codex CLI modes|Local Grok and Codex CLI modes]].
 3. In **Reader** → **Transcripts**, optionally enter an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`.
 
 If the response-language field is empty, Web Clipper uses your browser language. The setting controls transcript translations, word and sentence explanations, and presets that use a response language.
 
 ## Revise clipped content with AI
 
-The AI editing controls appear in the extension popup and side panel when Interpreter is enabled and at least one model is enabled.
+The AI editing controls appear in the extension popup and side panel when Interpreter is enabled and either an API model or a configured local CLI mode is available.
 
 1. Capture a page normally.
 2. In the note-content field, select the text you want to change. Leave the selection empty to process the entire clipping.
@@ -70,9 +70,9 @@ The selection action also works with touch selection on mobile browsers that sup
 
 ## Model selection and requests
 
-Language-learning tools use the selected Interpreter model when it is enabled. If that model is unavailable, Web Clipper uses the first enabled Interpreter model.
+Language-learning tools use the selected Interpreter model in API mode. In Grok CLI or Codex CLI mode, requests are sent to the selected local CLI through the background service worker and do not require an Interpreter API model.
 
-All provider requests run in the extension background using the provider configuration already stored by Interpreter. API keys are not inserted into the page or transcript DOM.
+All provider and local CLI requests run in the extension background. API keys are not inserted into the page or transcript DOM. Local CLI mode sends the relevant content to the local Native Messaging Host and then to the selected CLI.
 
 The following actions can create model-provider usage:
 
@@ -86,7 +86,7 @@ Applying, cancelling, undoing, hiding, or showing an existing result does not ma
 
 ### AI editing controls are missing
 
-Confirm that Interpreter is enabled and at least one Interpreter model is enabled. Reload the popup after changing model settings.
+Confirm that Interpreter is enabled. In API mode, at least one Interpreter model must be enabled; in CLI mode, confirm that the Native Messaging Host is installed and the selected CLI is installed and authenticated. Reload the popup after changing Interpreter settings.
 
 ### YouTube language controls are missing
 
@@ -98,7 +98,7 @@ Retry the translation. If the problem continues, choose a model with a larger co
 
 ### The provider returns an error
 
-Check the provider URL, API key, enabled model, quota, and local-model server. For general setup and provider help, see [[Interpret web pages#Models|Interpreter models]] and [[Troubleshoot Web Clipper]].
+Check the provider URL, API key, enabled model, quota, local-model server, or Native Messaging Host installation as appropriate. For general setup and provider help, see [[Interpret web pages#Models|Interpreter models]] and [[Troubleshoot Web Clipper]].
 
 ## Current limitations
 

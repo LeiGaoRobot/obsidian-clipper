@@ -1,5 +1,5 @@
 import browser from './browser-polyfill';
-import { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating } from '../types/types';
+import { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating, InterpreterExecutionMode } from '../types/types';
 import { debugLog } from './debug';
 import { copyToClipboard } from 'core/popup';
 
@@ -20,6 +20,7 @@ export let generalSettings: Settings = {
 	providers: [],
 	interpreterEnabled: false,
 	interpreterAutoRun: false,
+	interpreterExecutionMode: 'api',
 	defaultPromptContext: '',
 	propertyTypes: [],
 	readerSettings: {
@@ -98,6 +99,7 @@ interface StorageData {
 		providers?: Provider[];
 		interpreterEnabled?: boolean;
 		interpreterAutoRun?: boolean;
+		interpreterExecutionMode?: InterpreterExecutionMode;
 		defaultPromptContext?: string;
 	};
 	property_types?: PropertyType[];
@@ -133,6 +135,7 @@ export async function loadSettings(): Promise<Settings> {
 		providers: [],
 		interpreterEnabled: false,
 		interpreterAutoRun: false,
+		interpreterExecutionMode: 'api',
 		defaultPromptContext: '',
 		propertyTypes: [],
 		saveBehavior: 'addToObsidian',
@@ -178,6 +181,7 @@ export async function loadSettings(): Promise<Settings> {
 	const sanitizedProviders = Array.isArray(data.interpreter_settings?.providers) 
 		? data.interpreter_settings.providers.filter(p => p && typeof p === 'object' && typeof p.id === 'string') 
 		: [];
+	const storedExecutionMode = data.interpreter_settings?.interpreterExecutionMode;
 
 	// Load user settings
 	const loadedSettings: Settings = {
@@ -197,6 +201,9 @@ export async function loadSettings(): Promise<Settings> {
 		providers: sanitizedProviders,
 		interpreterEnabled: data.interpreter_settings?.interpreterEnabled ?? defaultSettings.interpreterEnabled,
 		interpreterAutoRun: data.interpreter_settings?.interpreterAutoRun ?? defaultSettings.interpreterAutoRun,
+		interpreterExecutionMode: storedExecutionMode === 'grok' || storedExecutionMode === 'codex'
+			? storedExecutionMode
+			: defaultSettings.interpreterExecutionMode,
 		defaultPromptContext: data.interpreter_settings?.defaultPromptContext || defaultSettings.defaultPromptContext,
 		propertyTypes: data.property_types || defaultSettings.propertyTypes,
 		readerSettings: {
@@ -254,6 +261,7 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 			providers: generalSettings.providers,
 			interpreterEnabled: generalSettings.interpreterEnabled,
 			interpreterAutoRun: generalSettings.interpreterAutoRun,
+			interpreterExecutionMode: generalSettings.interpreterExecutionMode ?? 'api',
 			defaultPromptContext: generalSettings.defaultPromptContext
 		},
 		property_types: generalSettings.propertyTypes,

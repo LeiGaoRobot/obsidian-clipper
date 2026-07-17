@@ -37,6 +37,17 @@ Interpreter works with almost any language model provider, including options tha
 4. Add [[Variables|prompt variables]] to your [[Obsidian Web Clipper/Templates|templates]].
 5. If your template includes prompt variables, the Interpreter section will be visible when you [[Clip web pages|clip a page]]. Click **interpret** to process the prompt variables.
 
+### Local Grok and Codex CLI modes
+
+On Chrome, Interpreter can send the page context to a locally installed and authenticated Grok or Codex CLI through Native Messaging. This is useful when you want to reuse a CLI login instead of configuring an API provider.
+
+1. Build and load the Chromium extension from this repository.
+2. Copy the extension ID from `chrome://extensions`.
+3. Run `npm run install:native-host -- --extension-id <your-chrome-extension-id>` from the repository root.
+4. In **Settings → Interpreter**, choose **Grok CLI** or **Codex CLI** under **Execution mode**.
+
+The installer records the executable paths it finds for `grok` and `codex`. The CLI request runs in a read-only/ephemeral mode and returns one JSON response for all prompt variables. The Native Messaging installer currently supports macOS and Linux; install and authenticate the selected CLI before using it. This action sends the page context to the local CLI and may use that CLI's account or subscription.
+
 ## How it works
 
 When Interpreter is enabled *and* your template contains [[Variables#Prompt variables|prompt variables]], a new Interpreter section is displayed in the extension window, above the **Add to Obsidian** button. This section lets you select a model and run Interpreter for the current page.

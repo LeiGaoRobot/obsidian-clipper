@@ -24,6 +24,7 @@
 		"build": "npm run build:chrome && npm run build:firefox && npm run build:safari",
 		"build:cli": "node scripts/build-cli.mjs",
 		"build:api": "node scripts/build-api.mjs",
+		"install:native-host": "node scripts/install-native-host.mjs",
 		"dev": "npm run dev:chrome",
 		"test": "vitest run",
 		"test:watch": "vitest",

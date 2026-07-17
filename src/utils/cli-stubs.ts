@@ -21,6 +21,7 @@ export const generalSettings: Settings = {
 	providers: [],
 	interpreterEnabled: true,
 	interpreterAutoRun: false,
+	interpreterExecutionMode: 'api',
 	defaultPromptContext: '',
 	propertyTypes: [],
 	readerSettings: {

@@ -889,7 +889,7 @@ function buildTemplateFieldsSkeleton(template: Template | null) {
 				modelSelect.appendChild(option);
 			});
 			modelSelect.value = generalSettings.interpreterModel || (enabledModels[0]?.id ?? '');
-			modelSelect.style.display = 'inline-block';
+			modelSelect.style.display = (generalSettings.interpreterExecutionMode ?? 'api') === 'api' ? 'inline-block' : 'none';
 		}
 	}
 }
@@ -961,7 +961,7 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 				const modelSelect = document.getElementById('model-select') as HTMLSelectElement;
 				const selectedModelId = modelSelect?.value || generalSettings.interpreterModel;
 				const modelConfig = generalSettings.models.find(m => m.id === selectedModelId);
-				if (!modelConfig) {
+				if ((generalSettings.interpreterExecutionMode ?? 'api') === 'api' && !modelConfig) {
 					throw new Error(`Model configuration not found for ${selectedModelId}`);
 				}
 				await handleInterpreterUI(template, variables, currentTabId!, currentUrl, modelConfig);

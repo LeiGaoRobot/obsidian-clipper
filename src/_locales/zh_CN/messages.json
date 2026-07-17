@@ -488,6 +488,21 @@
 	"interpreter": {
 		"message": "解释器"
 	},
+	"interpreterExecutionMode": {
+		"message": "执行模式"
+	},
+	"interpreterExecutionModeApi": {
+		"message": "API 提供商"
+	},
+	"interpreterExecutionModeCodex": {
+		"message": "Codex CLI"
+	},
+	"interpreterExecutionModeDescription": {
+		"message": "使用 API 提供商，或通过 Chrome Native Messaging 调用本机安装的 Grok/Codex CLI。CLI 模式需要一次性安装 Host。"
+	},
+	"interpreterExecutionModeGrok": {
+		"message": "Grok CLI"
+	},
 	"interpreterContext": {
 		"message": "解释器上下文"
 	},
@@ -513,6 +528,12 @@
 	},
 	"lastUsed": {
 		"message": "最近使用"
+	},
+	"nativeCliFailed": {
+		"message": "本机 CLI 请求失败。请检查 CLI 输出和 Native Messaging Host 安装。"
+	},
+	"nativeCliUnavailable": {
+		"message": "本机 CLI 不可用。请安装 Native Messaging Host，并确认所选 CLI 已安装且已登录。"
 	},
 	"legacyMode": {
 		"message": "传统模式"

@@ -488,6 +488,21 @@
 	"interpreter": {
 		"message": "Interpreter"
 	},
+	"interpreterExecutionMode": {
+		"message": "Execution mode"
+	},
+	"interpreterExecutionModeApi": {
+		"message": "API provider"
+	},
+	"interpreterExecutionModeCodex": {
+		"message": "Codex CLI"
+	},
+	"interpreterExecutionModeDescription": {
+		"message": "Use an API provider, or a locally installed Grok/Codex CLI through Chrome Native Messaging. The CLI modes require a one-time host installation."
+	},
+	"interpreterExecutionModeGrok": {
+		"message": "Grok CLI"
+	},
 	"interpreterContext": {
 		"message": "Interpreter context"
 	},
@@ -513,6 +528,12 @@
 	},
 	"lastUsed": {
 		"message": "Last used"
+	},
+	"nativeCliFailed": {
+		"message": "The local CLI request failed. Check the CLI output and Native Messaging Host installation."
+	},
+	"nativeCliUnavailable": {
+		"message": "The local CLI is unavailable. Install the Native Messaging Host and make sure the selected CLI is installed and signed in."
 	},
 	"legacyMode": {
 		"message": "Legacy mode"

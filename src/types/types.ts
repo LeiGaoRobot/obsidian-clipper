@@ -52,6 +52,8 @@ export interface Rating {
 
 export type SaveBehavior = 'addToObsidian' | 'saveFile' | 'copyToClipboard';
 
+export type InterpreterExecutionMode = 'api' | 'grok' | 'codex';
+
 export interface ReaderSettings {
 	fontSize: number;
 	lineHeight: number;
@@ -86,6 +88,7 @@ export interface Settings {
 	providers: Provider[];
 	interpreterEnabled: boolean;
 	interpreterAutoRun: boolean;
+	interpreterExecutionMode?: InterpreterExecutionMode;
 	defaultPromptContext: string;
 	propertyTypes: PropertyType[];
 	readerSettings: ReaderSettings;

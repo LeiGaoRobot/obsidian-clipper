@@ -70,6 +70,17 @@ node dist/cli.cjs <url> --template <template.json> --execution-mode codex
 
 The `grok` mode runs Grok in single-turn mode. The `codex` mode runs Codex with an ephemeral, read-only sandbox. Both modes require the corresponding CLI to be available on `PATH` and already authenticated. Without `--execution-mode`, prompt variables keep their existing unresolved behavior.
 
+### Use Grok or Codex from the Chrome extension
+
+The Chrome extension can use the same local CLI modes through Native Messaging. Build and load the extension first, then copy its ID from `chrome://extensions` and install the host once:
+
+```
+npm run build:chrome
+npm run install:native-host -- --extension-id <your-chrome-extension-id>
+```
+
+The installer records the detected `grok` and `codex` executable paths, so the host does not depend on Chrome's shell `PATH`. In Web Clipper **Settings → Interpreter**, enable Interpreter and choose **Grok CLI** or **Codex CLI** under **Execution mode**. The local CLI must already be installed and authenticated. The installer currently supports macOS and Linux.
+
 ### Install the extension locally
 
 For Chromium browsers, such as Chrome, Brave, Edge, and Arc:
@@ -77,6 +88,8 @@ For Chromium browsers, such as Chrome, Brave, Edge, and Arc:
 1. Open your browser and navigate to `chrome://extensions`
 2. Enable **Developer mode**
 3. Click **Load unpacked** and select the `dist` directory
+
+To enable the local Grok/Codex modes for this unpacked extension, run the Native Messaging host installer after loading it and use the extension ID shown on the extensions page. Reload the extension after installing the host.
 
 For Firefox:
 

@@ -7,6 +7,8 @@ import { Settings } from './types/types';
 import { debugLog } from './utils/debug';
 import { LanguageLearningRequest } from './utils/language-learning';
 import { runLanguageLearningRequest } from './utils/language-learning-service';
+import { isNativeCliRequest } from './utils/native-cli-contract';
+import { NativeCliUnavailableError, sendNativeCliRequest } from './utils/native-cli-service';
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
 const YOUTUBE_INNERTUBE_RULE_ID = 9002;
@@ -331,6 +333,27 @@ browser.runtime.onMessage.addListener((request: unknown) => {
 			}
 			return { ok: false, status: 0, text: '', error: 'CORS_PERMISSION_NEEDED' };
 		});
+});
+
+browser.runtime.onMessage.addListener((request: unknown) => {
+	if (typeof request !== 'object' || request === null) return;
+	const message = request as { action?: string; request?: unknown };
+	if (message.action !== 'nativeCliRequest') return;
+	if (!isNativeCliRequest(message.request)) {
+		return Promise.resolve({
+			success: false,
+			errorCode: 'invalid',
+			error: 'Invalid native CLI request.'
+		});
+	}
+
+	return sendNativeCliRequest(message.request)
+		.then(response => ({ success: true, stdout: response.stdout || '' }))
+		.catch(error => ({
+			success: false,
+			errorCode: error instanceof NativeCliUnavailableError ? 'unavailable' : 'failed',
+			error: error instanceof Error ? error.message : String(error)
+		}));
 });
 
 // Language-learning requests can originate in Reader content scripts, where

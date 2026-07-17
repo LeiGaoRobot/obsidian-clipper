@@ -13,10 +13,13 @@ async function loadConfiguredAssistant() {
 		throw new Error(getMessage('aiLanguageToolsRequireInterpreter'));
 	}
 
-	const enabledModels = settings.models.filter(model => model.enabled);
-	const model = enabledModels.find(item => item.id === settings.interpreterModel) || enabledModels[0];
-	if (!model) {
-		throw new Error(getMessage('aiLanguageToolsRequireModel'));
+	const executionMode = settings.interpreterExecutionMode ?? 'api';
+	if (executionMode === 'api') {
+		const enabledModels = settings.models.filter(model => model.enabled);
+		const model = enabledModels.find(item => item.id === settings.interpreterModel) || enabledModels[0];
+		if (!model) {
+			throw new Error(getMessage('aiLanguageToolsRequireModel'));
+		}
 	}
 
 	const responseLanguage = settings.readerSettings.learningResponseLanguage.trim()

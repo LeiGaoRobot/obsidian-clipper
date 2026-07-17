@@ -8,7 +8,7 @@ This document describes the implemented language-learning MVP and the interfaces
 - Let users revise selected or complete clipped Markdown through a preview-and-apply workflow.
 - Add manually triggered, segment-aligned bilingual YouTube transcripts.
 - Explain a double-clicked word or a selected phrase or sentence in transcript context.
-- Reuse the existing Interpreter provider, model, and credential configuration.
+- Reuse the existing Interpreter provider, model, and credential configuration, or use the configured local Grok/Codex CLI execution mode.
 - Keep every remote action explicit so the extension does not create surprise model costs.
 
 ## Non-goals
@@ -28,8 +28,9 @@ This document describes the implemented language-learning MVP and the interfaces
 | `src/utils/language-learning-popup.ts` | Popup and side-panel preview, apply, cancel, and undo state |
 | `src/utils/transcript-language-learning.ts` | Bilingual controls, selection extraction, explanation card, caching, and cleanup |
 | `src/utils/reader-transcript.ts` | Player integration and single-click versus double-click seek coordination |
-| `src/utils/language-learning-service.ts` | Background validation and stored-model resolution |
+| `src/utils/language-learning-service.ts` | Background validation, stored-model resolution, and local CLI dispatch |
 | `src/utils/llm-client.ts` | DOM-free provider adapter and response parser shared with Interpreter |
+| `src/utils/native-cli-service.ts` | Background Native Messaging bridge for local Grok/Codex execution |
 | `src/background.ts` | `languageLearningRequest` message handler and background execution seam |
 
 The request path is:
@@ -39,8 +40,8 @@ Popup or Reader
   → configuredLanguageLearning
   → browser.runtime languageLearningRequest
   → background language-learning service
-  → DOM-free LLM client
-  → configured Interpreter provider
+  → DOM-free LLM client or Native Messaging Host
+  → configured Interpreter provider or local CLI
 ```
 
 The interface is intentionally small. Popup and Reader know only how to transform content, explain a selection, or translate ordered segments. They do not know provider URLs, credentials, request formats, or response parsing rules.
@@ -72,7 +73,7 @@ Selection changes, transcript loading, page loading, applying, cancelling, undoi
 
 Reader can run inside a page context, where cross-origin model requests inherit page restrictions. Callers therefore send a structured request through `browser.runtime`; the background resolves the stored enabled model and performs the provider request.
 
-Credentials stay in the existing Interpreter settings. Language-learning messages contain context, prompts, and an optional output budget, but never a provider URL or API key.
+Credentials stay in the existing Interpreter settings. Language-learning messages contain context, prompts, and an optional output budget, but never a provider URL or API key. In CLI mode, the background service worker sends a fixed-mode request to `com.obsidian.web_clipper`; the host only launches the configured `grok` or `codex` executable.
 
 ### MV3-safe network client
 

@@ -8,6 +8,7 @@ import { debugLog } from './debug';
 import { getMessage } from './i18n';
 import { updateTokenCount } from './token-counter';
 import { sendToLLM } from './llm-client';
+import { executeNativeCli } from './native-cli-client';
 
 export { sendToLLM };
 export type { LLMRequestOptions } from './llm-client';
@@ -122,7 +123,7 @@ export async function initializeInterpreter(template: Template, variables: { [ke
 			const clickListener = async () => {
 				const selectedModelId = modelSelect.value;
 				const modelConfig = generalSettings.models.find(m => m.id === selectedModelId);
-				if (!modelConfig) {
+				if ((generalSettings.interpreterExecutionMode ?? 'api') === 'api' && !modelConfig) {
 					throw new Error(`Model configuration not found for ${selectedModelId}`);
 				}
 				await handleInterpreterUI(template, variables, tabId, currentUrl, modelConfig);
@@ -137,7 +138,7 @@ export async function initializeInterpreter(template: Template, variables: { [ke
 			};
 			storeListener(modelSelect, 'change', changeListener);
 
-			modelSelect.style.display = 'inline-block';
+			modelSelect.style.display = (generalSettings.interpreterExecutionMode ?? 'api') === 'api' ? 'inline-block' : 'none';
 
 			// Only repopulate if the skeleton hasn't already done it
 			if (modelSelect.options.length === 0) {
@@ -170,7 +171,7 @@ export async function handleInterpreterUI(
 	variables: { [key: string]: string },
 	tabId: number,
 	currentUrl: string,
-	modelConfig: ModelConfig
+	modelConfig?: ModelConfig
 ): Promise<void> {
 	const interpreterContainer = document.getElementById('interpreter');
 	const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
@@ -188,15 +189,22 @@ export async function handleInterpreterUI(
 		// Remove any previous done or error classes
 		interpreterContainer?.classList.remove('done', 'error');
 
-		// Find the provider for this model
-		const provider = generalSettings.providers.find(p => p.id === modelConfig.providerId);
-		if (!provider) {
-			throw new Error(`Provider not found for model ${modelConfig.name}`);
-		}
+		const executionMode = generalSettings.interpreterExecutionMode ?? 'api';
+		if (executionMode === 'api') {
+			if (!modelConfig) {
+				throw new Error('Interpreter model configuration is missing.');
+			}
 
-		// Only check for API key if the provider requires it
-		if (provider.apiKeyRequired && !provider.apiKey) {
-			throw new Error(`API key is not set for provider ${provider.name}`);
+			// Find the provider for this model
+			const provider = generalSettings.providers.find(p => p.id === modelConfig.providerId);
+			if (!provider) {
+				throw new Error(`Provider not found for model ${modelConfig.name}`);
+			}
+
+			// Only check for API key if the provider requires it
+			if (provider.apiKeyRequired && !provider.apiKey) {
+				throw new Error(`API key is not set for provider ${provider.name}`);
+			}
 		}
 
 		const promptVariables = collectPromptVariables(template);
@@ -230,7 +238,17 @@ export async function handleInterpreterUI(
 			responseTimer.textContent = formatDuration(elapsedTime);
 		}, 10);
 
-		const { promptResponses } = await sendToLLM(contextToUse, contentToProcess, promptVariables, modelConfig);
+		let promptResponses;
+		if (executionMode === 'api') {
+			promptResponses = (await sendToLLM(contextToUse, contentToProcess, promptVariables, modelConfig as ModelConfig)).promptResponses;
+		} else {
+			const responses = await executeNativeCli(executionMode, contextToUse, promptVariables);
+			promptResponses = promptVariables.map(variable => ({
+				key: variable.key,
+				prompt: variable.prompt,
+				user_response: responses[variable.key]
+			}));
+		}
 		debugLog('Interpreter', 'LLM response:', { promptResponses });
 
 		// Stop the timer and update UI

@@ -226,6 +226,12 @@ export async function initializeInterpreterSettings(): Promise<void> {
 			defaultPromptContextInput.value = generalSettings.defaultPromptContext;
 		}
 
+		const executionModeSelect = document.getElementById('interpreter-execution-mode') as HTMLSelectElement;
+		if (executionModeSelect) {
+			executionModeSelect.value = generalSettings.interpreterExecutionMode ?? 'api';
+			executionModeSelect.addEventListener('change', saveInterpreterSettingsFromForm);
+		}
+
 		updatePromptContextVisibility();
 		initializeToggles();
 		initializeAutoSave();
@@ -1086,6 +1092,7 @@ function initializeAutoSave(): void {
 function saveInterpreterSettingsFromForm(): void {
 	const interpreterToggle = document.getElementById('interpreter-toggle') as HTMLInputElement;
 	const interpreterAutoRunToggle = document.getElementById('interpreter-auto-run-toggle') as HTMLInputElement;
+	const executionModeSelect = document.getElementById('interpreter-execution-mode') as HTMLSelectElement;
 	const defaultPromptContextInput = document.getElementById('default-prompt-context') as HTMLTextAreaElement;
 
 	const updatedSettings: Partial<typeof generalSettings> = {}; 
@@ -1094,6 +1101,9 @@ function saveInterpreterSettingsFromForm(): void {
 	}
 	if (interpreterAutoRunToggle) {
 		updatedSettings.interpreterAutoRun = interpreterAutoRunToggle.checked;
+	}
+	if (executionModeSelect && ['api', 'grok', 'codex'].includes(executionModeSelect.value)) {
+		updatedSettings.interpreterExecutionMode = executionModeSelect.value as 'api' | 'grok' | 'codex';
 	}
 	if (defaultPromptContextInput) {
 		updatedSettings.defaultPromptContext = defaultPromptContextInput.value;
