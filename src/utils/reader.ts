@@ -32,13 +32,12 @@ import { parseForClip } from './clip-utils';
 import { updateSidebarWidth, addResizeHandle, cleanupResizeHandlers } from './iframe-resize';
 import { setElementHTML, setSVGChildren, serializeChildren } from './dom-utils';
 import { cloneBodyIfSafe } from './reader-dom-cleanup';
+import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from './language-learning-defaults';
 
 // Mobile viewport settings
 const VIEWPORT = 'width=device-width, initial-scale=1, maximum-scale=1';
 
 import { ReaderSettings } from '../types/types';
-import { wireTranscript } from './reader-transcript';
-import { configuredLanguageLearning } from './language-learning-runtime';
 
 interface ReaderContent {
 	content: string;
@@ -167,6 +166,8 @@ export class Reader {
 		highlightActiveLine: true,
 		transcriptLayout: 'reading',
 		learningResponseLanguage: '',
+		learningVault: '',
+		learningFolder: DEFAULT_LANGUAGE_LEARNING_FOLDER,
 		customCss: ''
 	};
 
@@ -183,6 +184,22 @@ export class Reader {
 
 	private static async saveSettings(): Promise<void> {
 		await browser.storage.sync.set({ reader_settings: this.settings });
+	}
+
+	private static async wireTranscript(doc: Document, article: HTMLElement): Promise<void> {
+		if (!article.querySelector('.youtube.transcript')) return;
+		const [transcriptModule, languageLearningModule] = await Promise.all([
+			import(/* webpackChunkName: 'reader-language-learning' */ './reader-transcript'),
+			import(/* webpackChunkName: 'reader-language-learning' */ './language-learning-runtime')
+		]);
+		transcriptModule.wireTranscript(doc, article, this.settings, {
+			getStickyOffset: () => this.getStickyOffset(),
+			scrollTo: (y) => this.scrollTo(y),
+			programmaticScroll: () => this.programmaticScroll,
+		}, (key, value) => {
+			(this.settings as any)[key] = value;
+			this.saveSettings();
+		}, languageLearningModule.configuredLanguageLearning);
 	}
 
 	private static injectSettingsBar(doc: Document) {
@@ -2354,14 +2371,7 @@ export class Reader {
 			// the DOM (moves timestamps, wraps text, adds scrub track).
 			this.storeOriginalHtml(article);
 
-			wireTranscript(doc, article, this.settings, {
-				getStickyOffset: () => this.getStickyOffset(),
-				scrollTo: (y) => this.scrollTo(y),
-				programmaticScroll: () => this.programmaticScroll,
-			}, (key, value) => {
-				(this.settings as any)[key] = value;
-				this.saveSettings();
-			}, configuredLanguageLearning);
+			await this.wireTranscript(doc, article);
 
 			if (extractorType) {
 				doc.documentElement.setAttribute('data-reader-extractor', extractorType);
@@ -2731,14 +2741,7 @@ export class Reader {
 
 		this.storeOriginalHtml(article);
 
-		wireTranscript(doc, article, this.settings, {
-			getStickyOffset: () => this.getStickyOffset(),
-			scrollTo: (y) => this.scrollTo(y),
-			programmaticScroll: () => this.programmaticScroll,
-		}, (key, value) => {
-			(this.settings as any)[key] = value;
-			this.saveSettings();
-		}, configuredLanguageLearning);
+		await this.wireTranscript(doc, article);
 
 		await this.initializeContentFeatures(doc, content.title);
 	}

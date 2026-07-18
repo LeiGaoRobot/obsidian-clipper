@@ -1,0 +1,83 @@
+<!doctype html>
+<html class="obsidian-reader-active theme-light transcript-layout-focus" lang="zh-CN" style="--font-text-size: 18px; --line-height-normal: 1.65; --line-width: 48em;">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Reader transcript preview</title>
+	<link rel="stylesheet" href="reader.css">
+	<style>
+		.preview-player-media {
+			display: grid;
+			place-items: center;
+			aspect-ratio: 16 / 9;
+			border-radius: 12px;
+			background:
+				radial-gradient(circle at 50% 42%, rgba(145, 103, 255, .36), transparent 28%),
+				linear-gradient(145deg, #17141f, #313141 55%, #16171a);
+			color: white;
+			font: 600 18px/1.4 system-ui, sans-serif;
+		}
+		.preview-player-media span { padding: 1rem; text-align: center; }
+		.preview-heading { max-width: 760px; margin: 0 auto 20px; color: var(--text-muted); }
+		.preview-heading strong { color: var(--text-normal); }
+		.player-study-panel { display: flex; }
+		.youtube.transcript:not(.show-japanese-readings) rt { display: none; }
+		@media (max-width: 720px) { .preview-heading { margin-bottom: 12px; } }
+	</style>
+</head>
+<body>
+	<div class="obsidian-reader-container">
+		<div class="obsidian-reader-left-sidebar is-empty"></div>
+		<div class="obsidian-reader-content">
+			<main>
+				<article>
+					<p class="preview-heading"><strong>日本語を話すのが怖いとき、どうすればいい？</strong> · Reader 学习模式预览</p>
+					<section class="transcript-study-layout transcript-layout-focus is-player-pinned" aria-label="字幕学习预览">
+						<div class="player-container pin-player">
+							<div class="reader-video-wrapper preview-player-media"><span>29:17 / 32:27<br>Deterministic media preview</span></div>
+						</div>
+						<div class="player-toggles">
+							<div class="transcript-layout-switcher" role="group" aria-label="字幕布局">
+								<button class="transcript-layout-option" data-transcript-layout="reading" aria-pressed="false">阅读</button>
+								<button class="transcript-layout-option" data-transcript-layout="notebook" aria-pressed="false">笔记</button>
+								<button class="transcript-layout-option" data-transcript-layout="focus" aria-pressed="true">分屏</button>
+							</div>
+							<div class="player-toggle-group is-open">
+								<label class="player-toggle is-enabled" role="switch" aria-checked="true"><span>固定播放器</span><span class="player-toggle-switch"><input type="checkbox" checked></span></label>
+								<label class="player-toggle is-enabled" role="switch" aria-checked="true"><span>自动滚动</span><span class="player-toggle-switch"><input type="checkbox" checked></span></label>
+								<button class="player-learning-action is-enabled" data-preview-toggle="bilingual" aria-pressed="true">双语字幕</button>
+								<button class="player-learning-action is-enabled" data-preview-toggle="readings" aria-pressed="true">日语读音</button>
+								<details class="player-study" open>
+									<summary>学习模式</summary>
+									<div class="player-study-panel">
+										<button class="player-study-action player-study-repeat" data-preview-pressed aria-pressed="true">重复当前句</button>
+										<button class="player-study-action player-study-auto-pause" data-preview-pressed aria-pressed="false">逐句停顿</button>
+										<div class="player-study-range"><button class="player-study-action">设 A</button><button class="player-study-action">设 B</button><span class="player-study-range-status">29:23–29:35</span></div>
+										<label class="player-study-speed"><span>速度</span><select><option>0.75×</option><option selected>1×</option><option>1.25×</option></select></label>
+									</div>
+								</details>
+							</div>
+						</div>
+						<div class="youtube transcript show-bilingual-transcript show-japanese-readings">
+							<div class="transcript-segment">
+								<strong><span class="timestamp">29:03</span></strong>
+								<div class="transcript-segment-text">自分で一人で<ruby>考<rt>かんが</rt></ruby>えないで、もっと<ruby>詳<rt>くわ</rt></ruby>しく聞いてみましょう。<div class="transcript-segment-translation">不要一个人想太多，可以试着问得更具体一些。</div></div>
+							</div>
+							<div class="transcript-segment is-active">
+								<strong><span class="timestamp">29:23</span></strong>
+								<div class="transcript-segment-text"><ruby>会話<rt>かいわ</rt></ruby>に<ruby>対<rt>たい</rt></ruby>する<ruby>怖<rt>こわ</rt></ruby>さは、少しずつなくなっていくでしょう。<div class="transcript-segment-translation">对会话的恐惧会一点点消失。</div></div>
+							</div>
+							<div class="transcript-segment">
+								<strong><span class="timestamp">29:35</span></strong>
+								<div class="transcript-segment-text">今回のポッドキャストは以上です。<div class="transcript-segment-translation">这期播客就到这里。</div></div>
+							</div>
+						</div>
+					</section>
+				</article>
+			</main>
+		</div>
+		<div class="obsidian-reader-right-sidebar"></div>
+	</div>
+	<script src="transcript-layout-preview.js"></script>
+</body>
+</html>

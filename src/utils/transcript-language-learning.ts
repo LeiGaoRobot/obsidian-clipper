@@ -12,6 +12,7 @@ import {
 	isRequestCancelled,
 	throwIfRequestAborted
 } from './request-cancellation';
+import { renderLanguageLearningCenter } from './language-learning-center';
 
 export interface TranscriptLanguageLearning {
 	translateTranscript: (
@@ -35,6 +36,16 @@ export interface TranscriptLanguageLearning {
 	saveVocabularyToObsidian?: (selection: LearningSelection, explanation: string) => Promise<void>;
 	listVocabulary?: () => Promise<LearningVocabularyEntry[]>;
 	removeVocabulary?: (id: string) => Promise<void>;
+	removeVocabularyMany?: (ids: string[]) => Promise<void>;
+	clearVocabulary?: () => Promise<void>;
+	exportVocabulary?: () => Promise<string>;
+	importVocabulary?: (json: string) => Promise<number>;
+	saveJapaneseReadingOverride?: (surface: string, reading: string) => Promise<void>;
+	listJapaneseReadingDictionary?: () => Promise<Array<{ surface: string; reading: string; updatedAt: number }>>;
+	removeJapaneseReadingOverride?: (surface: string) => Promise<void>;
+	clearJapaneseReadingDictionary?: () => Promise<void>;
+	exportJapaneseReadingDictionary?: () => Promise<string>;
+	importJapaneseReadingDictionary?: (json: string) => Promise<number>;
 	setExecutionMode?: (mode: 'api' | 'grok' | 'codex') => Promise<void>;
 }
 
@@ -628,7 +639,7 @@ export function wireTranscriptLanguageLearning({
 
 	const showVocabulary = async () => {
 		rememberCardReturnFocus();
-		cardTitle.textContent = getMessage('readerSavedVocabulary');
+		cardTitle.textContent = getMessage('readerLearningCenter');
 		cardBody.replaceChildren();
 		card.classList.remove('is-error');
 		cardErrorDetails.hidden = true;
@@ -638,57 +649,13 @@ export function wireTranscriptLanguageLearning({
 		copyButton.hidden = true;
 		saveButton.hidden = true;
 		currentExplanation = null;
-		const entries = await tools.listVocabulary?.() || [];
-		if (entries.length === 0) {
-			cardBody.textContent = getMessage('readerSavedVocabularyEmpty');
-		} else {
-			entries.forEach(entry => {
-				const item = doc.createElement('article');
-				item.className = 'language-learning-vocabulary-entry';
-				const title = doc.createElement('strong');
-				title.textContent = entry.text;
-				const explanation = doc.createElement('p');
-				explanation.textContent = entry.explanation;
-				const actions = doc.createElement('div');
-				actions.className = 'language-learning-vocabulary-actions';
-				if (tools.copyLearningText) {
-					const copy = doc.createElement('button');
-					copy.type = 'button';
-					copy.className = 'language-learning-card-action language-learning-vocabulary-copy';
-					copy.textContent = getMessage('copyToClipboard');
-					copy.addEventListener('click', async event => {
-						if (!event.isTrusted || !tools.copyLearningText) return;
-						await tools.copyLearningText([entry.text, entry.explanation].join('\n\n'));
-					});
-					actions.appendChild(copy);
-				}
-				if (tools.saveVocabularyToObsidian) {
-					const save = doc.createElement('button');
-					save.type = 'button';
-					save.className = 'language-learning-card-action language-learning-vocabulary-save';
-					save.textContent = getMessage('addToObsidian');
-					save.addEventListener('click', async event => {
-						if (!event.isTrusted || !tools.saveVocabularyToObsidian) return;
-						await tools.saveVocabularyToObsidian(entry, entry.explanation);
-					});
-					actions.appendChild(save);
-				}
-				if (tools.removeVocabulary) {
-					const remove = doc.createElement('button');
-					remove.type = 'button';
-					remove.className = 'language-learning-card-action language-learning-vocabulary-remove';
-					remove.textContent = getMessage('remove');
-					remove.addEventListener('click', async event => {
-						if (!event.isTrusted || !tools.removeVocabulary) return;
-						await tools.removeVocabulary(entry.id);
-						await showVocabulary();
-					});
-					actions.appendChild(remove);
-				}
-				item.append(title, explanation, actions);
-				cardBody.appendChild(item);
-			});
-		}
+		const center = renderLanguageLearningCenter({
+			doc,
+			container: cardBody,
+			tools,
+			onFeedback: message => { cardFeedback.textContent = message; }
+		});
+		await center.ready;
 		card.style.display = 'block';
 		card.focus();
 	};
@@ -1089,6 +1056,11 @@ export function wireTranscriptLanguageLearning({
 		const token = readings?.[segmentIndex]?.[tokenIndex];
 		if (!token || !readings) return;
 		token.reading = reading;
+		if (reading) {
+			void tools.saveJapaneseReadingOverride?.(token.text, reading);
+		} else {
+			void tools.removeJapaneseReadingOverride?.(token.text);
+		}
 		if (isCompleteTranscriptReadings(readings, originalTexts)) {
 			cacheJapaneseReadings(originalTexts, readings);
 		} else {

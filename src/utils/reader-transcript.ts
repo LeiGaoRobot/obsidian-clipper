@@ -10,6 +10,7 @@ import {
 	createTranscriptLayoutSwitcher,
 	normalizeTranscriptLayoutMode
 } from './transcript-layout';
+import { TranscriptStudyController, wireTranscriptStudy } from './transcript-study';
 
 // CJK-aware text boundary helpers
 const SENT_END = /[.!?。！？]/;
@@ -18,6 +19,7 @@ const CJK_SENT_END = /[。！？]/;
 const CJK_PUNCT = /[。！？、，]/;
 const CJK_CHAR = /[\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/;
 const transcriptLayoutResizeObservers = new WeakMap<Document, ResizeObserver>();
+const transcriptStudyControllers = new WeakMap<Document, TranscriptStudyController>();
 
 export interface TranscriptClickGuard {
 	schedule: (action: () => boolean | void, rollback?: () => void) => void;
@@ -106,6 +108,8 @@ export function wireTranscript(
 	languageLearning?: TranscriptLanguageLearning
 ): void {
 	cleanupTranscriptLanguageLearning(doc);
+	transcriptStudyControllers.get(doc)?.cleanup();
+	transcriptStudyControllers.delete(doc);
 	clearTranscriptLayoutMode(doc);
 	transcriptLayoutResizeObservers.get(doc)?.disconnect();
 	transcriptLayoutResizeObservers.delete(doc);
@@ -357,6 +361,7 @@ export function wireTranscript(
 		}
 	});
 	let activeIndex = -1;
+	let studyController: TranscriptStudyController | undefined;
 	let suppressScroll = false;
 	let lastUserScroll = 0;
 	let lastCurrentTime = -1;
@@ -412,6 +417,7 @@ export function wireTranscript(
 				activeChapter = chapter;
 			}
 		}
+		studyController?.onTimeUpdate(currentTime, newIndex);
 		// Show floating button when active segment is out of view
 		if (activeSegment) {
 			const rect = activeSegment.getBoundingClientRect();
@@ -585,6 +591,55 @@ export function wireTranscript(
 			seekTo(Math.max(0, lastCurrentTime + delta));
 		}
 	};
+
+	const play = () => {
+		if (videoEl) {
+			void videoEl.play();
+		} else if (iframe?.contentWindow) {
+			iframe.contentWindow.postMessage(JSON.stringify({
+				event: 'command',
+				func: 'playVideo',
+				args: []
+			}), '*');
+		}
+	};
+	const pause = () => {
+		if (videoEl) {
+			videoEl.pause();
+		} else if (iframe?.contentWindow) {
+			iframe.contentWindow.postMessage(JSON.stringify({
+				event: 'command',
+				func: 'pauseVideo',
+				args: []
+			}), '*');
+		}
+	};
+	const setPlaybackRate = (rate: number) => {
+		if (videoEl) {
+			videoEl.playbackRate = rate;
+		} else if (iframe?.contentWindow) {
+			iframe.contentWindow.postMessage(JSON.stringify({
+				event: 'command',
+				func: 'setPlaybackRate',
+				args: [rate]
+			}), '*');
+		}
+	};
+	studyController = wireTranscriptStudy({
+		doc,
+		controls: toggleGroup,
+		segmentTimes,
+		getSegmentEnd,
+		getActiveIndex: () => activeIndex,
+		player: {
+			seekTo,
+			play,
+			pause,
+			setPlaybackRate,
+			getCurrentTime: () => videoEl?.currentTime ?? Math.max(0, lastCurrentTime)
+		}
+	});
+	transcriptStudyControllers.set(doc, studyController);
 
 	// Use capture phase so we intercept before YouTube's own keyboard
 	// handlers on the page — the original page scripts are still running

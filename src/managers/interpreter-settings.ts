@@ -6,6 +6,7 @@ import { showModal, hideModal } from '../utils/modal-utils';
 import { getMessage, translatePage } from '../utils/i18n';
 import { debugLog } from '../utils/debug';
 import { NativeCliHealthError, requestNativeCliHealth } from '../utils/native-cli-health';
+import { wireLanguageLearningReadiness } from '../utils/language-learning-readiness';
 
 export interface PresetProvider {
 	id: string;
@@ -236,6 +237,13 @@ export async function initializeInterpreterSettings(): Promise<void> {
 			});
 		}
 		initializeNativeCliHealth();
+		const readiness = wireLanguageLearningReadiness({
+			doc: document,
+			getSettings: () => generalSettings,
+			checkCli: async mode => { await requestNativeCliHealth(mode); }
+		});
+		interpreterSettingsForm?.addEventListener('input', readiness.refresh);
+		interpreterSettingsForm?.addEventListener('change', readiness.refresh);
 
 		updatePromptContextVisibility();
 		initializeToggles();

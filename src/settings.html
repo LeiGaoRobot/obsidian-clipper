@@ -485,6 +485,24 @@
 											</datalist>
 										</div>
 									</div>
+									<div class="setting-item mod-horizontal">
+										<div class="setting-item-info">
+											<label for="reader-learning-vault" data-i18n="readerLearningVault">Learning vault</label>
+											<div class="setting-item-description" data-i18n="readerLearningVaultDescription">Vault used when saving vocabulary to Obsidian. Leave empty to use the first configured vault.</div>
+										</div>
+										<div class="setting-item-control">
+											<select id="reader-learning-vault"><option value="" data-i18n="readerLearningVaultDefault">First configured vault</option></select>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal">
+										<div class="setting-item-info">
+											<label for="reader-learning-folder" data-i18n="readerLearningFolder">Learning note folder</label>
+											<div class="setting-item-description" data-i18n="readerLearningFolderDescription">Folder used for vocabulary notes.</div>
+										</div>
+										<div class="setting-item-control">
+											<input type="text" id="reader-learning-folder" data-i18n="readerLearningFolderPlaceholder" placeholder="Language Learning" />
+										</div>
+									</div>
 								</div>
 							</div>
 							<div class="setting-group">
@@ -507,6 +525,16 @@
 							<h2 data-i18n="interpreter">Interpreter</h2>
 						</div>
 						<form id="interpreter-settings-form">
+							<details id="language-learning-readiness" class="language-learning-readiness">
+								<summary data-i18n="languageLearningReadinessTitle">Set up language learning</summary>
+								<p data-i18n="languageLearningReadinessDescription">Complete these checks before using translation, explanations, or Japanese readings in Reader.</p>
+								<ol id="language-learning-readiness-steps"></ol>
+								<div class="language-learning-readiness-actions">
+									<button type="button" id="language-learning-readiness-check" data-i18n="languageLearningReadinessReview">Review setup</button>
+									<a class="btn" href="settings.html?section=reader" data-i18n="languageLearningReadinessReaderSettings">Reader settings</a>
+								</div>
+								<div id="language-learning-readiness-status" class="setting-item-description" role="status" aria-live="polite"></div>
+							</details>
 							<div class="setting-group">
 								<div class="setting-items">
 									<div class="setting-item mod-horizontal mod-toggle">

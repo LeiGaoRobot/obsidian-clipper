@@ -180,6 +180,105 @@
 		}
 	}
 }
+.player-study {
+	position: relative;
+	font-family: var(--font-ui);
+	font-size: var(--font-ui-small);
+	line-height: 1.2;
+	summary {
+		display: inline-flex;
+		align-items: center;
+		min-height: 28px;
+		padding: 4px 8px;
+		color: var(--text-muted);
+		border: 1px solid transparent;
+		border-radius: var(--radius-s);
+		cursor: pointer;
+		list-style: none;
+		&::-webkit-details-marker { display: none; }
+		&::after {
+			content: '⌄';
+			margin-inline-start: 5px;
+			font-size: 0.85em;
+		}
+		&:hover,
+		&:focus-visible {
+			color: var(--text-normal);
+			background: var(--background-primary-alt);
+			outline: none;
+		}
+	}
+	&[open] summary {
+		color: var(--text-accent-hover);
+		background: var(--text-selection);
+		border-color: var(--text-selection);
+	}
+}
+.player-study-panel {
+	position: absolute;
+	inset-block-start: calc(100% + 6px);
+	inset-inline-end: 0;
+	z-index: calc(var(--layer-menu) + 1);
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+	box-sizing: border-box;
+	width: min(360px, calc(100vw - 24px));
+	padding: 12px;
+	color: var(--text-normal);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+}
+.player-study-action {
+	min-height: 30px;
+	padding: 4px 9px;
+	font: inherit;
+	color: var(--text-muted);
+	background: var(--background-primary-alt);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	&:hover { color: var(--text-normal); }
+	&.is-enabled,
+	&[aria-pressed="true"] {
+		color: var(--text-accent-hover);
+		background: var(--text-selection);
+		border-color: var(--text-selection);
+	}
+	&:focus-visible {
+		outline: 2px solid var(--text-accent-hover);
+		outline-offset: 2px;
+	}
+}
+.player-study-range {
+	display: grid;
+	grid-column: 1 / -1;
+	grid-template-columns: auto auto auto 1fr;
+	align-items: center;
+	gap: 6px;
+}
+.player-study-range-status {
+	color: var(--text-muted);
+	font-variant: tabular-nums;
+	text-align: end;
+}
+.player-study-speed {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	select {
+		min-height: 30px;
+		font: inherit;
+	}
+}
+.player-study-shortcuts {
+	align-self: center;
+	color: var(--text-faint);
+	line-height: 1.35;
+}
 .player-learning-range {
 	display: inline-flex;
 	align-items: center;
@@ -533,6 +632,77 @@
 	gap: 6px;
 	margin-top: 8px;
 }
+.language-learning-card:has(.language-learning-center) {
+	width: min(620px, calc(100vw - 48px));
+	max-height: min(680px, calc(100vh - 48px));
+}
+.language-learning-center {
+	white-space: normal;
+}
+.language-learning-center-tabs,
+.language-learning-center-actions,
+.language-learning-center-reading-form {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.language-learning-center-tabs {
+	margin-bottom: 12px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+.language-learning-center-tabs .language-learning-card-action.is-enabled {
+	color: var(--text-accent-hover);
+	background: var(--text-selection);
+	border-color: var(--text-selection);
+}
+.language-learning-center-toolbar {
+	display: grid;
+	grid-template-columns: minmax(180px, 1fr) auto auto;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 10px;
+}
+.language-learning-center-search,
+.language-learning-center-filter,
+.language-learning-center-surface,
+.language-learning-center-reading {
+	box-sizing: border-box;
+	min-height: 34px;
+	font: inherit;
+}
+.language-learning-center-count {
+	color: var(--text-faint);
+	white-space: nowrap;
+}
+.language-learning-center-actions {
+	margin-bottom: 10px;
+}
+.language-learning-center-list {
+	border-top: 1px solid var(--background-modifier-border);
+}
+.language-learning-center-entry {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: start;
+	gap: 10px;
+	padding: 12px 0;
+	input[type="checkbox"] { margin-top: 4px; }
+}
+.language-learning-center-entry > .language-learning-card-action {
+	grid-column: 2;
+	justify-self: end;
+}
+.language-learning-center-reading-form {
+	display: grid;
+	grid-template-columns: 1fr 1fr auto;
+	margin-bottom: 10px;
+}
+.language-learning-center-empty {
+	margin: 14px 0;
+	color: var(--text-muted);
+}
 .transcript-segment.is-active {
 	background: var(--text-selection);
 	border-inline-start-color: var(--text-accent-hover);
@@ -798,4 +968,19 @@ html.transcript-layout-focus .language-learning-card {
 		bottom: max(8px, env(safe-area-inset-bottom));
 		width: auto;
 	}
+	.player-study {
+		flex: 1 1 auto;
+		summary { min-height: 44px; }
+	}
+	.player-study-panel {
+		position: fixed;
+		inset: auto 8px max(8px, env(safe-area-inset-bottom)) 8px;
+		width: auto;
+	}
+	.player-study-action { min-height: 44px; }
+	.language-learning-center-toolbar,
+	.language-learning-center-reading-form {
+		grid-template-columns: 1fr;
+	}
+	.language-learning-center-count { justify-self: start; }
 }

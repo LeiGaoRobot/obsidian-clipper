@@ -1,4 +1,7 @@
 {
+	"add": {
+		"message": "添加"
+	},
 	"activity": {
 		"message": "活动"
 	},
@@ -1326,6 +1329,165 @@
 				"content": "<strong>"
 			}
 		}
+	},
+	"languageLearningReadinessApiMissing": {
+		"message": "添加并启用一个 API 模型"
+	},
+	"languageLearningReadinessApiConfigMissing": {
+		"message": "请完成所选模型的提供商和 API 密钥配置"
+	},
+	"languageLearningReadinessApiReady": {
+		"message": "API 模型已就绪"
+	},
+	"languageLearningReadinessBrowserLanguage": {
+		"message": "回答语言使用浏览器语言"
+	},
+	"languageLearningReadinessCliFailed": {
+		"message": "本地 CLI 连接需要处理"
+	},
+	"languageLearningReadinessCliReady": {
+		"message": "本地 CLI 连接已就绪"
+	},
+	"languageLearningReadinessCliUnchecked": {
+		"message": "检查所选本地 CLI 的连接"
+	},
+	"languageLearningReadinessDescription": {
+		"message": "完成这些检查后，即可在阅读器中使用翻译、解释和日语读音。"
+	},
+	"languageLearningReadinessEnable": {
+		"message": "启用解释器"
+	},
+	"languageLearningReadinessEnabled": {
+		"message": "解释器已启用"
+	},
+	"languageLearningReadinessIncomplete": {
+		"message": "完成上面的项目，然后重新检查。"
+	},
+	"languageLearningReadinessLanguage": {
+		"message": "回答语言：$1"
+	},
+	"languageLearningReadinessReaderSettings": {
+		"message": "阅读器设置"
+	},
+	"languageLearningReadinessReady": {
+		"message": "语言学习功能已就绪"
+	},
+	"languageLearningReadinessReadyDescription": {
+		"message": "现在可以直接在阅读器中使用语言学习操作。"
+	},
+	"languageLearningReadinessReview": {
+		"message": "检查设置"
+	},
+	"languageLearningReadinessTitle": {
+		"message": "设置语言学习功能"
+	},
+	"readerAutoPause": {
+		"message": "每句结束后暂停"
+	},
+	"readerClearAll": {
+		"message": "全部清除"
+	},
+	"readerClearDictionaryConfirm": {
+		"message": "清除所有个人日语读音吗？"
+	},
+	"readerClearLoop": {
+		"message": "清除 A–B"
+	},
+	"readerClearVocabularyConfirm": {
+		"message": "清除所有已保存词汇吗？"
+	},
+	"readerCopiedExport": {
+		"message": "导出的 JSON 已复制到剪贴板。"
+	},
+	"readerDictionaryReading": {
+		"message": "读音，例如：かいわ"
+	},
+	"readerDictionarySurface": {
+		"message": "日语词汇，例如：会話"
+	},
+	"readerImportedCount": {
+		"message": "已导入 $1 项。"
+	},
+	"readerLearningCenter": {
+		"message": "学习中心"
+	},
+	"readerLearningCenterCount": {
+		"message": "显示 $1 / $2 项"
+	},
+	"readerLearningCenterSearch": {
+		"message": "搜索已保存的学习内容"
+	},
+	"readerLearningFolder": {
+		"message": "学习笔记文件夹"
+	},
+	"readerLearningFolderDescription": {
+		"message": "保存词汇笔记时使用的文件夹。"
+	},
+	"readerLearningFolderPlaceholder": {
+		"message": "Language Learning"
+	},
+	"readerLearningVault": {
+		"message": "学习笔记仓库"
+	},
+	"readerLearningVaultDefault": {
+		"message": "第一个已配置仓库"
+	},
+	"readerLearningVaultDescription": {
+		"message": "保存词汇到 Obsidian 时使用的仓库。留空则使用第一个已配置仓库。"
+	},
+	"readerLoopNotSet": {
+		"message": "尚未设置 A–B 循环"
+	},
+	"readerPlaybackSpeed": {
+		"message": "速度"
+	},
+	"readerReadingDictionaryEmpty": {
+		"message": "还没有个人日语读音。在阅读器中修改读音后会自动保存到这里。"
+	},
+	"readerReadingDictionaryTab": {
+		"message": "日语读音"
+	},
+	"readerRemoveSelected": {
+		"message": "移除所选项"
+	},
+	"readerRemovedSelected": {
+		"message": "已移除所选项。"
+	},
+	"readerRepeatSentence": {
+		"message": "重复当前句"
+	},
+	"readerSaveSelectedToObsidian": {
+		"message": "将所选项保存到 Obsidian"
+	},
+	"readerSelectVocabulary": {
+		"message": "选择 $1"
+	},
+	"readerSetPointA": {
+		"message": "设为 A 点"
+	},
+	"readerSetPointB": {
+		"message": "设为 B 点"
+	},
+	"readerStudyMode": {
+		"message": "学习"
+	},
+	"readerStudyModeDescription": {
+		"message": "逐句重复、A–B 循环、自动暂停和播放速度"
+	},
+	"readerStudyShortcuts": {
+		"message": "快捷键：R 重复 · P 暂停 · [ ] 变速 · Shift+A/B 循环"
+	},
+	"readerVocabularyFilterAll": {
+		"message": "全部"
+	},
+	"readerVocabularyFilterSentences": {
+		"message": "句子"
+	},
+	"readerVocabularyFilterWords": {
+		"message": "单词"
+	},
+	"readerVocabularyTab": {
+		"message": "词汇"
 	},
 	"version": {
 		"message": "版本"

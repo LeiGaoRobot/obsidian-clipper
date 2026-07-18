@@ -6,7 +6,6 @@ import { generalSettings } from '../utils/storage-utils';
 import { updateUrl } from '../utils/routing';
 import { handleDragStart, handleDragOver, handleDrop, handleDragEnd } from '../utils/drag-and-drop';
 import { createElementWithClass, createElementWithHTML } from '../utils/dom-utils';
-import { updatePromptContextVisibility } from './interpreter-settings';
 import { showSettingsSection } from './settings-section-ui';
 import { updatePropertyType } from './property-types-manager';
 import { getMessage } from '../utils/i18n';
@@ -258,7 +257,6 @@ export function showTemplateEditor(template: Template | null): void {
 	}
 
 	updateUrl('templates', editingTemplate.id);
-	updatePromptContextVisibility();
 }
 
 function updateBehaviorFields(): void {

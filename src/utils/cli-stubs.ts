@@ -3,6 +3,7 @@
 // of browser-polyfill and storage-utils resolve without error.
 
 import type { Settings } from '../types/types';
+import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from './language-learning-defaults';
 
 export default {} as any;
 
@@ -41,6 +42,8 @@ export const generalSettings: Settings = {
 		highlightActiveLine: true,
 		transcriptLayout: 'reading',
 		learningResponseLanguage: '',
+		learningVault: '',
+		learningFolder: DEFAULT_LANGUAGE_LEARNING_FOLDER,
 		customCss: '',
 	},
 	stats: {

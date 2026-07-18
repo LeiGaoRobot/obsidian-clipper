@@ -16,6 +16,14 @@ import { raceWithRequestCancellation, throwIfRequestAborted } from './request-ca
 import { loadSettings, saveSettings } from './storage-utils';
 import { createSessionTranscriptCheckpointStore } from './transcript-checkpoint-storage';
 import { configuredLanguageLearningVocabulary } from './language-learning-vocabulary';
+import {
+	applyJapaneseReadingDictionary,
+	resolveJapaneseReadingsFromDictionary
+} from './japanese-reading-dictionary';
+import {
+	configuredJapaneseReadingDictionary,
+	listJapaneseReadingDictionary
+} from './japanese-reading-dictionary-storage';
 
 let languageLearningRequestSequence = 0;
 const GROK_JAPANESE_READING_PROMPT_CHAR_LIMIT = 1600;
@@ -184,6 +192,7 @@ async function loadConfiguredAssistant(japaneseReadingSegments?: string[]) {
 
 export const configuredLanguageLearning = {
 	...configuredLanguageLearningVocabulary,
+	...configuredJapaneseReadingDictionary,
 	async getExecutionInfo() {
 		const settings = await loadSettings();
 		const mode = settings.interpreterExecutionMode ?? 'api';
@@ -239,17 +248,48 @@ export const configuredLanguageLearning = {
 		onProgress?: TranscriptReadingProgressHandler,
 		signal?: AbortSignal
 	): Promise<TranscriptReadingSegments> {
+		const dictionary = await listJapaneseReadingDictionary();
+		const local = resolveJapaneseReadingsFromDictionary(segments, dictionary);
+		if (local.unresolvedIndexes.length === 0) {
+			onProgress?.({
+				completed: 1,
+				total: 1,
+				completedSegments: segments.length,
+				totalSegments: segments.length,
+				readings: cloneTranscriptReadings(local.readings)
+			});
+			return local.readings;
+		}
+		const unresolvedSegments = local.unresolvedIndexes.map(index => segments[index]);
 		const {
 			assistant,
 			japaneseReadingSessionKey,
 			japaneseReadingPromptCharLimit
-		} = await loadConfiguredAssistant(segments);
+		} = await loadConfiguredAssistant(unresolvedSegments);
+		const mergeReadings = (generated: TranscriptReadingSegments): TranscriptReadingSegments => {
+			const withOverrides = applyJapaneseReadingDictionary(generated, dictionary);
+			const merged = cloneTranscriptReadings(local.readings);
+			local.unresolvedIndexes.forEach((sourceIndex, generatedIndex) => {
+				merged[sourceIndex] = withOverrides[generatedIndex] || [];
+			});
+			return merged;
+		};
 		try {
-			const readings = await assistant.annotateJapaneseTranscript(segments, onProgress, signal);
-			if (japaneseReadingSessionKey && isCompleteTranscriptReadings(readings, segments)) {
+			const readings = await assistant.annotateJapaneseTranscript(
+				unresolvedSegments,
+				progress => onProgress?.({
+					...progress,
+					completedSegments: segments.length - unresolvedSegments.length + progress.completedSegments,
+					totalSegments: segments.length,
+					readings: mergeReadings(progress.readings)
+				}),
+				signal
+			);
+			const merged = mergeReadings(readings);
+			if (japaneseReadingSessionKey && isCompleteTranscriptReadings(merged, segments)) {
 				japaneseReadingPromptLimits.delete(japaneseReadingSessionKey);
 			}
-			return readings;
+			return merged;
 		} catch (error) {
 			if (
 				japaneseReadingSessionKey

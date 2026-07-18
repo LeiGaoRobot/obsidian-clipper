@@ -12,9 +12,9 @@ The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clippe
 ## Set up language learning
 
 1. Open Web Clipper **Settings**.
-2. In **Interpreter**, enable Interpreter and either configure at least one enabled provider and model, or choose a local **Grok CLI**/**Codex CLI** execution mode. For Native Messaging setup, see [[Interpret web pages#Local Grok and Codex CLI modes|Local Grok and Codex CLI modes]].
-3. For a local CLI, select **Check connection**. A successful check shows the Host protocol, detected CLI path, and the last run status without sending page content.
-4. In **Reader** → **Transcripts**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`.
+2. In **Interpreter**, open the language-learning setup assistant. Enable Interpreter and either configure at least one enabled provider and model, or choose a local **Grok CLI**/**Codex CLI** execution mode. For Native Messaging setup, see [[Interpret web pages#Local Grok and Codex CLI modes|Local Grok and Codex CLI modes]].
+3. Run the readiness check. For a local CLI, it verifies the Native Messaging Host and selected executable without sending page content. A successful check shows that language learning is ready.
+4. In **Reader** → **Transcripts**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`. You can also choose the Obsidian vault and folder used for learning notes.
 
 If the response-language field is empty, Web Clipper uses your browser language. The setting controls transcript translations, word and sentence explanations, and presets that use a response language.
 
@@ -53,13 +53,15 @@ Web Clipper translates the transcript in aligned batches. Each translation remai
 
 After translations load, select **Bilingual subtitles** again to hide or show them without another model request.
 
+Open **Study** for local playback tools that do not use AI: repeat the active sentence, set an A–B loop, pause after each sentence, or change playback speed. Keyboard shortcuts are `R` for sentence repeat, `P` for auto-pause, `[` and `]` for speed, and `Shift+A`/`Shift+B` for loop points. Existing playback shortcuts such as Space, K, J, and L continue to work.
+
 Select **Edit translations** to correct a generated line in place. Corrections are saved to the same session checkpoint and do not make a model request.
 
 For Japanese transcripts, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. Select or press Enter on an individual ruby annotation to hide it for recall practice, then activate it again to reveal the answer. The control is hidden when the transcript does not appear to contain Japanese kanji.
 
 Long transcripts are processed in sequential batches, with smaller batches in local CLI modes so progress updates more often and individual requests are less likely to time out. Progress counts completed subtitle segments rather than model batches. If a later batch fails or is cancelled, completed segments remain checkpointed; selecting **Continue remaining** or **Japanese readings** again sends only missing segments. After a CLI timeout, the next explicit retry also uses a smaller batch size. Web Clipper never starts a paid retry automatically.
 
-After readings load—even for **Current segment** or **Next 5 minutes**—select **Edit readings**, edit a reading directly above its kanji, then select **Done editing**. Select **Regenerate readings** when the model chose the wrong reading; this explicitly starts a fresh request for the selected range while preserving readings outside that range. Corrections are stored with the transcript checkpoint.
+After readings load—even for **Current segment** or **Next 5 minutes**—select **Edit readings**, edit a reading directly above its kanji, then select **Done editing**. Select **Regenerate readings** when the model chose the wrong reading; this explicitly starts a fresh request for the selected range while preserving readings outside that range. Corrections are stored with the transcript checkpoint and in your persistent personal reading dictionary. Known words are reused in later transcripts, and a segment whose kanji are all covered by the dictionary is annotated locally without an AI request.
 
 > [!note] Session checkpoints
 > Transcript translations, Japanese readings, and manual corrections are stored in extension session storage, not in the webpage. They survive Reader and service-worker reloads in Chromium but can be cleared when the browser session ends. Browsers without extension session storage use an in-memory fallback. These results are not automatically added to the clipping.
@@ -75,7 +77,9 @@ Double-click a word in a YouTube transcript. Web Clipper opens an explanation ca
 
 Double-clicking a word does not intentionally seek playback. The Reader delays or restores the normal single-click seek when it detects a double-click.
 
-From the explanation card, you can **Favorite** the item, **Copy** the text, or **Add to Obsidian**. Favorites are stored locally in the extension and appear under **Saved vocabulary**. Saving to Obsidian creates a note in the `Language Learning` folder of the first configured vault; it does not make another AI request.
+From the explanation card, you can **Favorite** the item, **Copy** the text, or **Add to Obsidian**. Favorites are stored locally in the extension and appear in the **Learning Center**. Saving to Obsidian uses the vault and folder selected in Reader settings and does not make another AI request.
+
+The Learning Center supports search, word/sentence filters, multi-select removal or Obsidian export, JSON import/export, and clear-all. Its **Japanese readings** tab lets you add, remove, import, or export personal readings. Export copies versioned JSON to the clipboard; import reads a JSON file. These local management actions do not call a model.
 
 ## Explain a phrase or sentence
 
@@ -131,8 +135,8 @@ Check the provider URL, API key, enabled model, quota, local-model server, or Na
 - Transcript checkpoints are session-scoped rather than permanent study history. Saved vocabulary is persistent local extension data.
 - AI output quality and language accuracy depend on the selected model.
 - Japanese names and context-dependent kanji readings may need manual correction.
-- Saved vocabulary is a simple list and does not implement spaced repetition or flashcard scheduling.
-- **Add to Obsidian** uses the first configured vault and the fixed `Language Learning` folder.
+- The Learning Center does not implement spaced repetition or flashcard scheduling.
+- Transcript checkpoints remain session-scoped even though vocabulary and personal Japanese readings are persistent local data.
 
 ## Developer reference
 

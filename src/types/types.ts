@@ -72,6 +72,8 @@ export interface ReaderSettings {
 	highlightActiveLine: boolean;
 	transcriptLayout: TranscriptLayoutMode;
 	learningResponseLanguage: string;
+	learningVault?: string;
+	learningFolder?: string;
 	customCss: string;
 }
 

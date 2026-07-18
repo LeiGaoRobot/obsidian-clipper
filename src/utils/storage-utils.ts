@@ -2,6 +2,7 @@ import browser from './browser-polyfill';
 import { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating, InterpreterExecutionMode, TranscriptLayoutMode } from '../types/types';
 import { debugLog } from './debug';
 import { copyToClipboard } from 'core/popup';
+import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from './language-learning-defaults';
 
 export type { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating };
 
@@ -40,6 +41,8 @@ export let generalSettings: Settings = {
 		highlightActiveLine: true,
 		transcriptLayout: 'reading',
 		learningResponseLanguage: '',
+		learningVault: '',
+		learningFolder: DEFAULT_LANGUAGE_LEARNING_FOLDER,
 		customCss: ''
 	},
 	stats: {
@@ -93,6 +96,8 @@ interface StorageData {
 		highlightActiveLine?: boolean;
 		transcriptLayout?: TranscriptLayoutMode;
 		learningResponseLanguage?: string;
+		learningVault?: string;
+		learningFolder?: string;
 		customCss?: string;
 	};
 	interpreter_settings?: {
@@ -158,6 +163,8 @@ export async function loadSettings(): Promise<Settings> {
 			highlightActiveLine: true,
 			transcriptLayout: 'reading',
 			learningResponseLanguage: '',
+			learningVault: '',
+			learningFolder: DEFAULT_LANGUAGE_LEARNING_FOLDER,
 			customCss: ''
 		},
 		stats: {
@@ -228,6 +235,8 @@ export async function loadSettings(): Promise<Settings> {
 				? data.reader_settings.transcriptLayout
 				: defaultSettings.readerSettings.transcriptLayout,
 			learningResponseLanguage: data.reader_settings?.learningResponseLanguage ?? defaultSettings.readerSettings.learningResponseLanguage,
+			learningVault: data.reader_settings?.learningVault ?? defaultSettings.readerSettings.learningVault,
+			learningFolder: data.reader_settings?.learningFolder ?? defaultSettings.readerSettings.learningFolder,
 			customCss: data.reader_settings?.customCss ?? defaultSettings.readerSettings.customCss
 		},
 		stats: data.stats || defaultSettings.stats,
@@ -288,6 +297,8 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 			highlightActiveLine: generalSettings.readerSettings.highlightActiveLine,
 			transcriptLayout: generalSettings.readerSettings.transcriptLayout,
 			learningResponseLanguage: generalSettings.readerSettings.learningResponseLanguage,
+			learningVault: generalSettings.readerSettings.learningVault ?? '',
+			learningFolder: generalSettings.readerSettings.learningFolder ?? DEFAULT_LANGUAGE_LEARNING_FOLDER,
 			customCss: generalSettings.readerSettings.customCss
 		},
 		stats: generalSettings.stats

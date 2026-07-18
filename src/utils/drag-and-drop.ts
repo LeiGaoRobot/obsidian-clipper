@@ -3,7 +3,6 @@ import { templates, getTemplates, saveTemplateSettings, getEditingTemplateIndex 
 import { updateTemplateList } from '../managers/template-ui';
 import { updateVaultList } from '../managers/general-settings';
 import { generalSettings, saveSettings } from './storage-utils';
-import { initializeModelList } from '../managers/interpreter-settings';
 import { initializeIcons } from '../icons/icons';
 
 let draggedElement: HTMLElement | null = null;
@@ -168,11 +167,13 @@ function handleModelReorder(newIndex: number): void {
 		const [movedModel] = generalSettings.models.splice(oldIndex, 1);
 		generalSettings.models.splice(newIndex, 0, movedModel);
 		saveSettings();
-		initializeModelList();
-		const modelList = document.getElementById('model-list');
-		if (modelList) {
-			initializeIcons(modelList);
-		}
+		void import(/* webpackChunkName: 'settings-interpreter' */ '../managers/interpreter-settings').then(({ initializeModelList }) => {
+			initializeModelList();
+			const modelList = document.getElementById('model-list');
+			if (modelList) {
+				initializeIcons(modelList);
+			}
+		});
 	}
 }
 

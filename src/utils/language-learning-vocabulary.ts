@@ -3,6 +3,7 @@ import type { LearningSelection, LearningVocabularyEntry } from './language-lear
 import { copyToClipboard } from './clipboard-utils';
 import { saveToObsidian } from './obsidian-note-creator';
 import { loadSettings } from './storage-utils';
+import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from './language-learning-defaults';
 
 const MAX_VOCABULARY_ENTRIES = 500;
 const VOCABULARY_STORAGE_KEY = 'languageLearningVocabularyV1';
@@ -89,6 +90,30 @@ export const configuredLanguageLearningVocabulary = {
 		await storeVocabulary(entries.filter(entry => entry.id !== id));
 	},
 
+	async removeVocabularyMany(ids: string[]): Promise<void> {
+		const removed = new Set(ids);
+		await storeVocabulary((await loadVocabulary()).filter(entry => !removed.has(entry.id)));
+	},
+
+	async clearVocabulary(): Promise<void> {
+		await storeVocabulary([]);
+	},
+
+	async exportVocabulary(): Promise<string> {
+		return JSON.stringify({ version: 1, entries: await loadVocabulary() }, null, 2);
+	},
+
+	async importVocabulary(json: string): Promise<number> {
+		const parsed = JSON.parse(json) as { entries?: unknown } | unknown[];
+		const candidates = Array.isArray(parsed) ? parsed : parsed.entries;
+		if (!Array.isArray(candidates)) throw new Error('Invalid vocabulary file.');
+		const imported = candidates.filter(isVocabularyEntry);
+		const byId = new Map((await loadVocabulary()).map(entry => [entry.id, entry]));
+		for (const entry of imported) byId.set(entry.id, entry);
+		await storeVocabulary([...byId.values()]);
+		return imported.length;
+	},
+
 	async copyLearningText(text: string): Promise<boolean> {
 		return copyToClipboard(text);
 	},
@@ -108,8 +133,8 @@ export const configuredLanguageLearningVocabulary = {
 		await saveToObsidian(
 			content,
 			selection.text,
-			'Language Learning',
-			settings.vaults[0] || '',
+				settings.readerSettings.learningFolder?.trim() || DEFAULT_LANGUAGE_LEARNING_FOLDER,
+				settings.readerSettings.learningVault?.trim() || settings.vaults[0] || '',
 			'create'
 		);
 	}

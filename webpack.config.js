@@ -35,6 +35,23 @@ module.exports = (env, argv) => {
 
 	const outputDir = getOutputDir();
 	const browserName = isFirefox ? 'firefox' : (isSafari ? 'safari' : 'chrome');
+	const copyPatterns = [
+		{
+			from: isFirefox ? "src/manifest.firefox.json" :
+				  (isSafari ? "src/manifest.safari.json" : "src/manifest.chrome.json"),
+			to: "manifest.json"
+		},
+		{ from: "src/popup.html", to: "popup.html" },
+		{ from: "src/side-panel.html", to: "side-panel.html" },
+		{ from: "src/settings.html", to: "settings.html" },
+		{ from: "src/highlights.html", to: "highlights.html" },
+		{ from: "src/reader.html", to: "reader.html" },
+		{ from: "src/icons", to: "icons" },
+		{ from: "node_modules/webextension-polyfill/dist/browser-polyfill.min.js", to: "browser-polyfill.min.js" },
+		{ from: "src/flatten-shadow-dom.js", to: "flatten-shadow-dom.js" },
+		{ from: 'src/_locales', to: '_locales' },
+		...(!isProduction ? [{ from: 'src/previews/transcript-layout-preview.html', to: 'transcript-layout-preview.html' }] : [])
+	];
 
 	const mainConfig = {
 		mode: argv.mode,
@@ -48,11 +65,13 @@ module.exports = (env, argv) => {
 			style: './src/style.scss',
 			highlighter: './src/highlighter.scss',
 			reader: './src/reader.scss',
-			'reader-script': './src/reader-script.ts'
+			'reader-script': './src/reader-script.ts',
+			...(!isProduction ? { 'transcript-layout-preview': './src/previews/transcript-layout-preview.ts' } : {})
 		},
 		output: {
 			path: path.resolve(__dirname, outputDir),
 			filename: '[name].js',
+			chunkFilename: 'chunks/[name].js',
 			module: false,
 		},
 		devtool: isProduction ? false : 'source-map',
@@ -137,25 +156,7 @@ module.exports = (env, argv) => {
 		},
 		plugins: [
 			new CopyPlugin({
-				patterns: [
-					{ 
-						from: isFirefox ? "src/manifest.firefox.json" : 
-							  (isSafari ? "src/manifest.safari.json" : "src/manifest.chrome.json"), 
-						to: "manifest.json" 
-					},
-					{ from: "src/popup.html", to: "popup.html" },
-					{ from: "src/side-panel.html", to: "side-panel.html" },
-					{ from: "src/settings.html", to: "settings.html" },
-					{ from: "src/highlights.html", to: "highlights.html" },
-					{ from: "src/reader.html", to: "reader.html" },
-					{ from: "src/icons", to: "icons" },
-					{ from: "node_modules/webextension-polyfill/dist/browser-polyfill.min.js", to: "browser-polyfill.min.js" },
-					{ from: "src/flatten-shadow-dom.js", to: "flatten-shadow-dom.js" },
-					{
-						from: 'src/_locales',
-						to: '_locales'
-					}
-				],
+				patterns: copyPatterns,
 			}),
 			new MiniCssExtractPlugin({
 				filename: '[name].css'

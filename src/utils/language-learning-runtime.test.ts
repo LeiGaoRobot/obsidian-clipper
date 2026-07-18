@@ -196,6 +196,21 @@ describe('Configured language learning runtime', () => {
 		}));
 	});
 
+	test('reuses personal Japanese readings without sending an AI request', async () => {
+		await configuredLanguageLearning.saveJapaneseReadingOverride('日本語', 'にほんご');
+
+		const readings = await configuredLanguageLearning.annotateJapaneseTranscript(['日本語です。']);
+
+		expect(readings).toEqual([[
+			{ text: '日本語', reading: 'にほんご' },
+			{ text: 'です。', reading: '' }
+		]]);
+		expect(mocks.sendMessage).not.toHaveBeenCalled();
+		expect(await configuredLanguageLearning.listJapaneseReadingDictionary()).toEqual([
+			expect.objectContaining({ surface: '日本語', reading: 'にほんご' })
+		]);
+	});
+
 	test('stores vocabulary locally and supports copy and Obsidian note actions', async () => {
 		const selection = { kind: 'word' as const, text: 'encounter', context: 'An encounter.' };
 		mocks.loadSettings.mockResolvedValue({ ...settings, vaults: ['Study'] });
@@ -221,6 +236,19 @@ describe('Configured language learning runtime', () => {
 		);
 		await configuredLanguageLearning.removeVocabulary(entries[0].id);
 		await expect(configuredLanguageLearning.listVocabulary()).resolves.toEqual([]);
+	});
+
+	test('exports, clears, and imports saved vocabulary', async () => {
+		const selection = { kind: 'word' as const, text: 'encounter', context: 'An encounter.' };
+		await configuredLanguageLearning.toggleVocabularyFavorite(selection, '相遇');
+
+		const exported = await configuredLanguageLearning.exportVocabulary();
+		await configuredLanguageLearning.clearVocabulary();
+		expect(await configuredLanguageLearning.listVocabulary()).toEqual([]);
+		await expect(configuredLanguageLearning.importVocabulary(exported)).resolves.toBe(1);
+		expect(await configuredLanguageLearning.listVocabulary()).toEqual([
+			expect.objectContaining({ text: 'encounter', explanation: '相遇' })
+		]);
 	});
 
 	test('sends model work through the extension background', async () => {

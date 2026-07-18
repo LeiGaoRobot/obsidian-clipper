@@ -1,6 +1,4 @@
 import { updateUrl } from '../utils/routing';
-import { generalSettings } from '../utils/storage-utils';
-import { updatePromptContextVisibility } from './interpreter-settings';
 import { initializePropertyTypesManager } from './property-types-manager';
 
 export type SettingsSection = 'general' | 'properties' | 'highlighter' | 'interpreter' | 'reader' | 'templates';
@@ -35,7 +33,7 @@ export function showSettingsSection(section: SettingsSection, templateId?: strin
 		}
 	}
 
-	updatePromptContextVisibility();
+	document.dispatchEvent(new CustomEvent('settings-section-change', { detail: { section } }));
 }
 
 function updateSidebarActiveState(activeSection: string): void {

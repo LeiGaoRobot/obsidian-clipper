@@ -154,6 +154,8 @@ describe('Transcript language learning controls', () => {
 			.mockResolvedValueOnce([[{ text: '日本語', reading: 'にっぽんご' }]]);
 		const saveJapaneseReadings = vi.fn().mockResolvedValue(undefined);
 		const clearJapaneseReadings = vi.fn().mockResolvedValue(undefined);
+		const saveJapaneseReadingOverride = vi.fn().mockResolvedValue(undefined);
+		const removeJapaneseReadingOverride = vi.fn().mockResolvedValue(undefined);
 		const controller = wireTranscriptLanguageLearning({
 			doc: document,
 			transcript,
@@ -164,7 +166,9 @@ describe('Transcript language learning controls', () => {
 				explainSelection: vi.fn(),
 				annotateJapaneseTranscript,
 				saveJapaneseReadings,
-				clearJapaneseReadings
+				clearJapaneseReadings,
+				saveJapaneseReadingOverride,
+				removeJapaneseReadingOverride
 			},
 			cancelPendingSeek: vi.fn()
 		});
@@ -185,6 +189,11 @@ describe('Transcript language learning controls', () => {
 			['日本語'],
 			[[{ text: '日本語', reading: 'にほんごう' }]]
 		);
+		expect(saveJapaneseReadingOverride).toHaveBeenCalledWith('日本語', 'にほんごう');
+
+		reading.textContent = '';
+		reading.dispatchEvent(new Event('input', { bubbles: true }));
+		expect(removeJapaneseReadingOverride).toHaveBeenCalledWith('日本語');
 
 		await controller.regenerateJapaneseReadings();
 		expect(clearJapaneseReadings).toHaveBeenCalledWith(['日本語']);

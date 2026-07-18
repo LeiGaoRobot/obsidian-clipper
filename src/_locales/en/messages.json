@@ -1,4 +1,7 @@
 {
+	"add": {
+		"message": "Add"
+	},
 	"activity": {
 		"message": "Activity"
 	},
@@ -1326,6 +1329,165 @@
 				"content": "<strong>"
 			}
 		}
+	},
+	"languageLearningReadinessApiMissing": {
+		"message": "Add and enable an API model"
+	},
+	"languageLearningReadinessApiConfigMissing": {
+		"message": "Complete the selected model provider and API key"
+	},
+	"languageLearningReadinessApiReady": {
+		"message": "API model is ready"
+	},
+	"languageLearningReadinessBrowserLanguage": {
+		"message": "Response language uses your browser language"
+	},
+	"languageLearningReadinessCliFailed": {
+		"message": "Local CLI connection needs attention"
+	},
+	"languageLearningReadinessCliReady": {
+		"message": "Local CLI connection is ready"
+	},
+	"languageLearningReadinessCliUnchecked": {
+		"message": "Check the selected local CLI connection"
+	},
+	"languageLearningReadinessDescription": {
+		"message": "Complete these checks before using translation, explanations, or Japanese readings in Reader."
+	},
+	"languageLearningReadinessEnable": {
+		"message": "Enable Interpreter"
+	},
+	"languageLearningReadinessEnabled": {
+		"message": "Interpreter is enabled"
+	},
+	"languageLearningReadinessIncomplete": {
+		"message": "Complete the items above, then run the check again."
+	},
+	"languageLearningReadinessLanguage": {
+		"message": "Response language: $1"
+	},
+	"languageLearningReadinessReaderSettings": {
+		"message": "Reader settings"
+	},
+	"languageLearningReadinessReady": {
+		"message": "Language learning is ready"
+	},
+	"languageLearningReadinessReadyDescription": {
+		"message": "You can use language-learning actions directly in Reader."
+	},
+	"languageLearningReadinessReview": {
+		"message": "Review setup"
+	},
+	"languageLearningReadinessTitle": {
+		"message": "Set up language learning"
+	},
+	"readerAutoPause": {
+		"message": "Pause after each sentence"
+	},
+	"readerClearAll": {
+		"message": "Clear all"
+	},
+	"readerClearDictionaryConfirm": {
+		"message": "Clear every personal Japanese reading?"
+	},
+	"readerClearLoop": {
+		"message": "Clear A-B"
+	},
+	"readerClearVocabularyConfirm": {
+		"message": "Clear all saved vocabulary?"
+	},
+	"readerCopiedExport": {
+		"message": "Export JSON copied to the clipboard."
+	},
+	"readerDictionaryReading": {
+		"message": "Reading, e.g. かいわ"
+	},
+	"readerDictionarySurface": {
+		"message": "Japanese word, e.g. 会話"
+	},
+	"readerImportedCount": {
+		"message": "Imported $1 items."
+	},
+	"readerLearningCenter": {
+		"message": "Learning Center"
+	},
+	"readerLearningCenterCount": {
+		"message": "$1 of $2 items"
+	},
+	"readerLearningCenterSearch": {
+		"message": "Search saved learning items"
+	},
+	"readerLearningFolder": {
+		"message": "Learning note folder"
+	},
+	"readerLearningFolderDescription": {
+		"message": "Folder used for vocabulary notes."
+	},
+	"readerLearningFolderPlaceholder": {
+		"message": "Language Learning"
+	},
+	"readerLearningVault": {
+		"message": "Learning vault"
+	},
+	"readerLearningVaultDefault": {
+		"message": "First configured vault"
+	},
+	"readerLearningVaultDescription": {
+		"message": "Vault used when saving vocabulary to Obsidian. Leave empty to use the first configured vault."
+	},
+	"readerLoopNotSet": {
+		"message": "A-B loop is not set"
+	},
+	"readerPlaybackSpeed": {
+		"message": "Speed"
+	},
+	"readerReadingDictionaryEmpty": {
+		"message": "No personal Japanese readings yet. Editing a reading in Reader saves it here."
+	},
+	"readerReadingDictionaryTab": {
+		"message": "Japanese readings"
+	},
+	"readerRemoveSelected": {
+		"message": "Remove selected"
+	},
+	"readerRemovedSelected": {
+		"message": "Selected items removed."
+	},
+	"readerRepeatSentence": {
+		"message": "Repeat current sentence"
+	},
+	"readerSaveSelectedToObsidian": {
+		"message": "Save selected to Obsidian"
+	},
+	"readerSelectVocabulary": {
+		"message": "Select $1"
+	},
+	"readerSetPointA": {
+		"message": "Set A"
+	},
+	"readerSetPointB": {
+		"message": "Set B"
+	},
+	"readerStudyMode": {
+		"message": "Study"
+	},
+	"readerStudyModeDescription": {
+		"message": "Sentence repeat, A-B loop, auto-pause, and playback speed"
+	},
+	"readerStudyShortcuts": {
+		"message": "Shortcuts: R repeat · P pause · [ ] speed · Shift+A/B loop"
+	},
+	"readerVocabularyFilterAll": {
+		"message": "All"
+	},
+	"readerVocabularyFilterSentences": {
+		"message": "Sentences"
+	},
+	"readerVocabularyFilterWords": {
+		"message": "Words"
+	},
+	"readerVocabularyTab": {
+		"message": "Vocabulary"
 	},
 	"version": {
 		"message": "Version"

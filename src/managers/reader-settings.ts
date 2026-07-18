@@ -5,6 +5,7 @@ import { initializeIcons } from '../icons/icons';
 import { debounce } from '../utils/debounce';
 import { getMessage } from '../utils/i18n';
 import { getFontCss, isFontAvailable as probeFontAvailable, sanitizeFontName, SANS_STACK, SERIF_STACK } from '../utils/font-utils';
+import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from '../utils/language-learning-defaults';
 
 const THEMES: Array<{ id: string; name: string }> = [
 	{ id: 'default', name: '' },
@@ -378,6 +379,39 @@ export async function initializeReaderSettings() {
 					...generalSettings.readerSettings,
 					learningResponseLanguage: learningResponseLanguageInput.value.trim()
 				}
+			});
+		});
+	}
+
+	const learningVaultSelect = document.getElementById('reader-learning-vault') as HTMLSelectElement;
+	if (learningVaultSelect) {
+		learningVaultSelect.replaceChildren();
+		const defaultOption = document.createElement('option');
+		defaultOption.value = '';
+		defaultOption.textContent = getMessage('readerLearningVaultDefault');
+		learningVaultSelect.appendChild(defaultOption);
+		for (const vault of generalSettings.vaults) {
+			const option = document.createElement('option');
+			option.value = vault;
+			option.textContent = vault;
+			learningVaultSelect.appendChild(option);
+		}
+		learningVaultSelect.value = generalSettings.readerSettings.learningVault ?? '';
+		learningVaultSelect.addEventListener('change', () => {
+			saveSettings({
+				...generalSettings,
+				readerSettings: { ...generalSettings.readerSettings, learningVault: learningVaultSelect.value }
+			});
+		});
+	}
+
+	const learningFolderInput = document.getElementById('reader-learning-folder') as HTMLInputElement;
+	if (learningFolderInput) {
+		learningFolderInput.value = generalSettings.readerSettings.learningFolder ?? DEFAULT_LANGUAGE_LEARNING_FOLDER;
+		learningFolderInput.addEventListener('change', () => {
+			saveSettings({
+				...generalSettings,
+				readerSettings: { ...generalSettings.readerSettings, learningFolder: learningFolderInput.value.trim() }
 			});
 		});
 	}

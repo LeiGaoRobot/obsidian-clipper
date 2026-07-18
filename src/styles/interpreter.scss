@@ -237,7 +237,7 @@
 
 #interpreter-section {
 	&.is-disabled {
-		form > div:not(:first-child) {
+		form > div:not(:first-of-type) {
 			opacity: 0.5;
 			pointer-events: none;
 		}
