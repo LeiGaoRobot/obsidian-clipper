@@ -148,15 +148,26 @@ describe('Transcript language learning controls', () => {
 	test('shows progress while generating readings in multiple batches', async () => {
 		const { controls, transcript, segments } = createTranscript(['私は日本語を勉強します。']);
 		let readingButton: HTMLButtonElement;
-		const progressLabels: string[] = [];
+		const progressStates: Array<{ button: string; status: string }> = [];
 		const annotateJapaneseTranscript = vi.fn(async (
 			_segments: string[],
-			onProgress?: (progress: { completed: number; total: number }) => void
+			onProgress?: (progress: {
+				completed: number;
+				total: number;
+				completedSegments: number;
+				totalSegments: number;
+			}) => void
 		) => {
-			onProgress?.({ completed: 0, total: 2 });
-			progressLabels.push(readingButton.textContent || '');
-			onProgress?.({ completed: 1, total: 2 });
-			progressLabels.push(readingButton.textContent || '');
+			onProgress?.({ completed: 0, total: 2, completedSegments: 0, totalSegments: 3 });
+			progressStates.push({
+				button: readingButton.textContent || '',
+				status: controls.querySelector('.player-learning-progress')?.textContent || ''
+			});
+			onProgress?.({ completed: 1, total: 2, completedSegments: 2, totalSegments: 3 });
+			progressStates.push({
+				button: readingButton.textContent || '',
+				status: controls.querySelector('.player-learning-progress')?.textContent || ''
+			});
 			return [[
 				{ text: '私', reading: 'わたし' },
 				{ text: 'は', reading: '' },
@@ -182,9 +193,9 @@ describe('Transcript language learning controls', () => {
 
 		await controller.toggleJapaneseReadings();
 
-		expect(progressLabels).toEqual([
-			'readerJapaneseReadingsProgress:0,2',
-			'readerJapaneseReadingsProgress:1,2'
+		expect(progressStates).toEqual([
+			{ button: 'thinking', status: 'readerJapaneseReadingsProgress:0,3' },
+			{ button: 'thinking', status: 'readerJapaneseReadingsProgress:2,3' }
 		]);
 	});
 
@@ -441,6 +452,28 @@ describe('Transcript language learning controls', () => {
 		const sentence = getTranscriptLearningSelection(document, transcript, segments, texts);
 		expect(sentence?.kind).toBe('sentence');
 		expect(sentence?.context).toBe('Hello world. How are you?');
+
+		const japaneseTexts = ['日本語を勉強します'];
+		const japaneseTranscript = createTranscript(japaneseTexts);
+		const japaneseText = japaneseTranscript.segments[0]
+			.querySelector('.transcript-segment-text')?.firstChild;
+		if (!japaneseText) throw new Error('Missing Japanese transcript text');
+
+		selectText(japaneseText, 0, japaneseText, 3);
+		expect(getTranscriptLearningSelection(
+			document,
+			japaneseTranscript.transcript,
+			japaneseTranscript.segments,
+			japaneseTexts
+		)?.kind).toBe('word');
+
+		selectText(japaneseText, 0, japaneseText, japaneseText.textContent?.length || 0);
+		expect(getTranscriptLearningSelection(
+			document,
+			japaneseTranscript.transcript,
+			japaneseTranscript.segments,
+			japaneseTexts
+		)?.kind).toBe('sentence');
 	});
 
 	test('caches repeated explanations for the same selection and context', async () => {
@@ -466,6 +499,48 @@ describe('Transcript language learning controls', () => {
 		expect(explainSelection).toHaveBeenCalledOnce();
 		expect(document.querySelector('.language-learning-card-body')?.textContent)
 			.toBe('hello: a greeting');
+	});
+
+	test('does not reuse an explanation cached for another response language', async () => {
+		const { controls, transcript, segments } = createTranscript();
+		const selection = { kind: 'word' as const, text: 'Hello', context: 'Hello world.' };
+		const explainInEnglish = vi.fn().mockResolvedValue('hello: a greeting');
+		const englishController = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			responseLanguage: 'English',
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection: explainInEnglish,
+				annotateJapaneseTranscript: vi.fn()
+			},
+			cancelPendingSeek: vi.fn()
+		});
+		await englishController.explain(selection);
+
+		const explainInChinese = vi.fn().mockResolvedValue('你好：问候语');
+		const chineseController = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			responseLanguage: 'Simplified Chinese',
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection: explainInChinese,
+				annotateJapaneseTranscript: vi.fn()
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		await chineseController.explain(selection);
+
+		expect(explainInEnglish).toHaveBeenCalledOnce();
+		expect(explainInChinese).toHaveBeenCalledOnce();
+		expect(document.querySelector('.language-learning-card-body')?.textContent)
+			.toBe('你好：问候语');
 	});
 
 	test('ignores synthetic page events that could trigger paid AI requests', async () => {

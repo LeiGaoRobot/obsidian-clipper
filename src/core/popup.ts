@@ -24,7 +24,10 @@ import { saveFile } from '../utils/file-utils';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
 import { configuredLanguageLearning } from '../utils/language-learning-runtime';
-import { initializeLanguageLearningPopup } from '../utils/language-learning-popup';
+import {
+	initializeLanguageLearningPopup,
+	isLanguageLearningPopupAvailable
+} from '../utils/language-learning-popup';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -609,10 +612,8 @@ async function initializeUI() {
 }
 
 function initializeLanguageLearningTools(): void {
-	const hasConfiguredModel = generalSettings.interpreterEnabled
-		&& generalSettings.models.some(model => model.enabled);
 	initializeLanguageLearningPopup({
-		enabled: hasConfiguredModel,
+		enabled: isLanguageLearningPopupAvailable(generalSettings),
 		transformContent: configuredLanguageLearning.transformContent,
 		getMessage
 	});

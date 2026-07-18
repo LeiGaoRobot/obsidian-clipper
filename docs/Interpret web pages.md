@@ -46,7 +46,7 @@ On Chrome, Interpreter can send the page context to a locally installed and auth
 3. Run `npm run install:native-host -- --extension-id <your-chrome-extension-id>` from the repository root.
 4. In **Settings → Interpreter**, choose **Grok CLI** or **Codex CLI** under **Execution mode**.
 
-The installer records the executable paths it finds for `grok` and `codex`. The CLI request runs in a read-only/ephemeral mode and returns one JSON response for all prompt variables. The Native Messaging installer currently supports macOS and Linux; install and authenticate the selected CLI before using it. This action sends the page context to the local CLI and may use that CLI's account or subscription.
+The installer records the executable paths it finds for `grok` and `codex`. Rerun the installer after updating the repository so the installed host stays in sync. The CLI request runs in a read-only/ephemeral mode and returns one JSON response for all prompt variables. Grok runs as a single-turn transformation without built-in tools, web search, or cross-session memory. The Native Messaging installer currently supports macOS and Linux; install and authenticate the selected CLI before using it. This action sends the page context to the local CLI and may use that CLI's account or subscription.
 
 ## How it works
 

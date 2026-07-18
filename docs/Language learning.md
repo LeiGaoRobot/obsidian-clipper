@@ -50,7 +50,7 @@ Web Clipper translates the transcript in aligned batches. Each translation remai
 
 After translations load, select **Bilingual subtitles** again to hide or show them without another model request.
 
-For Japanese transcripts, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. The control is hidden when the transcript does not appear to contain Japanese kanji. After readings load, select **Edit readings**, then edit a reading directly above its kanji and select **Done editing**. Select **Regenerate readings** when the model chose the wrong reading; this explicitly starts another AI request. A successful result, including your corrections, is reused for the same transcript during the current Reader session.
+For Japanese transcripts, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. The control is hidden when the transcript does not appear to contain Japanese kanji. Long transcripts are processed in sequential batches, with smaller batches in local CLI modes so progress updates more often and individual requests are less likely to time out. Progress counts completed subtitle segments rather than model batches. If a later batch fails or is cancelled, completed segments are retained for the current extension session; selecting **Retry** or **Japanese readings** again sends only the missing segments. After readings load, select **Edit readings**, then edit a reading directly above its kanji and select **Done editing**. Select **Regenerate readings** when the model chose the wrong reading; this explicitly starts a fresh AI request. A successful result, including your corrections, is reused for the same transcript during the current Reader session.
 
 > [!note] Temporary Reader content
 > Bilingual transcript lines and Japanese readings are displayed for the current Reader session. They are not persisted across a reload and are not automatically added to the clipping. Manual reading corrections are session-local too.
@@ -70,7 +70,7 @@ Double-clicking a word does not intentionally seek playback. The Reader delays o
 
 Select a phrase, sentence, or text spanning adjacent transcript segments. Then select **Explain with AI** next to the selection.
 
-The explanation includes a natural translation, the grammar structure, and important expressions in context. The same selection kind, text, and context are cached for the current Reader session, so reopening the same explanation does not create another model request. New explanations can be cancelled and failed explanations can be retried from the card.
+The explanation includes a natural translation, the grammar structure, and important expressions in context. The same response language, selection kind, text, and context are cached for the current Reader session, so reopening the same explanation does not create another model request. Changing the response language creates a new explanation instead of reusing one in the previous language. New explanations can be cancelled and failed explanations can be retried from the card.
 
 The selection action also works with touch selection on mobile browsers that support Reader transcripts.
 
@@ -104,6 +104,10 @@ The controls are available only when Reader detects both a supported YouTube pla
 ### A translation is incomplete
 
 Retry the translation. If the problem continues, choose a model with a larger context window or process a shorter video.
+
+### Japanese readings time out in CLI mode
+
+Rebuild and reload the Chromium extension, then rerun the Native Messaging installer so the installed host matches the extension source. Confirm the selected CLI is authenticated. Grok reading requests run as single-turn transformations without built-in tools, web search, or cross-session memory; long transcripts still create multiple sequential requests. After a timeout, **Retry** resumes from the last completed subtitle segment in the current extension session.
 
 ### The provider returns an error
 

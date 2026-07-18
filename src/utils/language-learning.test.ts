@@ -2,6 +2,9 @@ import { describe, expect, test, vi } from 'vitest';
 import {
 	createLanguageLearningAssistant,
 	LanguageLearningRequest,
+	TranscriptReadingCheckpointStore,
+	TranscriptReadingProgress,
+	TranscriptReadingSegments,
 	replaceTextSelection
 } from './language-learning';
 import { RequestCancelledError } from './request-cancellation';
@@ -172,27 +175,83 @@ describe('Language learning assistant', () => {
 				'Annotate each Japanese transcript segment with hiragana readings for every kanji.',
 				'Preserve every segment exactly and do not merge or omit text.',
 				'Return exactly one line per segment using: ID|||JSON',
-				'The JSON must be an array of objects with "text" and "reading" fields.',
-				'Concatenate all "text" fields to reproduce the source exactly.',
+				'The JSON must be an array of [text, reading] tuples.',
+				'Concatenate the first value of every tuple to reproduce the source exactly.',
 				'Use an empty reading for kana, Latin letters, numbers, spaces, and punctuation.',
-				'Split mixed kanji and kana into separate objects so every kanji has its own reading.',
+				'Split mixed kanji and kana into separate tuples so every kanji has its own reading.',
 				'0|||私は日本語を勉強します。'
 			].join('\n')
 		});
 	});
 
+	test('uses compact tuples for Japanese reading responses', async () => {
+		let request: LanguageLearningRequest | undefined;
+		const assistant = createLanguageLearningAssistant(async (nextRequest) => {
+			request = nextRequest;
+			return [{
+				key: 'prompt_1',
+				prompt: nextRequest.prompts[0].prompt,
+				user_response: '0|||[["私","わたし"],["は",""]]'
+			}];
+		});
+
+		const readings = await assistant.annotateJapaneseTranscript(['私は']);
+
+		expect(readings).toEqual([[
+			{ text: '私', reading: 'わたし' },
+			{ text: 'は', reading: '' }
+		]]);
+		expect(request?.prompts[0].prompt).toContain(
+			'The JSON must be an array of [text, reading] tuples.'
+		);
+	});
+
 	test('reports progress for sequential Japanese reading batches', async () => {
-		const progress: Array<{ completed: number; total: number }> = [];
-		const assistant = createLanguageLearningAssistant(async () => []);
-		const segments = ['日'.repeat(3500), '日'.repeat(3500)];
+		const progress: TranscriptReadingProgress[] = [];
+		const segments = ['日'.repeat(600), '本'.repeat(600)];
+		const assistant = createLanguageLearningAssistant(async (request) => {
+			const segmentId = request.prompts[0].prompt.includes('0|||') ? 0 : 1;
+			return [{
+				key: 'prompt_1',
+				prompt: request.prompts[0].prompt,
+				user_response: `${segmentId}|||[["${segments[segmentId]}","ひ"]]`
+			}];
+		}, { japaneseReadingPromptCharLimit: 1000 });
 
 		await assistant.annotateJapaneseTranscript(segments, next => progress.push(next));
 
 		expect(progress).toEqual([
-			{ completed: 0, total: 2 },
-			{ completed: 1, total: 2 },
-			{ completed: 2, total: 2 }
+			{ completed: 0, total: 2, completedSegments: 0, totalSegments: 2 },
+			{ completed: 1, total: 2, completedSegments: 1, totalSegments: 2 },
+			{ completed: 2, total: 2, completedSegments: 2, totalSegments: 2 }
 		]);
+	});
+
+	test('clears completed Japanese reading checkpoints so regeneration starts fresh', async () => {
+		let checkpoint: TranscriptReadingSegments | undefined;
+		const checkpoints: TranscriptReadingCheckpointStore = {
+			load: () => checkpoint,
+			save: (_segments, readings) => {
+				checkpoint = readings.map(tokens => tokens.map(token => ({ ...token })));
+			},
+			clear: () => {
+				checkpoint = undefined;
+			}
+		};
+		const sendRequest = vi.fn(async (request: LanguageLearningRequest) => [{
+			key: 'prompt_1',
+			prompt: request.prompts[0].prompt,
+			user_response: '0|||[["日本語","にほんご"]]'
+		}]);
+		const assistant = createLanguageLearningAssistant(sendRequest, {
+			japaneseReadingCheckpoints: checkpoints
+		});
+
+		await assistant.annotateJapaneseTranscript(['日本語']);
+		await assistant.annotateJapaneseTranscript(['日本語']);
+
+		expect(sendRequest).toHaveBeenCalledTimes(2);
+		expect(checkpoint).toBeUndefined();
 	});
 
 	test('long transcripts are translated in bounded provider requests', async () => {

@@ -95,16 +95,16 @@ function cacheTranslations(segments: string[], responseLanguage: string, transla
 	}
 }
 
-function getExplanationCacheKey(selection: LearningSelection): string {
-	return `${selection.kind}\n${selection.text}\n${selection.context}`;
+function getExplanationCacheKey(selection: LearningSelection, responseLanguage: string): string {
+	return `${responseLanguage}\n${selection.kind}\n${selection.text}\n${selection.context}`;
 }
 
-function getCachedExplanation(selection: LearningSelection): string | null {
-	return explanationCache.get(getExplanationCacheKey(selection)) || null;
+function getCachedExplanation(selection: LearningSelection, responseLanguage: string): string | null {
+	return explanationCache.get(getExplanationCacheKey(selection, responseLanguage)) || null;
 }
 
-function cacheExplanation(selection: LearningSelection, explanation: string): void {
-	const key = getExplanationCacheKey(selection);
+function cacheExplanation(selection: LearningSelection, responseLanguage: string, explanation: string): void {
+	const key = getExplanationCacheKey(selection, responseLanguage);
 	if (explanationCache.has(key)) explanationCache.delete(key);
 	explanationCache.set(key, explanation);
 	while (explanationCache.size > MAX_SESSION_CACHE_ENTRIES) {
@@ -204,7 +204,12 @@ function renderTranscriptReadings(
 
 function isSingleWord(text: string): boolean {
 	const normalized = text.trim();
-	return normalized.length > 0 && normalized.length <= 80 && !/\s/.test(normalized);
+	if (!normalized || normalized.length > 80 || /\s/.test(normalized)) return false;
+	if (/[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF々]/.test(normalized)) {
+		return Array.from(normalized).length <= 8
+			&& !/[。！？、，,.!?]|(?:です|ます|でした|ません|でしょう|だった)$/.test(normalized);
+	}
+	return true;
 }
 
 export function getTranscriptLearningSelection(
@@ -334,7 +339,7 @@ export function wireTranscriptLanguageLearning({
 		retryButton.hidden = true;
 		card.style.display = 'block';
 
-		const cachedExplanation = getCachedExplanation(selection);
+		const cachedExplanation = getCachedExplanation(selection, resolvedResponseLanguage);
 		if (cachedExplanation) {
 			cardBody.textContent = cachedExplanation;
 			return;
@@ -345,7 +350,7 @@ export function wireTranscriptLanguageLearning({
 		try {
 			const explanation = await tools.explainSelection(selection, requestController.signal);
 			throwIfRequestAborted(requestController.signal);
-			if (explanation) cacheExplanation(selection, explanation);
+			if (explanation) cacheExplanation(selection, resolvedResponseLanguage, explanation);
 			if (request !== explanationRequest) return;
 			cardBody.textContent = explanation || getMessage('emptyResponse');
 		} catch (error) {
@@ -476,7 +481,6 @@ export function wireTranscriptLanguageLearning({
 				String(progress.completed),
 				String(progress.total)
 			]);
-			bilingualButton.textContent = label;
 			setProgressStatus(label);
 		};
 		try {
@@ -574,10 +578,9 @@ export function wireTranscriptLanguageLearning({
 	};
 	const setReadingProgress = (progress: TranscriptReadingProgress) => {
 		const label = getMessage('readerJapaneseReadingsProgress', [
-			String(progress.completed),
-			String(progress.total)
+			String(progress.completedSegments),
+			String(progress.totalSegments)
 		]);
-		readingsButton.textContent = label;
 		setProgressStatus(label);
 	};
 	const generateJapaneseReadings = async () => {

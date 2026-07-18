@@ -33,7 +33,21 @@ describe('CLI execution modes', () => {
 	test('builds a read-only Grok invocation', () => {
 		expect(buildCliInvocation('grok', 'prompt', { cwd: '/tmp', timeoutMs: 5000 })).toEqual({
 			command: 'grok',
-			args: ['--single', 'prompt', '--output-format', 'plain', '--no-plan', '--no-subagents'],
+			args: [
+				'--single',
+				'prompt',
+				'--output-format',
+				'plain',
+				'--no-plan',
+				'--no-subagents',
+				'--no-memory',
+				'--disable-web-search',
+				'--tools',
+				'',
+				'--max-turns',
+				'1',
+				'--verbatim'
+			],
 			cwd: '/tmp',
 			timeoutMs: 5000
 		});

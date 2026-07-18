@@ -2,6 +2,7 @@ import browser from './browser-polyfill';
 import {
 	LanguageLearningResponse,
 	LearningSelection,
+	TranscriptReadingCheckpointStore,
 	TranscriptReadingProgressHandler,
 	TranscriptReadingSegments,
 	TranscriptTranslationProgressHandler,
@@ -12,6 +13,36 @@ import { raceWithRequestCancellation, throwIfRequestAborted } from './request-ca
 import { loadSettings } from './storage-utils';
 
 let languageLearningRequestSequence = 0;
+const CLI_JAPANESE_READING_PROMPT_CHAR_LIMIT = 2500;
+const MAX_READING_CHECKPOINTS = 20;
+const japaneseReadingCheckpoints = new Map<string, TranscriptReadingSegments>();
+
+function cloneTranscriptReadings(readings: TranscriptReadingSegments): TranscriptReadingSegments {
+	return readings.map(tokens => tokens.map(token => ({ ...token })));
+}
+
+function createJapaneseReadingCheckpointStore(scope: string): TranscriptReadingCheckpointStore {
+	const getKey = (segments: string[]) => JSON.stringify([scope, segments]);
+	return {
+		load(segments) {
+			const checkpoint = japaneseReadingCheckpoints.get(getKey(segments));
+			return checkpoint ? cloneTranscriptReadings(checkpoint) : undefined;
+		},
+		save(segments, readings) {
+			const key = getKey(segments);
+			if (japaneseReadingCheckpoints.has(key)) japaneseReadingCheckpoints.delete(key);
+			japaneseReadingCheckpoints.set(key, cloneTranscriptReadings(readings));
+			while (japaneseReadingCheckpoints.size > MAX_READING_CHECKPOINTS) {
+				const oldestKey = japaneseReadingCheckpoints.keys().next().value;
+				if (oldestKey === undefined) break;
+				japaneseReadingCheckpoints.delete(oldestKey);
+			}
+		},
+		clear(segments) {
+			japaneseReadingCheckpoints.delete(getKey(segments));
+		}
+	};
+}
 
 function createLanguageLearningRequestId(): string {
 	languageLearningRequestSequence += 1;
@@ -25,12 +56,14 @@ async function loadConfiguredAssistant() {
 	}
 
 	const executionMode = settings.interpreterExecutionMode ?? 'api';
+	let readingCheckpointScope: string = executionMode;
 	if (executionMode === 'api') {
 		const enabledModels = settings.models.filter(model => model.enabled);
 		const model = enabledModels.find(item => item.id === settings.interpreterModel) || enabledModels[0];
 		if (!model) {
 			throw new Error(getMessage('aiLanguageToolsRequireModel'));
 		}
+		readingCheckpointScope = `${executionMode}:${model.id}`;
 	}
 
 	const responseLanguage = settings.readerSettings.learningResponseLanguage.trim()
@@ -68,6 +101,11 @@ async function loadConfiguredAssistant() {
 			throw new Error(response?.error || getMessage('error'));
 		}
 		return response.promptResponses;
+	}, {
+		japaneseReadingPromptCharLimit: executionMode === 'api'
+			? undefined
+			: CLI_JAPANESE_READING_PROMPT_CHAR_LIMIT,
+		japaneseReadingCheckpoints: createJapaneseReadingCheckpointStore(readingCheckpointScope)
 	});
 
 	return { assistant, responseLanguage };

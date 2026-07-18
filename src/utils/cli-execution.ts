@@ -47,7 +47,14 @@ export function buildCliInvocation(
 				'--output-format',
 				'plain',
 				'--no-plan',
-				'--no-subagents'
+				'--no-subagents',
+				'--no-memory',
+				'--disable-web-search',
+				'--tools',
+				'',
+				'--max-turns',
+				'1',
+				'--verbatim'
 			]
 		};
 	}

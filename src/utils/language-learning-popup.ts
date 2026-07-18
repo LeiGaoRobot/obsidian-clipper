@@ -1,3 +1,4 @@
+import type { Settings } from '../types/types';
 import { replaceTextSelection } from './language-learning';
 import { isRequestCancelled } from './request-cancellation';
 
@@ -14,6 +15,14 @@ const AI_EDIT_PRESET_MESSAGE_KEYS: Record<string, string> = {
 	polish: 'aiEditInstructionPolish',
 	'study-notes': 'aiEditInstructionStudyNotes'
 };
+
+export function isLanguageLearningPopupAvailable(
+	settings: Pick<Settings, 'interpreterEnabled' | 'interpreterExecutionMode' | 'models'>
+): boolean {
+	if (!settings.interpreterEnabled) return false;
+	return (settings.interpreterExecutionMode ?? 'api') !== 'api'
+		|| settings.models.some(model => model.enabled);
+}
 
 export function initializeLanguageLearningPopup({
 	doc = document,

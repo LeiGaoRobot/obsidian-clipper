@@ -31,14 +31,30 @@ export interface TranscriptReadingToken {
 
 export type TranscriptReadingSegments = TranscriptReadingToken[][];
 
-export interface TranscriptReadingProgress {
+export interface TranscriptBatchProgress {
 	completed: number;
 	total: number;
 }
 
+export interface TranscriptReadingProgress extends TranscriptBatchProgress {
+	completedSegments: number;
+	totalSegments: number;
+}
+
 export type TranscriptReadingProgressHandler = (progress: TranscriptReadingProgress) => void;
-export type TranscriptTranslationProgress = TranscriptReadingProgress;
+export type TranscriptTranslationProgress = TranscriptBatchProgress;
 export type TranscriptTranslationProgressHandler = (progress: TranscriptTranslationProgress) => void;
+
+export interface TranscriptReadingCheckpointStore {
+	load(segments: string[]): TranscriptReadingSegments | undefined;
+	save(segments: string[], readings: TranscriptReadingSegments): void;
+	clear(segments: string[]): void;
+}
+
+export interface LanguageLearningAssistantOptions {
+	japaneseReadingPromptCharLimit?: number;
+	japaneseReadingCheckpoints?: TranscriptReadingCheckpointStore;
+}
 
 export interface LanguageLearningAssistant {
 	transformContent(content: string, instruction: string, signal?: AbortSignal): Promise<string>;
@@ -62,32 +78,67 @@ const JAPANESE_KANJI = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF々]/;
 interface TranscriptPromptGroup {
 	lines: string[];
 	sourceChars: number;
+	segmentIds: number[];
 }
 
 function buildTranscriptPromptGroups(
 	segments: string[],
-	promptHeader: string[]
+	promptHeader: string[],
+	maxPromptChars = MAX_TRANSCRIPT_PROMPT_CHARS,
+	includeSegment: (index: number) => boolean = () => true
 ): TranscriptPromptGroup[] {
 	const promptGroups: TranscriptPromptGroup[] = [];
 	let currentGroup: string[] = [];
+	let currentSegmentIds: number[] = [];
 	let currentSourceChars = 0;
 	let currentLength = promptHeader.join('\n').length;
 	segments.forEach((segment, index) => {
+		if (!includeSegment(index)) return;
 		const line = `${index}|||${segment}`;
-		if (currentGroup.length > 0 && currentLength + line.length + 1 > MAX_TRANSCRIPT_PROMPT_CHARS) {
-			promptGroups.push({ lines: currentGroup, sourceChars: currentSourceChars });
+		if (currentGroup.length > 0 && currentLength + line.length + 1 > maxPromptChars) {
+			promptGroups.push({
+				lines: currentGroup,
+				sourceChars: currentSourceChars,
+				segmentIds: currentSegmentIds
+			});
 			currentGroup = [];
+			currentSegmentIds = [];
 			currentSourceChars = 0;
 			currentLength = promptHeader.join('\n').length;
 		}
 		currentGroup.push(line);
+		currentSegmentIds.push(index);
 		currentSourceChars += segment.length;
 		currentLength += line.length + 1;
 	});
 	if (currentGroup.length > 0) {
-		promptGroups.push({ lines: currentGroup, sourceChars: currentSourceChars });
+		promptGroups.push({
+			lines: currentGroup,
+			sourceChars: currentSourceChars,
+			segmentIds: currentSegmentIds
+		});
 	}
 	return promptGroups;
+}
+
+function cloneTranscriptReadings(readings: TranscriptReadingSegments): TranscriptReadingSegments {
+	return readings.map(tokens => tokens.map(token => ({ ...token })));
+}
+
+function isCompleteTranscriptReadingSegment(tokens: TranscriptReadingToken[], source: string): boolean {
+	if (!source) return tokens.length === 0;
+	return tokens.length > 0
+		&& tokens.map(token => token.text).join('') === source
+		&& tokens.every(token => !JAPANESE_KANJI.test(token.text) || Boolean(token.reading.trim()));
+}
+
+function countCompleteTranscriptReadingSegments(
+	readings: TranscriptReadingSegments,
+	segments: string[]
+): number {
+	return readings.reduce((count, tokens, index) => (
+		count + (isCompleteTranscriptReadingSegment(tokens, segments[index]) ? 1 : 0)
+	), 0);
 }
 
 function parseTranscriptReadingTokens(value: string): TranscriptReadingToken[] | null {
@@ -100,6 +151,16 @@ function parseTranscriptReadingTokens(value: string): TranscriptReadingToken[] |
 		if (!Array.isArray(parsed)) return null;
 		const tokens: TranscriptReadingToken[] = [];
 		for (const item of parsed) {
+			if (Array.isArray(item)) {
+				if (
+					item.length !== 2
+					|| typeof item[0] !== 'string'
+					|| typeof item[1] !== 'string'
+					|| !item[0]
+				) return null;
+				tokens.push({ text: item[0], reading: item[1] });
+				continue;
+			}
 			if (!item || typeof item !== 'object') return null;
 			const candidate = item as { text?: unknown; reading?: unknown };
 			if (
@@ -119,13 +180,8 @@ export function isCompleteTranscriptReadings(
 	readings: TranscriptReadingSegments,
 	segments: string[]
 ): boolean {
-	return readings.length === segments.length && readings.every((tokens, index) => {
-		const source = segments[index];
-		if (!source) return tokens.length === 0;
-		return tokens.length > 0
-			&& tokens.map(token => token.text).join('') === source
-			&& tokens.every(token => !JAPANESE_KANJI.test(token.text) || Boolean(token.reading.trim()));
-	});
+	return readings.length === segments.length
+		&& readings.every((tokens, index) => isCompleteTranscriptReadingSegment(tokens, segments[index]));
 }
 
 export function replaceTextSelection(
@@ -142,7 +198,8 @@ export function replaceTextSelection(
 }
 
 export function createLanguageLearningAssistant(
-	sendRequest: SendLanguageLearningRequest
+	sendRequest: SendLanguageLearningRequest,
+	options: LanguageLearningAssistantOptions = {}
 ): LanguageLearningAssistant {
 	return {
 		async transformContent(content: string, instruction: string, signal?: AbortSignal): Promise<string> {
@@ -183,15 +240,31 @@ export function createLanguageLearningAssistant(
 				'Annotate each Japanese transcript segment with hiragana readings for every kanji.',
 				'Preserve every segment exactly and do not merge or omit text.',
 				'Return exactly one line per segment using: ID|||JSON',
-				'The JSON must be an array of objects with "text" and "reading" fields.',
-				'Concatenate all "text" fields to reproduce the source exactly.',
+				'The JSON must be an array of [text, reading] tuples.',
+				'Concatenate the first value of every tuple to reproduce the source exactly.',
 				'Use an empty reading for kana, Latin letters, numbers, spaces, and punctuation.',
-				'Split mixed kanji and kana into separate objects so every kanji has its own reading.'
+				'Split mixed kanji and kana into separate tuples so every kanji has its own reading.'
 			];
-			const promptGroups = buildTranscriptPromptGroups(segments, promptHeader);
-			const readings: TranscriptReadingSegments = segments.map(() => []);
+			const checkpoint = options.japaneseReadingCheckpoints?.load(segments);
+			const readings: TranscriptReadingSegments = segments.map((segment, index) => {
+				const tokens = checkpoint?.[index];
+				return tokens && isCompleteTranscriptReadingSegment(tokens, segment)
+					? tokens.map(token => ({ ...token }))
+					: [];
+			});
+			const promptGroups = buildTranscriptPromptGroups(
+				segments,
+				promptHeader,
+				options.japaneseReadingPromptCharLimit,
+				index => !isCompleteTranscriptReadingSegment(readings[index], segments[index])
+			);
 			if (promptGroups.length > 0) {
-				onProgress?.({ completed: 0, total: promptGroups.length });
+				onProgress?.({
+					completed: 0,
+					total: promptGroups.length,
+					completedSegments: countCompleteTranscriptReadingSegments(readings, segments),
+					totalSegments: segments.length
+				});
 			}
 			for (const [groupIndex, group] of promptGroups.entries()) {
 				throwIfRequestAborted(signal);
@@ -204,20 +277,30 @@ export function createLanguageLearningAssistant(
 					maxTokens: Math.min(12000, Math.max(2000, Math.ceil(group.sourceChars * 2.5)))
 				}, signal);
 				throwIfRequestAborted(signal);
+				const requestedSegmentIds = new Set(group.segmentIds);
 				for (const response of responses) {
 					if (typeof response.user_response !== 'string') continue;
 					for (const line of response.user_response.split('\n')) {
 						const match = line.match(/^\s*(\d+)\|\|\|(.*)$/);
 						if (!match) continue;
 						const index = Number(match[1]);
-						if (index < 0 || index >= segments.length) continue;
+						if (!requestedSegmentIds.has(index)) continue;
 						const tokens = parseTranscriptReadingTokens(match[2]);
 						if (tokens && isCompleteTranscriptReadings([tokens], [segments[index]])) {
 							readings[index] = tokens;
 						}
 					}
 				}
-				onProgress?.({ completed: groupIndex + 1, total: promptGroups.length });
+				options.japaneseReadingCheckpoints?.save(segments, cloneTranscriptReadings(readings));
+				onProgress?.({
+					completed: groupIndex + 1,
+					total: promptGroups.length,
+					completedSegments: countCompleteTranscriptReadingSegments(readings, segments),
+					totalSegments: segments.length
+				});
+			}
+			if (isCompleteTranscriptReadings(readings, segments)) {
+				options.japaneseReadingCheckpoints?.clear(segments);
 			}
 			return readings;
 		},

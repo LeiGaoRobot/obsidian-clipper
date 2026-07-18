@@ -13,6 +13,7 @@ vi.mock('./storage-utils', () => ({ loadSettings: mocks.loadSettings }));
 vi.mock('./i18n', () => ({ getMessage: (key: string) => key }));
 
 import { configuredLanguageLearning } from './language-learning-runtime';
+import type { TranscriptReadingProgress } from './language-learning';
 
 const settings: Settings = {
 	vaults: [],
@@ -113,7 +114,7 @@ describe('Configured language learning runtime', () => {
 			}]
 		});
 
-		const progress: Array<{ completed: number; total: number }> = [];
+		const progress: TranscriptReadingProgress[] = [];
 		const output = await configuredLanguageLearning.annotateJapaneseTranscript(
 			['日本語'],
 			next => progress.push(next)
@@ -121,8 +122,8 @@ describe('Configured language learning runtime', () => {
 
 		expect(output).toEqual([[{ text: '日本語', reading: 'にほんご' }]]);
 		expect(progress).toEqual([
-			{ completed: 0, total: 1 },
-			{ completed: 1, total: 1 }
+			{ completed: 0, total: 1, completedSegments: 0, totalSegments: 1 },
+			{ completed: 1, total: 1, completedSegments: 1, totalSegments: 1 }
 		]);
 		expect(mocks.sendMessage).toHaveBeenCalledWith({
 			action: 'languageLearningRequest',
@@ -131,6 +132,108 @@ describe('Configured language learning runtime', () => {
 				context: 'Annotate Japanese transcript segments with aligned ruby readings.'
 			})
 		});
+	});
+
+	test('uses smaller Japanese reading batches for local CLI execution', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			interpreterExecutionMode: 'grok'
+		});
+		const segmentA = '日'.repeat(1100);
+		const segmentB = '本'.repeat(1100);
+		mocks.sendMessage.mockImplementation((message: {
+			action: string;
+			request?: { prompts: Array<{ prompt: string }> };
+		}) => {
+			if (message.action !== 'languageLearningRequest' || !message.request) {
+				return Promise.resolve({ success: true });
+			}
+			const prompt = message.request.prompts[0].prompt;
+			const segmentId = prompt.includes('0|||') ? 0 : 1;
+			const text = segmentId === 0 ? segmentA : segmentB;
+			return Promise.resolve({
+				success: true,
+				promptResponses: [{
+					key: 'prompt_1',
+					prompt,
+					user_response: `${segmentId}|||[{"text":"${text}","reading":"ひ"}]`
+				}]
+			});
+		});
+		const progress: TranscriptReadingProgress[] = [];
+
+		const output = await configuredLanguageLearning.annotateJapaneseTranscript(
+			[segmentA, segmentB],
+			next => progress.push(next)
+		);
+
+		expect(output.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([1100, 1100]);
+		expect(output.map(tokens => tokens[0]?.reading ?? '')).toEqual(['ひ', 'ひ']);
+		expect(progress).toEqual([
+			{ completed: 0, total: 2, completedSegments: 0, totalSegments: 2 },
+			{ completed: 1, total: 2, completedSegments: 1, totalSegments: 2 },
+			{ completed: 2, total: 2, completedSegments: 2, totalSegments: 2 }
+		]);
+		expect(mocks.sendMessage).toHaveBeenCalledTimes(2);
+	});
+
+	test('retries only Japanese reading segments missing after a failed batch', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			interpreterExecutionMode: 'grok'
+		});
+		const segments = [
+			'日'.repeat(800),
+			'本'.repeat(800),
+			'語'.repeat(800)
+		];
+		const requestedPrompts: string[] = [];
+		mocks.sendMessage.mockImplementation((message: {
+			action: string;
+			request?: { prompts: Array<{ prompt: string }> };
+		}) => {
+			if (message.action !== 'languageLearningRequest' || !message.request) {
+				return Promise.resolve({ success: true });
+			}
+			const prompt = message.request.prompts[0].prompt;
+			requestedPrompts.push(prompt);
+			if (requestedPrompts.length === 2) {
+				return Promise.reject(new Error('grok CLI timed out'));
+			}
+			const ids = requestedPrompts.length === 3
+				? [0, 2]
+				: prompt.includes('0|||') ? [0, 1] : [2];
+			return Promise.resolve({
+				success: true,
+				promptResponses: [{
+					key: 'prompt_1',
+					prompt,
+					user_response: ids.map(index => (
+						`${index}|||[["${segments[index]}","${index === 0 && requestedPrompts.length === 3 ? 'にゅー' : 'ひ'}"]]`
+					)).join('\n')
+				}]
+			});
+		});
+
+		await expect(configuredLanguageLearning.annotateJapaneseTranscript(segments))
+			.rejects.toThrow('grok CLI timed out');
+		const retryProgress: TranscriptReadingProgress[] = [];
+		const readings = await configuredLanguageLearning.annotateJapaneseTranscript(
+			segments,
+			next => retryProgress.push(next)
+		);
+
+		expect(readings.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([800, 800, 800]);
+		expect(requestedPrompts).toHaveLength(3);
+		expect(requestedPrompts[0]).toContain('0|||');
+		expect(requestedPrompts[1]).toContain('2|||');
+		expect(requestedPrompts[2]).toContain('2|||');
+		expect(requestedPrompts[2]).not.toContain('0|||');
+		expect(readings[0][0].reading).toBe('ひ');
+		expect(retryProgress).toEqual([
+			{ completed: 0, total: 1, completedSegments: 2, totalSegments: 3 },
+			{ completed: 1, total: 1, completedSegments: 3, totalSegments: 3 }
+		]);
 	});
 
 	test('sends a cancellation message when an active request is aborted', async () => {

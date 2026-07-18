@@ -78,7 +78,7 @@ Selection changes, transcript loading, page loading, applying, cancelling, undoi
 
 Reader can run inside a page context, where cross-origin model requests inherit page restrictions. Callers therefore send a structured request through `browser.runtime`; the background resolves the stored enabled model and performs the provider request.
 
-Credentials stay in the existing Interpreter settings. Language-learning messages contain context, prompts, and an optional output budget, but never a provider URL or API key. In CLI mode, the background service worker sends a fixed-mode request to `com.obsidian.web_clipper`; the host only launches the configured `grok` or `codex` executable.
+Credentials stay in the existing Interpreter settings. Language-learning messages contain context, prompts, and an optional output budget, but never a provider URL or API key. In CLI mode, the background service worker sends a fixed-mode request to `com.obsidian.web_clipper`; the host only launches the configured `grok` or `codex` executable. Grok execution disables built-in tools, web search, plan/subagent behavior, and cross-session memory, uses one turn, and sends the interpreter prompt verbatim.
 
 ### MV3-safe network client
 
@@ -90,10 +90,10 @@ Credentials stay in the existing Interpreter settings. Language-learning message
 
 Each source segment is sent as `ID|||text`, where `ID` is its global source index. Responses must use `ID|||translation`. Parsing places each response back into an array at that index, so model reordering cannot change subtitle timing.
 
-Prompt groups target a character-count limit and are sent sequentially. Each source segment remains atomic, so one segment longer than the limit can produce an oversized group. The Reader UI accepts the result only when the returned array length matches the source length and every segment is non-empty. Otherwise, it displays an error and keeps the action retryable.
-Japanese reading responses also reconstruct each source segment from returned text tokens before ruby elements are committed to the DOM; incomplete or misaligned responses are rejected.
+Prompt groups target a character-count limit and are sent sequentially. Each source segment remains atomic, so one segment longer than the limit can produce an oversized group. API-mode transcript prompts retain the 6,000-character target. Japanese reading prompts use a 2,500-character target in Grok and Codex CLI modes because their aligned output is substantially larger than the source. The Reader UI accepts the result only when the returned array length matches the source length and every segment is non-empty. Otherwise, it displays an error and keeps the action retryable.
+Japanese reading responses use compact `[text, reading]` tuples to reduce generated tokens. The parser still accepts the earlier object form, reconstructs each source segment from returned text tokens, and rejects incomplete or misaligned output before ruby elements are committed to the DOM. Each batch accepts only the global segment IDs included in that request, so an unsolicited model line cannot overwrite a completed checkpoint from an earlier batch.
 
-Translation and reading batches report `completed` and `total` counts to the Reader while they run. Both complete results are cached by the exact ordered transcript text (and response language for translations) for the current extension session. Editing a ruby reading updates that cache only when all kanji readings remain complete; an incomplete correction invalidates the cached result. Reader request controllers abort API fetches and prevent late results from being applied. Native CLI cancellation stops the extension-side wait; the host process is not forcibly terminated by the browser messaging API.
+Translation batches report `completed` and `total`; Japanese reading progress additionally reports `completedSegments` and `totalSegments`. The Reader displays segment counts through its live status element while the action button keeps a single loading label, avoiding duplicate progress text. After each successful reading batch, the runtime stores an aligned partial checkpoint keyed by execution mode or API model plus the exact ordered transcript text. The checkpoint cache is session-local and bounded to 20 entries. A later explicit retry loads the checkpoint and sends only incomplete or invalid segments; a complete result clears the checkpoint so **Regenerate readings** still starts fresh. Complete translations and readings remain cached by the exact ordered transcript text (and response language for translations) for the current extension session. Editing a ruby reading updates the complete-result cache only when all kanji readings remain complete; an incomplete correction invalidates it. Reader request controllers abort API fetches and prevent late results from being applied. Native CLI cancellation stops the extension-side wait; the host process is not forcibly terminated by the browser messaging API.
 
 Page-owned AI controls expose a visible cancel action while a request is active. Failed transcript requests remain retryable through the error card. Japanese readings additionally expose an explicit regenerate action because a corrected or context-sensitive reading may require a fresh model request. Editable ruby readings use textbox semantics and labels so keyboard and assistive-technology users can correct them.
 
@@ -118,8 +118,8 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 - Original segment text is captured before translations are appended.
 - Japanese readings are rendered as ruby elements only after the explicit **Japanese readings** action; the original text remains selectable and can be toggled back to its unannotated form.
 - **Edit readings** puts ruby annotations into a local content-editable mode. Corrections do not create a provider request and are reused after Reader SPA rewiring while the ordered transcript text is unchanged.
-- Cross-segment selections find both range endpoints and build context from every covered source segment.
-- Word explanations are cached by selection kind, selected text, and context for the current wired transcript.
+- Cross-segment selections find both range endpoints and build context from every covered source segment. CJK selections use sentence punctuation, common polite endings, and a shorter word-length limit so unspaced Japanese sentences do not default to the word prompt.
+- Word and sentence explanations are cached by response language, selection kind, selected text, and context for the current wired transcript.
 - An `AbortController` removes document and transcript listeners when Reader content changes.
 - SPA cleanup removes the selection action and explanation card even when navigation lands on content without a transcript.
 - The transcript click guard delays a normal seek and can restore the original playback time when a slower operating-system double-click arrives after that delay.
@@ -134,7 +134,7 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 | Incomplete transcript response | No translation nodes are committed; the user can retry |
 | Clipping changed after preview | Apply is rejected and the preview is cleared |
 | Provider request failure | The background returns an error for the calling UI to display |
-| Provider request timeout | The background aborts the request after the default LLM timeout and returns a retryable timeout error |
+| Provider request timeout | The background aborts the request after the default LLM timeout and returns a retryable timeout error; Japanese reading checkpoints from earlier batches remain available for an explicit retry |
 | Final response parsing failure | The LLM client returns an empty response set; callers display an empty- or incomplete-response error |
 | Reader SPA navigation | Old controls, cards, and listeners are cleaned up |
 
@@ -157,6 +157,7 @@ Focused coverage lives in:
 - `src/utils/reader-transcript.test.ts`
 - `src/utils/transcript-layout.test.ts`
 - `src/utils/llm-client.test.ts`
+- `native-host/obsidian-clipper-host.test.ts`
 - `src/webpack-config.test.ts`
 
 Run the complete verification gate with:

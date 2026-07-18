@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
 import { describe, expect, test, vi } from 'vitest';
-import { initializeLanguageLearningPopup } from './language-learning-popup';
+import {
+	initializeLanguageLearningPopup,
+	isLanguageLearningPopupAvailable
+} from './language-learning-popup';
 
 function createPopupFixture() {
 	document.body.innerHTML = `
@@ -35,6 +38,31 @@ function createPopupFixture() {
 }
 
 describe('Language learning popup', () => {
+	test('is available in CLI modes without an enabled API model', () => {
+		const settings = {
+			interpreterEnabled: true,
+			models: []
+		};
+
+		expect(isLanguageLearningPopupAvailable({
+			...settings,
+			interpreterExecutionMode: 'grok'
+		})).toBe(true);
+		expect(isLanguageLearningPopupAvailable({
+			...settings,
+			interpreterExecutionMode: 'codex'
+		})).toBe(true);
+		expect(isLanguageLearningPopupAvailable({
+			...settings,
+			interpreterExecutionMode: 'api'
+		})).toBe(false);
+		expect(isLanguageLearningPopupAvailable({
+			...settings,
+			interpreterEnabled: false,
+			interpreterExecutionMode: 'grok'
+		})).toBe(false);
+	});
+
 	test('previews, applies, undoes, and cancels a selected-text AI edit', async () => {
 		const fixture = createPopupFixture();
 		const transformContent = vi.fn().mockResolvedValue('simple');
