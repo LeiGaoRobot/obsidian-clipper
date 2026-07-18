@@ -3,13 +3,41 @@ import { Settings } from '../types/types';
 
 const mocks = vi.hoisted(() => ({
 	loadSettings: vi.fn(),
-	sendMessage: vi.fn()
+	sendMessage: vi.fn(),
+	storageSessionGet: vi.fn(),
+	storageSessionSet: vi.fn(),
+	storageSessionRemove: vi.fn(),
+	storageSessionState: {} as Record<string, unknown>,
+	storageLocalGet: vi.fn(),
+	storageLocalSet: vi.fn(),
+	storageLocalState: {} as Record<string, unknown>,
+	saveSettings: vi.fn(),
+	copyToClipboard: vi.fn(),
+	saveToObsidian: vi.fn()
 }));
 
 vi.mock('./browser-polyfill', () => ({
-	default: { runtime: { sendMessage: mocks.sendMessage } }
+	default: {
+		runtime: { sendMessage: mocks.sendMessage },
+		storage: {
+			session: {
+				get: mocks.storageSessionGet,
+				set: mocks.storageSessionSet,
+				remove: mocks.storageSessionRemove
+			},
+			local: {
+				get: mocks.storageLocalGet,
+				set: mocks.storageLocalSet
+			}
+		}
+	}
 }));
-vi.mock('./storage-utils', () => ({ loadSettings: mocks.loadSettings }));
+vi.mock('./storage-utils', () => ({
+	loadSettings: mocks.loadSettings,
+	saveSettings: mocks.saveSettings
+}));
+vi.mock('./clipboard-utils', () => ({ copyToClipboard: mocks.copyToClipboard }));
+vi.mock('./obsidian-note-creator', () => ({ saveToObsidian: mocks.saveToObsidian }));
 vi.mock('./i18n', () => ({ getMessage: (key: string) => key }));
 
 import { configuredLanguageLearning } from './language-learning-runtime';
@@ -72,7 +100,127 @@ describe('Configured language learning runtime', () => {
 	beforeEach(() => {
 		mocks.loadSettings.mockReset();
 		mocks.sendMessage.mockReset();
+		mocks.storageSessionGet.mockReset();
+		mocks.storageSessionSet.mockReset();
+		mocks.storageSessionRemove.mockReset();
+		mocks.storageLocalGet.mockReset();
+		mocks.storageLocalSet.mockReset();
+		mocks.saveSettings.mockReset();
+		mocks.copyToClipboard.mockReset();
+		mocks.saveToObsidian.mockReset();
+		Object.keys(mocks.storageSessionState).forEach(key => delete mocks.storageSessionState[key]);
+		Object.keys(mocks.storageLocalState).forEach(key => delete mocks.storageLocalState[key]);
+		mocks.storageSessionGet.mockImplementation(async (key?: string | string[] | null) => {
+			if (key == null) return { ...mocks.storageSessionState };
+			const keys = Array.isArray(key) ? key : [key];
+			return Object.fromEntries(keys.map(item => [item, mocks.storageSessionState[item]]));
+		});
+		mocks.storageSessionSet.mockImplementation(async (values: Record<string, unknown>) => {
+			Object.assign(mocks.storageSessionState, values);
+		});
+		mocks.storageSessionRemove.mockImplementation(async (key: string | string[]) => {
+			(Array.isArray(key) ? key : [key]).forEach(item => delete mocks.storageSessionState[item]);
+		});
+		mocks.storageLocalGet.mockImplementation(async (key: string) => ({
+			[key]: mocks.storageLocalState[key]
+		}));
+		mocks.storageLocalSet.mockImplementation(async (values: Record<string, unknown>) => {
+			Object.assign(mocks.storageLocalState, values);
+		});
+		mocks.saveSettings.mockResolvedValue(undefined);
+		mocks.copyToClipboard.mockResolvedValue(true);
+		mocks.saveToObsidian.mockResolvedValue(undefined);
 		mocks.loadSettings.mockResolvedValue(settings);
+	});
+
+	test('reports the selected engine and can switch it explicitly', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			interpreterExecutionMode: 'grok'
+		});
+
+		await expect(configuredLanguageLearning.getExecutionInfo()).resolves.toEqual({
+			mode: 'grok',
+			label: 'interpreterExecutionModeGrok',
+			promptCharLimit: 1600
+		});
+		await configuredLanguageLearning.setExecutionMode('codex');
+
+		expect(mocks.saveSettings).toHaveBeenCalledWith({ interpreterExecutionMode: 'codex' });
+	});
+
+	test('persists learner translation corrections for the next Reader session', async () => {
+		await configuredLanguageLearning.saveTranscriptTranslations(['Hello.'], ['你好。']);
+		const translations = await configuredLanguageLearning.translateTranscript(['Hello.']);
+
+		expect(translations).toEqual(['你好。']);
+		expect(mocks.sendMessage).not.toHaveBeenCalled();
+	});
+
+	test('reuses completed transcript work after an explicit engine switch', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			interpreterExecutionMode: 'grok'
+		});
+		await configuredLanguageLearning.saveTranscriptTranslations(['Hello.'], ['你好。']);
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			interpreterExecutionMode: 'codex'
+		});
+
+		await expect(configuredLanguageLearning.translateTranscript(['Hello.']))
+			.resolves.toEqual(['你好。']);
+		expect(mocks.sendMessage).not.toHaveBeenCalled();
+	});
+
+	test('clears a saved Japanese reading before explicit regeneration', async () => {
+		const segments = ['日本語'];
+		await configuredLanguageLearning.saveJapaneseReadings(segments, [[
+			{ text: '日本語', reading: 'にほんご' }
+		]]);
+		await configuredLanguageLearning.clearJapaneseReadings(segments);
+		mocks.sendMessage.mockResolvedValue({
+			success: true,
+			promptResponses: [{
+				key: 'prompt_1',
+				prompt: 'annotate',
+				user_response: '0|||[["日本語","にっぽんご"]]'
+			}]
+		});
+
+		await expect(configuredLanguageLearning.annotateJapaneseTranscript(segments)).resolves.toEqual([[
+			{ text: '日本語', reading: 'にっぽんご' }
+		]]);
+		expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+			action: 'languageLearningRequest'
+		}));
+	});
+
+	test('stores vocabulary locally and supports copy and Obsidian note actions', async () => {
+		const selection = { kind: 'word' as const, text: 'encounter', context: 'An encounter.' };
+		mocks.loadSettings.mockResolvedValue({ ...settings, vaults: ['Study'] });
+
+		await expect(configuredLanguageLearning.isVocabularyFavorite(selection)).resolves.toBe(false);
+		await expect(configuredLanguageLearning.toggleVocabularyFavorite(selection, '相遇；一次偶遇。'))
+			.resolves.toBe(true);
+		await expect(configuredLanguageLearning.isVocabularyFavorite(selection)).resolves.toBe(true);
+		const entries = await configuredLanguageLearning.listVocabulary();
+		expect(entries).toEqual([
+			expect.objectContaining({ text: 'encounter', explanation: '相遇；一次偶遇。' })
+		]);
+		await configuredLanguageLearning.copyLearningText('encounter\n\n相遇');
+		await configuredLanguageLearning.saveVocabularyToObsidian(selection, '相遇；一次偶遇。');
+
+		expect(mocks.copyToClipboard).toHaveBeenCalledWith('encounter\n\n相遇');
+		expect(mocks.saveToObsidian).toHaveBeenCalledWith(
+			expect.stringContaining('相遇；一次偶遇。'),
+			'encounter',
+			'Language Learning',
+			'Study',
+			'create'
+		);
+		await configuredLanguageLearning.removeVocabulary(entries[0].id);
+		await expect(configuredLanguageLearning.listVocabulary()).resolves.toEqual([]);
 	});
 
 	test('sends model work through the extension background', async () => {
@@ -121,10 +269,12 @@ describe('Configured language learning runtime', () => {
 		);
 
 		expect(output).toEqual([[{ text: '日本語', reading: 'にほんご' }]]);
-		expect(progress).toEqual([
+		expect(progress.map(({ readings: _readings, ...item }) => item)).toEqual([
 			{ completed: 0, total: 1, completedSegments: 0, totalSegments: 1 },
 			{ completed: 1, total: 1, completedSegments: 1, totalSegments: 1 }
 		]);
+		expect(progress[1].readings).toEqual([[{ text: '日本語', reading: 'にほんご' }]]);
+		expect(mocks.storageSessionSet).toHaveBeenCalled();
 		expect(mocks.sendMessage).toHaveBeenCalledWith({
 			action: 'languageLearningRequest',
 			requestId: expect.any(String),
@@ -169,7 +319,7 @@ describe('Configured language learning runtime', () => {
 
 		expect(output.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([800, 800]);
 		expect(output.map(tokens => tokens[0]?.reading ?? '')).toEqual(['ひ', 'ひ']);
-		expect(progress).toEqual([
+		expect(progress.map(({ readings: _readings, ...item }) => item)).toEqual([
 			{ completed: 0, total: 2, completedSegments: 0, totalSegments: 2 },
 			{ completed: 1, total: 2, completedSegments: 1, totalSegments: 2 },
 			{ completed: 2, total: 2, completedSegments: 2, totalSegments: 2 }
@@ -308,10 +458,47 @@ describe('Configured language learning runtime', () => {
 		expect(requestedPrompts[2]).toContain('2|||');
 		expect(requestedPrompts[2]).not.toContain('0|||');
 		expect(readings[0][0].reading).toBe('ひ');
-		expect(retryProgress).toEqual([
+		expect(retryProgress.map(({ readings: _readings, ...item }) => item)).toEqual([
 			{ completed: 0, total: 1, completedSegments: 2, totalSegments: 3 },
 			{ completed: 1, total: 1, completedSegments: 3, totalSegments: 3 }
 		]);
+	});
+
+	test('persists completed translation batches and retries only missing segments', async () => {
+		const segments = ['A'.repeat(3500), 'B'.repeat(3500)];
+		const requestedPrompts: string[] = [];
+		mocks.sendMessage.mockImplementation((message: {
+			action: string;
+			request?: { prompts: Array<{ prompt: string }> };
+		}) => {
+			if (message.action !== 'languageLearningRequest' || !message.request) {
+				return Promise.resolve({ success: true });
+			}
+			const prompt = message.request.prompts[0].prompt;
+			requestedPrompts.push(prompt);
+			if (requestedPrompts.length === 2) {
+				return Promise.reject(new Error('provider timed out'));
+			}
+			const index = prompt.includes('0|||') ? 0 : 1;
+			return Promise.resolve({
+				success: true,
+				promptResponses: [{
+					key: 'prompt_1',
+					prompt,
+					user_response: `${index}|||${index === 0 ? '第一段' : '第二段'}`
+				}]
+			});
+		});
+
+		await expect(configuredLanguageLearning.translateTranscript(segments))
+			.rejects.toThrow('provider timed out');
+		const translations = await configuredLanguageLearning.translateTranscript(segments);
+
+		expect(translations).toEqual(['第一段', '第二段']);
+		expect(requestedPrompts).toHaveLength(3);
+		expect(requestedPrompts[2]).not.toContain('0|||');
+		expect(requestedPrompts[2]).toContain('1|||');
+		expect(mocks.storageSessionSet).toHaveBeenCalled();
 	});
 
 	test('sends a cancellation message when an active request is aborted', async () => {
@@ -338,5 +525,28 @@ describe('Configured language learning runtime', () => {
 			requestId: expect.any(String)
 		}));
 		resolveRequest?.({ success: false });
+	});
+
+	test('preserves structured CLI errors for localized Reader recovery', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			interpreterExecutionMode: 'grok'
+		});
+		mocks.sendMessage.mockResolvedValue({
+			success: false,
+			error: 'grok CLI timed out after 120 seconds.',
+			errorCode: 'timeout',
+			errorDetails: { mode: 'grok', timeoutSeconds: 120 }
+		});
+
+		await expect(configuredLanguageLearning.explainSelection({
+			kind: 'word',
+			text: '日本語',
+			context: '日本語を勉強します。'
+		})).rejects.toMatchObject({
+			name: 'LanguageLearningRequestError',
+			code: 'timeout',
+			details: { mode: 'grok', timeoutSeconds: 120 }
+		});
 	});
 });

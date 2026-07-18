@@ -535,6 +535,36 @@
 	"nativeCliFailed": {
 		"message": "本机 CLI 请求失败。请检查 CLI 输出和 Native Messaging Host 安装。"
 	},
+	"nativeCliHealth": {
+		"message": "本机 CLI 连接"
+	},
+	"nativeCliHealthCheck": {
+		"message": "检查连接"
+	},
+	"nativeCliHealthChecking": {
+		"message": "正在检查 Native Messaging Host 和所选 CLI…"
+	},
+	"nativeCliHealthDescription": {
+		"message": "检查 Native Messaging Host 和所选 CLI，不会发送网页内容。"
+	},
+	"nativeCliHealthFailed": {
+		"message": "连接检查失败（$1）：$2"
+	},
+	"nativeCliHealthLastRun": {
+		"message": "上次运行：$1，时间 $2。"
+	},
+	"nativeCliHealthReady": {
+		"message": "已连接到 $1（协议版本 $2）。"
+	},
+	"nativeCliRunStatusCancelled": {
+		"message": "已取消"
+	},
+	"nativeCliRunStatusFailed": {
+		"message": "失败"
+	},
+	"nativeCliRunStatusSuccess": {
+		"message": "成功"
+	},
 	"nativeCliUnavailable": {
 		"message": "本机 CLI 不可用。请安装 Native Messaging Host，并确认所选 CLI 已安装且已登录。"
 	},
@@ -798,6 +828,30 @@
 	"readerBilingualSubtitles": {
 		"message": "双语字幕"
 	},
+	"readerCliConfig": {
+		"message": "$1 尚未配置，请检查本机 Host 配置后重试。"
+	},
+	"readerCliFailed": {
+		"message": "$1 未能完成此任务。你可以重试或切换执行模式。"
+	},
+	"readerCliInvalid": {
+		"message": "$1 请求无效。请重新构建扩展并重装 Native Messaging Host。"
+	},
+	"readerCliLaunchFailed": {
+		"message": "无法启动 $1，请确认它已安装并完成登录。"
+	},
+	"readerCliProtocolMismatch": {
+		"message": "扩展与 Native Messaging Host 版本不一致，请重新安装 Host。"
+	},
+	"readerCliResponseTooLarge": {
+		"message": "$1 返回的数据过多，请选择更小的字幕范围重试。"
+	},
+	"readerCliTimeout": {
+		"message": "$1 在 $2 秒内未完成。已保留完成的字幕段。"
+	},
+	"readerCliUnavailable": {
+		"message": "$1 不可用，请检查 Native Messaging Host 和 CLI 安装。"
+	},
 	"readerBlendImages": {
 		"message": "融合图片"
 	},
@@ -864,7 +918,22 @@
 	"readerEditReadings": {
 		"message": "编辑读音"
 	},
+	"readerEditTranslations": {
+		"message": "编辑翻译"
+	},
+	"readerFavorite": {
+		"message": "收藏"
+	},
+	"readerFavoriteRemoved": {
+		"message": "已从生词收藏中移除。"
+	},
+	"readerFavoriteSaved": {
+		"message": "已加入生词收藏。"
+	},
 	"readerFinishReadingEdit": {
+		"message": "完成编辑"
+	},
+	"readerFinishTranslationEdit": {
 		"message": "完成编辑"
 	},
 	"readerReadingEditLabel": {
@@ -878,6 +947,9 @@
 	},
 	"readerRetry": {
 		"message": "重试"
+	},
+	"readerContinueRemaining": {
+		"message": "继续剩余内容（已完成 $1/$2）"
 	},
 	"readerFont": {
 		"message": "字体选项"
@@ -966,6 +1038,39 @@
 	"readerSettings": {
 		"message": "阅读器设置"
 	},
+	"readerSavedToObsidian": {
+		"message": "已保存到 Obsidian。"
+	},
+	"readerSavedVocabulary": {
+		"message": "生词收藏"
+	},
+	"readerSavedVocabularyEmpty": {
+		"message": "还没有收藏单词或句子。"
+	},
+	"readerSwitchAndRetry": {
+		"message": "切换并重试"
+	},
+	"readerTaskElapsed": {
+		"message": "$1 秒"
+	},
+	"readerTaskEstimate": {
+		"message": "$1 段 · 预计约 $2 批"
+	},
+	"readerTaskRange": {
+		"message": "AI 范围"
+	},
+	"readerTaskRangeAll": {
+		"message": "整篇字幕"
+	},
+	"readerTaskRangeCurrent": {
+		"message": "当前段"
+	},
+	"readerTaskRangeNextFiveMinutes": {
+		"message": "接下来 5 分钟"
+	},
+	"readerTechnicalDetails": {
+		"message": "技术详情"
+	},
 	"readerTheme": {
 		"message": "主题"
 	},
@@ -983,6 +1088,15 @@
 	},
 	"readerTranslationIncomplete": {
 		"message": "模型遗漏了一个或多个字幕片段，请重试。"
+	},
+	"readerTranslationEditLabel": {
+		"message": "编辑第 $1 段翻译"
+	},
+	"readerToggleReading": {
+		"message": "隐藏或显示 $1 的读音"
+	},
+	"readerUnfavorite": {
+		"message": "取消收藏"
 	},
 	"readerReadingIncomplete": {
 		"message": "模型遗漏了一个或多个字幕片段的读音，请重试。"

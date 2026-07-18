@@ -35,7 +35,7 @@ Get the Obsidian Web Clipper extension from the official directory for your brow
 	- Use natural language prompts to capture and modify data on a page.
 	- Use an API provider or a local Grok/Codex CLI through Chrome Native Messaging.
 - [[Language learning]]
-	- Revise clipped text, translate YouTube transcripts, switch between reading, notebook, and split layouts, add Japanese readings, and explain words or sentences with AI.
+	- Revise clipped text, translate selected YouTube transcript ranges, switch between reading, notebook, and split layouts, add and correct Japanese readings, explain words or sentences, and save vocabulary to Obsidian.
 - [[Troubleshoot Web Clipper|Troubleshooting]]
 	- Resolve common issues with Web Clipper.
 - [[Obsidian Web Clipper/Templates|Templates]]

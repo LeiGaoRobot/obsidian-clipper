@@ -5,21 +5,40 @@ import {
 	TranscriptReadingCheckpointStore,
 	TranscriptReadingProgressHandler,
 	TranscriptReadingSegments,
+	TranscriptTranslationCheckpointStore,
 	TranscriptTranslationProgressHandler,
 	createLanguageLearningAssistant,
 	isCompleteTranscriptReadings
 } from './language-learning';
 import { getMessage } from './i18n';
+import type { NativeCliErrorCode } from './native-cli-contract';
 import { raceWithRequestCancellation, throwIfRequestAborted } from './request-cancellation';
-import { loadSettings } from './storage-utils';
+import { loadSettings, saveSettings } from './storage-utils';
+import { createSessionTranscriptCheckpointStore } from './transcript-checkpoint-storage';
+import { configuredLanguageLearningVocabulary } from './language-learning-vocabulary';
 
 let languageLearningRequestSequence = 0;
 const GROK_JAPANESE_READING_PROMPT_CHAR_LIMIT = 1600;
 const CODEX_JAPANESE_READING_PROMPT_CHAR_LIMIT = 2500;
 const MIN_CLI_JAPANESE_READING_PROMPT_CHAR_LIMIT = 600;
 const MAX_READING_SESSION_ENTRIES = 20;
-const japaneseReadingCheckpoints = new Map<string, TranscriptReadingSegments>();
 const japaneseReadingPromptLimits = new Map<string, number>();
+
+export class LanguageLearningRequestError extends Error {
+	code: NativeCliErrorCode | 'failed';
+	details?: Record<string, unknown>;
+
+	constructor(
+		code: NativeCliErrorCode | 'failed',
+		message: string,
+		details?: Record<string, unknown>
+	) {
+		super(message);
+		this.name = 'LanguageLearningRequestError';
+		this.code = code;
+		this.details = details;
+	}
+}
 
 function getJapaneseReadingSessionKey(scope: string, segments: string[]): string {
 	return JSON.stringify([scope, segments]);
@@ -30,25 +49,19 @@ function cloneTranscriptReadings(readings: TranscriptReadingSegments): Transcrip
 }
 
 function createJapaneseReadingCheckpointStore(scope: string): TranscriptReadingCheckpointStore {
-	return {
-		load(segments) {
-			const checkpoint = japaneseReadingCheckpoints.get(getJapaneseReadingSessionKey(scope, segments));
-			return checkpoint ? cloneTranscriptReadings(checkpoint) : undefined;
-		},
-		save(segments, readings) {
-			const key = getJapaneseReadingSessionKey(scope, segments);
-			if (japaneseReadingCheckpoints.has(key)) japaneseReadingCheckpoints.delete(key);
-			japaneseReadingCheckpoints.set(key, cloneTranscriptReadings(readings));
-			while (japaneseReadingCheckpoints.size > MAX_READING_SESSION_ENTRIES) {
-				const oldestKey = japaneseReadingCheckpoints.keys().next().value;
-				if (oldestKey === undefined) break;
-				japaneseReadingCheckpoints.delete(oldestKey);
-			}
-		},
-		clear(segments) {
-			japaneseReadingCheckpoints.delete(getJapaneseReadingSessionKey(scope, segments));
-		}
-	};
+	return createSessionTranscriptCheckpointStore(
+		'japanese-readings',
+		scope,
+		cloneTranscriptReadings
+	);
+}
+
+function createTranslationCheckpointStore(scope: string): TranscriptTranslationCheckpointStore {
+	return createSessionTranscriptCheckpointStore(
+		'translations',
+		scope,
+		translations => [...translations]
+	);
 }
 
 function reduceJapaneseReadingPromptLimit(key: string, currentLimit: number): void {
@@ -66,7 +79,9 @@ function reduceJapaneseReadingPromptLimit(key: string, currentLimit: number): vo
 }
 
 function isCliTimeoutError(error: unknown): error is Error {
-	return error instanceof Error && /\bCLI timed out\b/i.test(error.message);
+	return error instanceof LanguageLearningRequestError
+		? error.code === 'timeout'
+		: error instanceof Error && /\bCLI timed out\b/i.test(error.message);
 }
 
 function createLanguageLearningRequestId(): string {
@@ -81,14 +96,14 @@ async function loadConfiguredAssistant(japaneseReadingSegments?: string[]) {
 	}
 
 	const executionMode = settings.interpreterExecutionMode ?? 'api';
-	let readingCheckpointScope: string = executionMode;
+	let executionScope: string = executionMode;
 	if (executionMode === 'api') {
 		const enabledModels = settings.models.filter(model => model.enabled);
 		const model = enabledModels.find(item => item.id === settings.interpreterModel) || enabledModels[0];
 		if (!model) {
 			throw new Error(getMessage('aiLanguageToolsRequireModel'));
 		}
-		readingCheckpointScope = `${executionMode}:${model.id}`;
+		executionScope = `${executionMode}:${model.id}`;
 	}
 
 	const responseLanguage = settings.readerSettings.learningResponseLanguage.trim()
@@ -96,7 +111,7 @@ async function loadConfiguredAssistant(japaneseReadingSegments?: string[]) {
 		|| 'English';
 	const japaneseReadingSessionKey = executionMode === 'api' || !japaneseReadingSegments
 		? undefined
-		: getJapaneseReadingSessionKey(readingCheckpointScope, japaneseReadingSegments);
+		: getJapaneseReadingSessionKey(executionScope, japaneseReadingSegments);
 	const initialJapaneseReadingPromptCharLimit = executionMode === 'grok'
 		? GROK_JAPANESE_READING_PROMPT_CHAR_LIMIT
 		: CODEX_JAPANESE_READING_PROMPT_CHAR_LIMIT;
@@ -106,6 +121,10 @@ async function loadConfiguredAssistant(japaneseReadingSegments?: string[]) {
 			? japaneseReadingPromptLimits.get(japaneseReadingSessionKey)
 				?? initialJapaneseReadingPromptCharLimit
 			: initialJapaneseReadingPromptCharLimit;
+	const japaneseReadingCheckpoints = createJapaneseReadingCheckpointStore('shared');
+	const transcriptTranslationCheckpoints = createTranslationCheckpointStore(
+		`shared:${responseLanguage}`
+	);
 	const assistant = createLanguageLearningAssistant(async (request, signal) => {
 		throwIfRequestAborted(signal);
 		const requestId = createLanguageLearningRequestId();
@@ -120,6 +139,8 @@ async function loadConfiguredAssistant(japaneseReadingSegments?: string[]) {
 			success: boolean;
 			promptResponses?: LanguageLearningResponse[];
 			error?: string;
+			errorCode?: NativeCliErrorCode | 'failed';
+			errorDetails?: Record<string, unknown>;
 		};
 		try {
 			response = await raceWithRequestCancellation(browser.runtime.sendMessage({
@@ -130,28 +151,78 @@ async function loadConfiguredAssistant(japaneseReadingSegments?: string[]) {
 				success: boolean;
 				promptResponses?: LanguageLearningResponse[];
 				error?: string;
+				errorCode?: NativeCliErrorCode | 'failed';
+				errorDetails?: Record<string, unknown>;
 			}>, signal);
 		} finally {
 			signal?.removeEventListener('abort', cancelRequest);
 		}
 		if (!response?.success || !Array.isArray(response.promptResponses)) {
-			throw new Error(response?.error || getMessage('error'));
+			throw new LanguageLearningRequestError(
+				response?.errorCode || 'failed',
+				response?.error || getMessage('error'),
+				response?.errorDetails
+			);
 		}
 		return response.promptResponses;
 	}, {
 		japaneseReadingPromptCharLimit,
-		japaneseReadingCheckpoints: createJapaneseReadingCheckpointStore(readingCheckpointScope)
+		japaneseReadingCheckpoints,
+		transcriptTranslationCheckpoints
 	});
 
 	return {
 		assistant,
 		responseLanguage,
+		executionMode,
+		japaneseReadingCheckpoints,
+		transcriptTranslationCheckpoints,
 		japaneseReadingSessionKey,
 		japaneseReadingPromptCharLimit
 	};
 }
 
 export const configuredLanguageLearning = {
+	...configuredLanguageLearningVocabulary,
+	async getExecutionInfo() {
+		const settings = await loadSettings();
+		const mode = settings.interpreterExecutionMode ?? 'api';
+		return {
+			mode,
+			label: getMessage(mode === 'grok'
+				? 'interpreterExecutionModeGrok'
+				: mode === 'codex'
+					? 'interpreterExecutionModeCodex'
+					: 'interpreterExecutionModeApi'),
+			promptCharLimit: mode === 'grok'
+				? GROK_JAPANESE_READING_PROMPT_CHAR_LIMIT
+				: mode === 'codex'
+					? CODEX_JAPANESE_READING_PROMPT_CHAR_LIMIT
+					: 6000
+		};
+	},
+
+	async setExecutionMode(mode: 'api' | 'grok' | 'codex'): Promise<void> {
+		await saveSettings({ interpreterExecutionMode: mode });
+	},
+
+	async saveTranscriptTranslations(segments: string[], translations: string[]): Promise<void> {
+		if (translations.length !== segments.length) return;
+		const { transcriptTranslationCheckpoints } = await loadConfiguredAssistant();
+		await transcriptTranslationCheckpoints.save(segments, [...translations]);
+	},
+
+	async saveJapaneseReadings(segments: string[], readings: TranscriptReadingSegments): Promise<void> {
+		if (readings.length !== segments.length) return;
+		const { japaneseReadingCheckpoints } = await loadConfiguredAssistant(segments);
+		await japaneseReadingCheckpoints.save(segments, cloneTranscriptReadings(readings));
+	},
+
+	async clearJapaneseReadings(segments: string[]): Promise<void> {
+		const { japaneseReadingCheckpoints } = await loadConfiguredAssistant(segments);
+		await japaneseReadingCheckpoints.clear(segments);
+	},
+
 	async transformContent(content: string, instruction: string, signal?: AbortSignal): Promise<string> {
 		const { assistant, responseLanguage } = await loadConfiguredAssistant();
 		const resolvedInstruction = instruction.replace(/{{responseLanguage}}/g, responseLanguage);
@@ -189,7 +260,11 @@ export const configuredLanguageLearning = {
 					japaneseReadingSessionKey,
 					japaneseReadingPromptCharLimit
 				);
-				throw new Error(`${error.message} ${getMessage('readerJapaneseReadingsTimeoutRetry')}`);
+				const message = `${error.message} ${getMessage('readerJapaneseReadingsTimeoutRetry')}`;
+				if (error instanceof LanguageLearningRequestError) {
+					throw new LanguageLearningRequestError(error.code, message, error.details);
+				}
+				throw new Error(message);
 			}
 			throw error;
 		}

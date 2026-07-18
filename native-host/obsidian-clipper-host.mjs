@@ -1,15 +1,25 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
-import { readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 
+export const NATIVE_CLI_PROTOCOL_VERSION = 2;
 export const MAX_PROMPT_CHARS = 750_000;
 export const MAX_REQUEST_BYTES = 4_000_000;
 export const MAX_RESPONSE_BYTES = 900_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+class NativeHostError extends Error {
+	constructor(code, message, details) {
+		super(message);
+		this.name = 'NativeHostError';
+		this.code = code;
+		this.details = details;
+	}
+}
 
 function configPath() {
 	return process.env.OBSIDIAN_CLIPPER_NATIVE_HOST_CONFIG
@@ -24,14 +34,31 @@ function loadConfig() {
 			codexPath: typeof config.codexPath === 'string' ? config.codexPath : null
 		};
 	} catch (error) {
-		throw new Error(`Native host configuration could not be loaded: ${error instanceof Error ? error.message : String(error)}`);
+		throw new NativeHostError(
+			'config',
+			`Native host configuration could not be loaded: ${error instanceof Error ? error.message : String(error)}`
+		);
 	}
+}
+
+function isMode(value) {
+	return value === 'grok' || value === 'codex';
 }
 
 export function validateRequest(request) {
 	if (!request || typeof request !== 'object') return 'Request must be an object.';
+	if (request.protocolVersion !== NATIVE_CLI_PROTOCOL_VERSION) {
+		return 'Native host protocol version mismatch.';
+	}
+	if (typeof request.requestId !== 'string' || request.requestId.length === 0) {
+		return 'Request ID must be a non-empty string.';
+	}
+	if (request.type === 'cancelCli') return null;
+	if (request.type === 'healthCheck') {
+		return isMode(request.mode) ? null : 'Unsupported CLI execution mode.';
+	}
 	if (request.type !== 'executeCli') return 'Unsupported native host request.';
-	if (request.mode !== 'grok' && request.mode !== 'codex') return 'Unsupported CLI execution mode.';
+	if (!isMode(request.mode)) return 'Unsupported CLI execution mode.';
 	if (typeof request.prompt !== 'string' || request.prompt.length === 0) return 'Prompt must be a non-empty string.';
 	if (request.prompt.length > MAX_PROMPT_CHARS) return 'Prompt is too large for Native Messaging.';
 	return null;
@@ -40,7 +67,11 @@ export function validateRequest(request) {
 export function createCliInvocation(request, config) {
 	const command = request.mode === 'grok' ? config.grokPath : config.codexPath;
 	if (!command) {
-		throw new Error(`The ${request.mode} CLI is not configured. Install it or reinstall the Native Messaging Host.`);
+		throw new NativeHostError(
+			'config',
+			`The ${request.mode} CLI is not configured. Install it or reinstall the Native Messaging Host.`,
+			{ mode: request.mode }
+		);
 	}
 
 	if (request.mode === 'grok') {
@@ -81,7 +112,7 @@ export function createCliInvocation(request, config) {
 	};
 }
 
-function runCli(request, config) {
+export function runCli(request, config, onStart) {
 	const invocation = createCliInvocation(request, config);
 	return new Promise((resolve, reject) => {
 		const child = spawn(invocation.command, invocation.args, {
@@ -92,25 +123,46 @@ function runCli(request, config) {
 		let stdout = '';
 		let stderr = '';
 		let settled = false;
-		const timeout = setTimeout(() => {
-			if (settled) return;
+		let terminationError;
+		let timeout;
+		let forceKillTimer;
+		const terminateWithError = error => {
+			if (settled || terminationError) return;
+			terminationError = error;
 			child.kill('SIGTERM');
-			settled = true;
-			reject(new Error(`${request.mode} CLI timed out after ${DEFAULT_TIMEOUT_MS / 1000} seconds.`));
+			forceKillTimer = setTimeout(() => {
+				if (!settled) child.kill('SIGKILL');
+			}, 2000);
+		};
+		const terminate = () => terminateWithError(new NativeHostError(
+			'cancelled',
+			'The CLI request was cancelled.',
+			{ mode: request.mode }
+		));
+		onStart(terminate);
+		timeout = setTimeout(() => {
+			terminateWithError(new NativeHostError(
+				'timeout',
+				`${request.mode} CLI timed out after ${DEFAULT_TIMEOUT_MS / 1000} seconds.`,
+				{ mode: request.mode, timeoutSeconds: DEFAULT_TIMEOUT_MS / 1000 }
+			));
 		}, DEFAULT_TIMEOUT_MS);
 
 		const settle = callback => {
 			if (settled) return;
 			settled = true;
 			clearTimeout(timeout);
+			if (forceKillTimer) clearTimeout(forceKillTimer);
 			callback();
 		};
 
 		child.stdout.on('data', chunk => {
 			stdout += chunk.toString();
 			if (Buffer.byteLength(stdout, 'utf8') > MAX_RESPONSE_BYTES) {
-				child.kill('SIGTERM');
-				settle(() => reject(new Error('CLI response is too large for Native Messaging.')));
+				terminateWithError(new NativeHostError(
+					'response-too-large',
+					'CLI response is too large for Native Messaging.'
+				));
 			}
 		});
 		child.stderr.on('data', chunk => {
@@ -118,21 +170,63 @@ function runCli(request, config) {
 			if (stderr.length > 20_000) stderr = stderr.slice(0, 20_000);
 		});
 		child.on('error', error => {
-			settle(() => reject(new Error(`Failed to start ${request.mode} CLI: ${error.message}`)));
+			settle(() => reject(terminationError || new NativeHostError(
+				'launch-failed',
+				`Failed to start ${request.mode} CLI: ${error.message}`,
+				{ mode: request.mode }
+			)));
 		});
 		child.on('close', (code, signal) => {
 			settle(() => {
-				if (code !== 0) {
-					const detail = stderr.trim() || `process exited with code ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}`;
-					reject(new Error(`${request.mode} CLI failed: ${detail}`));
+				if (terminationError) {
+					reject(terminationError);
 					return;
 				}
-				resolve({ ok: true, stdout });
+				if (code !== 0) {
+					const detail = stderr.trim() || `process exited with code ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}`;
+					reject(new NativeHostError(
+						'cli-failed',
+						`${request.mode} CLI failed: ${detail}`,
+						{ mode: request.mode }
+					));
+					return;
+				}
+				resolve({ ok: true, requestId: request.requestId, stdout });
 			});
 		});
 
 		child.stdin.end(invocation.input);
 	});
+}
+
+function errorResponse(requestId, error) {
+	return {
+		ok: false,
+		requestId,
+		errorCode: error instanceof NativeHostError ? error.code : 'cli-failed',
+		error: error instanceof Error ? error.message : String(error),
+		details: error instanceof NativeHostError ? error.details : undefined
+	};
+}
+
+function healthResponse(request, config) {
+	const command = request.mode === 'grok' ? config.grokPath : config.codexPath;
+	if (!command || !existsSync(command)) {
+		throw new NativeHostError(
+			'config',
+			`The ${request.mode} CLI is not configured or cannot be found.`,
+			{ mode: request.mode }
+		);
+	}
+	return {
+		ok: true,
+		requestId: request.requestId,
+		health: {
+			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+			mode: request.mode,
+			command
+		}
+	};
 }
 
 export function encodeNativeMessage(message) {
@@ -156,31 +250,74 @@ export function decodeNativeMessages(buffer) {
 	return { messages, remaining: buffer.subarray(offset) };
 }
 
-async function handleRequest(request, config) {
-	const validationError = validateRequest(request);
-	if (validationError) return { ok: false, error: validationError };
-	try {
-		return await runCli(request, config);
-	} catch (error) {
-		return { ok: false, error: error instanceof Error ? error.message : String(error) };
-	}
-}
-
 function startHost() {
 	let config;
+	let configError;
 	try {
 		config = loadConfig();
 	} catch (error) {
-		console.error(error instanceof Error ? error.message : String(error));
-		process.exitCode = 1;
-		return;
+		configError = error;
+		config = { grokPath: null, codexPath: null };
 	}
 
 	let buffer = Buffer.alloc(0);
-	let pending = Promise.resolve();
-	const writeResponse = response => new Promise((resolve, reject) => {
-		process.stdout.write(encodeNativeMessage(response), error => error ? reject(error) : resolve());
-	});
+	let writes = Promise.resolve();
+	const activeRequests = new Map();
+	const activeTasks = new Set();
+	const writeResponse = response => {
+		writes = writes.then(() => new Promise((resolve, reject) => {
+			process.stdout.write(encodeNativeMessage(response), error => error ? reject(error) : resolve());
+		}));
+		return writes;
+	};
+	const handleMessage = request => {
+		const validationError = validateRequest(request);
+		if (validationError) {
+			const errorCode = validationError === 'Native host protocol version mismatch.'
+				? 'protocol-mismatch'
+				: 'invalid';
+			void writeResponse({
+				ok: false,
+				requestId: typeof request?.requestId === 'string' ? request.requestId : undefined,
+				errorCode,
+				error: validationError,
+				details: { protocolVersion: NATIVE_CLI_PROTOCOL_VERSION }
+			});
+			return;
+		}
+		if (request.type === 'cancelCli') {
+			activeRequests.get(request.requestId)?.();
+			return;
+		}
+		if (configError) {
+			void writeResponse(errorResponse(request.requestId, configError));
+			return;
+		}
+		if (request.type === 'healthCheck') {
+			try {
+				void writeResponse(healthResponse(request, config));
+			} catch (error) {
+				void writeResponse(errorResponse(request.requestId, error));
+			}
+			return;
+		}
+		if (activeRequests.has(request.requestId)) {
+			void writeResponse(errorResponse(
+				request.requestId,
+				new NativeHostError('invalid', 'A CLI request with this ID is already running.')
+			));
+			return;
+		}
+		const task = runCli(request, config, cancel => activeRequests.set(request.requestId, cancel))
+			.then(writeResponse)
+			.catch(error => writeResponse(errorResponse(request.requestId, error)))
+			.finally(() => {
+				activeRequests.delete(request.requestId);
+				activeTasks.delete(task);
+			});
+		activeTasks.add(task);
+	};
+
 	process.stdin.resume();
 	process.stdin.on('data', chunk => {
 		buffer = Buffer.concat([buffer, chunk]);
@@ -194,20 +331,18 @@ function startHost() {
 			return;
 		}
 		buffer = decoded.remaining;
-		for (const request of decoded.messages) {
-			pending = pending
-				.then(() => handleRequest(request, config))
-				.then(writeResponse);
-		}
+		decoded.messages.forEach(handleMessage);
 	});
 	process.stdin.on('end', () => {
-		pending.then(
-			() => process.exit(0),
-			error => {
-				console.error(error instanceof Error ? error.message : String(error));
-				process.exit(1);
-			}
-		);
+		Promise.allSettled(Array.from(activeTasks))
+			.then(() => writes)
+			.then(
+				() => process.exit(0),
+				error => {
+					console.error(error instanceof Error ? error.message : String(error));
+					process.exit(1);
+				}
+			);
 	});
 }
 

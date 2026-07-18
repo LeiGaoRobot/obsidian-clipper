@@ -13,7 +13,8 @@ The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clippe
 
 1. Open Web Clipper **Settings**.
 2. In **Interpreter**, enable Interpreter and either configure at least one enabled provider and model, or choose a local **Grok CLI**/**Codex CLI** execution mode. For Native Messaging setup, see [[Interpret web pages#Local Grok and Codex CLI modes|Local Grok and Codex CLI modes]].
-3. In **Reader** → **Transcripts**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`.
+3. For a local CLI, select **Check connection**. A successful check shows the Host protocol, detected CLI path, and the last run status without sending page content.
+4. In **Reader** → **Transcripts**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`.
 
 If the response-language field is empty, Web Clipper uses your browser language. The setting controls transcript translations, word and sentence explanations, and presets that use a response language.
 
@@ -46,14 +47,22 @@ Open Reader on a YouTube page that has an available transcript, then select **Bi
 
 Use the transcript layout switcher to choose **Reading**, **Notebook**, or **Split view**. Reading keeps the video above a centered transcript, Notebook moves the learning controls into a left study rail, and Split view keeps the player beside the transcript on wider screens. Web Clipper remembers the selected layout. Changing layouts only rearranges the existing player, controls, transcript, and explanation state; it does not start an AI request. On narrower screens, Notebook and Split view fall back to a single-column layout.
 
-Web Clipper translates the transcript in aligned batches. Each translation remains attached to its original timed segment. Long transcripts may require multiple sequential model requests; the control shows the current batch while they run. You can cancel an in-flight request. A completed translation is reused for the same transcript and response language during the current Reader session. If the model omits a segment, Web Clipper shows an error card with **Retry** instead of treating the partial result as complete.
+Before starting, use **AI range** to choose the current segment, the next five minutes, or the entire transcript. The task bar shows the selected engine, segment count, estimated batch count, elapsed time, and completed batches. A smaller range is useful when testing a local CLI or studying only the current part of a long video.
+
+Web Clipper translates the transcript in aligned batches. Each translation remains attached to its original timed segment, and completed lines appear while later batches are still running. You can cancel an in-flight request. Successful batches are checkpointed in extension session storage, so an explicit retry or Reader reload continues with only missing segments when the browser supports session storage. If the model omits a segment, Web Clipper keeps the completed lines and shows a localized error card with **Continue remaining** instead of treating the partial result as complete.
 
 After translations load, select **Bilingual subtitles** again to hide or show them without another model request.
 
-For Japanese transcripts, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. The control is hidden when the transcript does not appear to contain Japanese kanji. Long transcripts are processed in sequential batches, with smaller batches in local CLI modes so progress updates more often and individual requests are less likely to time out. Progress counts completed subtitle segments rather than model batches. If a later batch fails or is cancelled, completed segments are retained for the current extension session; selecting **Retry** or **Japanese readings** again sends only the missing segments. After a CLI timeout, the next explicit **Retry** also uses a smaller batch size; Web Clipper never starts a paid retry automatically. After readings load, select **Edit readings**, then edit a reading directly above its kanji and select **Done editing**. Select **Regenerate readings** when the model chose the wrong reading; this explicitly starts a fresh AI request. A successful result, including your corrections, is reused for the same transcript during the current Reader session.
+Select **Edit translations** to correct a generated line in place. Corrections are saved to the same session checkpoint and do not make a model request.
 
-> [!note] Temporary Reader content
-> Bilingual transcript lines and Japanese readings are displayed for the current Reader session. They are not persisted across a reload and are not automatically added to the clipping. Manual reading corrections are session-local too.
+For Japanese transcripts, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. Select or press Enter on an individual ruby annotation to hide it for recall practice, then activate it again to reveal the answer. The control is hidden when the transcript does not appear to contain Japanese kanji.
+
+Long transcripts are processed in sequential batches, with smaller batches in local CLI modes so progress updates more often and individual requests are less likely to time out. Progress counts completed subtitle segments rather than model batches. If a later batch fails or is cancelled, completed segments remain checkpointed; selecting **Continue remaining** or **Japanese readings** again sends only missing segments. After a CLI timeout, the next explicit retry also uses a smaller batch size. Web Clipper never starts a paid retry automatically.
+
+After readings load—even for **Current segment** or **Next 5 minutes**—select **Edit readings**, edit a reading directly above its kanji, then select **Done editing**. Select **Regenerate readings** when the model chose the wrong reading; this explicitly starts a fresh request for the selected range while preserving readings outside that range. Corrections are stored with the transcript checkpoint.
+
+> [!note] Session checkpoints
+> Transcript translations, Japanese readings, and manual corrections are stored in extension session storage, not in the webpage. They survive Reader and service-worker reloads in Chromium but can be cleared when the browser session ends. Browsers without extension session storage use an in-memory fallback. These results are not automatically added to the clipping.
 
 ## Explain a word
 
@@ -66,13 +75,15 @@ Double-click a word in a YouTube transcript. Web Clipper opens an explanation ca
 
 Double-clicking a word does not intentionally seek playback. The Reader delays or restores the normal single-click seek when it detects a double-click.
 
+From the explanation card, you can **Favorite** the item, **Copy** the text, or **Add to Obsidian**. Favorites are stored locally in the extension and appear under **Saved vocabulary**. Saving to Obsidian creates a note in the `Language Learning` folder of the first configured vault; it does not make another AI request.
+
 ## Explain a phrase or sentence
 
 Select a phrase, sentence, or text spanning adjacent transcript segments. Then select **Explain with AI** next to the selection.
 
 The explanation includes a natural translation, the grammar structure, and important expressions in context. The same response language, selection kind, text, and context are cached for the current Reader session, so reopening the same explanation does not create another model request. Changing the response language creates a new explanation instead of reusing one in the previous language. New explanations can be cancelled and failed explanations can be retried from the card.
 
-The selection action also works with touch selection on mobile browsers that support Reader transcripts.
+The selection action also works with touch selection on mobile browsers that support Reader transcripts. Press Escape to close an explanation or error card and return focus to the control that opened it.
 
 ## Model selection and requests
 
@@ -89,7 +100,7 @@ The following actions can create model-provider usage:
 
 Applying, cancelling, undoing, hiding, or showing an existing result does not make another model request.
 
-Cancelling a Reader request stops the extension from waiting for or applying that result. In API mode it also aborts the provider fetch. In local CLI mode, the extension stops waiting immediately, but the Native Messaging host may continue until the CLI process exits.
+Cancelling a Reader request stops the extension from waiting for or applying that result. In API mode it aborts the provider fetch. In local CLI mode, protocol version 2 sends cancellation over the same Native Messaging port; the Host terminates the selected CLI process and force-kills it if it does not exit promptly.
 
 ## Troubleshoot language learning
 
@@ -97,13 +108,15 @@ Cancelling a Reader request stops the extension from waiting for or applying tha
 
 Confirm that Interpreter is enabled. In API mode, at least one Interpreter model must be enabled; in CLI mode, confirm that the Native Messaging Host is installed and the selected CLI is installed and authenticated. Reload the popup after changing Interpreter settings.
 
+For CLI mode, open **Settings** → **Interpreter** and select **Check connection**. A protocol mismatch means the extension was rebuilt without reinstalling the Host. A configuration error means the selected executable was not detected at install time or no longer exists.
+
 ### YouTube language controls are missing
 
 The controls are available only when Reader detects both a supported YouTube player and a transcript. Some videos do not provide a transcript.
 
-### A translation is incomplete
+### A translation is incomplete or stops partway
 
-Retry the translation. If the problem continues, choose a model with a larger context window or process a shorter video.
+Select **Continue remaining**. Completed lines are kept, and only missing segments are sent. If the problem continues, choose **Current segment** or **Next 5 minutes**, switch execution mode from the error card, or use a model with a larger context window.
 
 ### Japanese readings time out in CLI mode
 
@@ -115,11 +128,11 @@ Check the provider URL, API key, enabled model, quota, local-model server, or Na
 
 ## Current limitations
 
-- Reader translations, explanations, and Japanese reading results are session-local.
+- Transcript checkpoints are session-scoped rather than permanent study history. Saved vocabulary is persistent local extension data.
 - AI output quality and language accuracy depend on the selected model.
 - Japanese names and context-dependent kanji readings may need manual correction.
-- Transcript translation does not currently support editing an individual translated segment.
-- Vocabulary is not automatically saved to a flashcard or spaced-repetition system.
+- Saved vocabulary is a simple list and does not implement spaced repetition or flashcard scheduling.
+- **Add to Obsidian** uses the first configured vault and the fixed `Language Learning` folder.
 
 ## Developer reference
 

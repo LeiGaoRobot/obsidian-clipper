@@ -178,6 +178,20 @@ label {
 	}
 }
 
+.native-cli-health-status {
+	min-height: 1.25em;
+	word-break: break-word;
+	&:empty {
+		display: none;
+	}
+	&.is-success {
+		color: var(--text-success);
+	}
+	&.is-error {
+		color: var(--text-error);
+	}
+}
+
 .setting-item-description {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smallest);

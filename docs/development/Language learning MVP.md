@@ -9,17 +9,19 @@ This document describes the implemented language-learning MVP and the interfaces
 - Add manually triggered, segment-aligned bilingual YouTube transcripts.
 - Add manually triggered hiragana readings for Japanese kanji in YouTube transcripts.
 - Let users correct generated Japanese readings directly in the Reader.
+- Let users correct generated translations and persist both correction types for the browser session.
 - Explain a double-clicked word or a selected phrase or sentence in transcript context.
+- Let users favorite explanations locally, copy them, or save them to Obsidian.
 - Reuse the existing Interpreter provider, model, and credential configuration, or use the configured local Grok/Codex CLI execution mode.
 - Keep every remote action explicit so the extension does not create surprise model costs.
 
 ## Non-goals
 
 - Automatically translating every transcript on load.
-- Persisting Reader translations or explanation history.
-- Managing vocabulary lists, flashcards, or spaced repetition.
+- Permanent transcript or explanation history across browser sessions.
+- Flashcard scheduling or spaced repetition.
 - Adding a second provider configuration system for language learning.
-- Streaming partial responses into the UI.
+- Token-level response streaming.
 
 ## Module map
 
@@ -27,13 +29,16 @@ This document describes the implemented language-learning MVP and the interfaces
 | --- | --- |
 | `src/utils/language-learning.ts` | Pure `LanguageLearningAssistant` interface for content transformation, selection explanation, aligned transcript translation, and Japanese readings |
 | `src/utils/language-learning-runtime.ts` | `configuredLanguageLearning`, the configured interface used by Popup and Reader callers |
+| `src/utils/language-learning-vocabulary.ts` | Persistent vocabulary, clipboard, and Obsidian-note adapters composed into the configured interface |
 | `src/utils/language-learning-popup.ts` | Popup and side-panel preview, apply, cancel, and undo state |
 | `src/utils/transcript-language-learning.ts` | Bilingual and Japanese-reading controls, selection extraction, explanation card, caching, and cleanup |
+| `src/utils/transcript-checkpoint-storage.ts` | Bounded, validated transcript checkpoints backed by extension session storage with an in-memory fallback |
 | `src/utils/transcript-layout.ts` | Pure Reader transcript-layout switching, selected-state semantics, and layout class management |
 | `src/utils/reader-transcript.ts` | Player integration and single-click versus double-click seek coordination |
 | `src/utils/language-learning-service.ts` | Background validation, stored-model resolution, and local CLI dispatch |
 | `src/utils/llm-client.ts` | DOM-free provider adapter and response parser shared with Interpreter |
 | `src/utils/native-cli-service.ts` | Background Native Messaging bridge for local Grok/Codex execution |
+| `src/utils/native-cli-health.ts` | Settings-page client for explicit Host and CLI diagnostics |
 | `src/background.ts` | `languageLearningRequest` message handler and background execution seam |
 
 The request path is:
@@ -47,7 +52,7 @@ Popup or Reader
   → configured Interpreter provider or local CLI
 ```
 
-The interface is intentionally small. Popup and Reader know only how to transform content, explain a selection, translate ordered segments, or annotate Japanese readings. They do not know provider URLs, credentials, request formats, or response parsing rules.
+The model interface is intentionally small. Popup and Reader know only how to transform content, explain a selection, translate ordered segments, or annotate Japanese readings. The configured runtime adds local checkpoint and execution-mode behavior and composes the separate vocabulary adapter without exposing provider URLs, credentials, request formats, or response parsing rules to Reader DOM code.
 
 ## Core interfaces
 
@@ -74,11 +79,15 @@ Remote work starts only after a user invokes an explicit action:
 
 Selection changes, transcript loading, page loading, applying, cancelling, undoing, and show/hide toggles must not create provider requests. Reader controls that run in the page DOM reject synthetic cost-incurring events with `event.isTrusted`. The popup controls run in an extension-owned document that host-page scripts cannot access; their click listener does not separately inspect `event.isTrusted`.
 
+Changing the transcript task range, editing a generated result, revealing a ruby reading, opening saved vocabulary, copying, favoriting, and saving an existing explanation do not create provider requests. Switching execution mode from an error card retries only after a trusted user action.
+
 ### Background-only provider access
 
 Reader can run inside a page context, where cross-origin model requests inherit page restrictions. Callers therefore send a structured request through `browser.runtime`; the background resolves the stored enabled model and performs the provider request.
 
-Credentials stay in the existing Interpreter settings. Language-learning messages contain context, prompts, and an optional output budget, but never a provider URL or API key. In CLI mode, the background service worker sends a fixed-mode request to `com.obsidian.web_clipper`; the host only launches the configured `grok` or `codex` executable. Grok execution disables built-in tools, web search, plan/subagent behavior, and cross-session memory, uses one turn, and sends the interpreter prompt verbatim.
+Credentials stay in the existing Interpreter settings. Language-learning messages contain context, prompts, and an optional output budget, but never a provider URL or API key. In CLI mode, the background service worker uses Native Messaging protocol version 2 with request IDs over a connected port to `com.obsidian.web_clipper`; the host only launches the configured `grok` or `codex` executable. Grok execution disables built-in tools, web search, plan/subagent behavior, and cross-session memory, uses one turn, and sends the interpreter prompt verbatim.
+
+The same port carries cancellation. The Host maps request IDs to child processes, sends `SIGTERM`, and falls back to `SIGKILL` after two seconds. A separate explicit health request verifies the protocol and configured executable path without including page content. Host errors carry stable codes and optional details so Reader can localize recovery while keeping raw output inside collapsed technical details.
 
 ### MV3-safe network client
 
@@ -93,9 +102,11 @@ Each source segment is sent as `ID|||text`, where `ID` is its global source inde
 Prompt groups target a character-count limit and are sent sequentially. Each source segment remains atomic, so one segment longer than the limit can produce an oversized group. API-mode transcript prompts retain the 6,000-character target. Japanese reading prompts start with a 1,600-character target in Grok CLI mode and a 2,500-character target in Codex CLI mode because their aligned output is substantially larger than the source and Grok was observed timing out on the larger grouping. The Reader UI accepts the result only when the returned array length matches the source length and every segment is non-empty. Otherwise, it displays an error and keeps the action retryable.
 Japanese reading responses use compact `[text, reading]` tuples to reduce generated tokens. The parser still accepts the earlier object form, reconstructs each source segment from returned text tokens, and rejects incomplete or misaligned output before ruby elements are committed to the DOM. Each batch accepts only the global segment IDs included in that request, so an unsolicited model line cannot overwrite a completed checkpoint from an earlier batch.
 
-Translation batches report `completed` and `total`; Japanese reading progress additionally reports `completedSegments` and `totalSegments`. The Reader displays segment counts through its live status element while the action button keeps a single loading label, avoiding duplicate progress text. After each successful reading batch, the runtime stores an aligned partial checkpoint keyed by execution mode or API model plus the exact ordered transcript text. The checkpoint cache is session-local and bounded to 20 entries. A later explicit retry loads the checkpoint and sends only incomplete or invalid segments. When a local CLI reports a timeout, that transcript's next explicit retry halves the prompt target down to a 600-character minimum; successful completion clears this adaptive limit. No automatic provider retry is created. A complete result clears the checkpoint so **Regenerate readings** still starts fresh. Complete translations and readings remain cached by the exact ordered transcript text (and response language for translations) for the current extension session. Editing a ruby reading updates the complete-result cache only when all kanji readings remain complete; an incomplete correction invalidates it. Reader request controllers abort API fetches and prevent late results from being applied. Native CLI cancellation stops the extension-side wait; the host process is not forcibly terminated by the browser messaging API.
+Translation batches report `completed`, `total`, and an aligned partial translation array; Japanese reading progress additionally reports `completedSegments`, `totalSegments`, and aligned partial token arrays. Reader merges a selected task range back into the full transcript and renders completed segments immediately while preserving stable source indexes.
 
-Page-owned AI controls expose a visible cancel action while a request is active. Failed transcript requests remain retryable through the error card. Japanese readings additionally expose an explicit regenerate action because a corrected or context-sensitive reading may require a fresh model request. Editable ruby readings use textbox semantics and labels so keyboard and assistive-technology users can correct them.
+After each successful batch, the runtime stores an aligned partial checkpoint keyed by response language where applicable and the exact ordered task text. Checkpoints are shared across an explicit execution-mode switch so the next engine receives only incomplete segments. `browser.storage.session` uses one key per checkpoint to avoid lost updates between Reader tabs, with a bounded 20-entry set and an in-memory fallback. A later explicit retry or Reader reload loads the checkpoint and sends only incomplete or invalid segments. When a local CLI reports a timeout, that transcript's next explicit retry halves the Japanese-reading prompt target down to a 600-character minimum; successful completion clears this adaptive limit. No automatic provider retry is created. Complete checkpoints remain available for reuse until session storage is cleared. Translation and ruby edits update the checkpoint without making a model request.
+
+Page-owned AI controls expose a compact task bar with engine, selected segment count, approximate batch count, elapsed time, progress, and a visible cancel action. The range selector supports the active segment, the next five minutes, or the full transcript. Failed transcript requests remain retryable through the error card, which reports completed work, offers an explicit execution-mode switch, and keeps raw error text collapsed. Japanese readings additionally expose an explicit regenerate action because a corrected or context-sensitive reading may require a fresh model request. Editable translations and ruby readings use textbox semantics and labels; non-editing ruby elements support keyboard hide/reveal practice. Dialogs close with Escape and restore focus.
 
 ### Safe content application
 
@@ -117,7 +128,9 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 - Notebook and Split view use wider Reader content widths on desktop and fall back to the single-column reading flow below the responsive breakpoint.
 - Original segment text is captured before translations are appended.
 - Japanese readings are rendered as ruby elements only after the explicit **Japanese readings** action; the original text remains selectable and can be toggled back to its unannotated form.
-- **Edit readings** puts ruby annotations into a local content-editable mode. Corrections do not create a provider request and are reused after Reader SPA rewiring while the ordered transcript text is unchanged.
+- **Edit translations** and **Edit readings** put generated output into labeled content-editable controls. Corrections do not create a provider request and are written to the session checkpoint.
+- A non-editing ruby token is a keyboard-operable disclosure control. Its click is excluded from transcript seeking.
+- Explanation cards expose trusted favorite, copy, and Obsidian-note actions. Favorites are validated, capped at 500 entries, and stored in `browser.storage.local`; model output is still inserted only with `textContent`.
 - Cross-segment selections find both range endpoints and build context from every covered source segment. CJK selections use sentence punctuation, common polite endings, and a shorter word-length limit so unspaced Japanese sentences do not default to the word prompt.
 - Word and sentence explanations are cached by response language, selection kind, selected text, and context for the current wired transcript.
 - An `AbortController` removes document and transcript listeners when Reader content changes.
@@ -131,10 +144,11 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 | Interpreter disabled | Localized configuration error; no request is sent |
 | No enabled model | Localized model error; no request is sent |
 | Empty model response | Preview or explanation reports an empty response |
-| Incomplete transcript response | No translation nodes are committed; the user can retry |
+| Incomplete transcript response | Completed aligned segments remain visible and checkpointed; the user can continue missing segments |
 | Clipping changed after preview | Apply is rejected and the preview is cleared |
 | Provider request failure | The background returns an error for the calling UI to display |
 | Provider request timeout | The background aborts the request after the default LLM timeout and returns a retryable timeout error; Japanese reading checkpoints from earlier batches remain available for an explicit retry |
+| Native Host protocol/configuration failure | Reader shows a localized recovery message, collapsed technical detail, retry, and explicit engine switch; Settings health check reports the exact Host/CLI seam |
 | Final response parsing failure | The LLM client returns an empty response set; callers display an empty- or incomplete-response error |
 | Reader SPA navigation | Old controls, cards, and listeners are cleaned up |
 
@@ -152,6 +166,8 @@ Focused coverage lives in:
 
 - `src/utils/language-learning.test.ts`
 - `src/utils/language-learning-runtime.test.ts`
+- `src/utils/native-cli-health.test.ts`
+- `src/utils/native-cli-service.test.ts`
 - `src/utils/language-learning-popup.test.ts`
 - `src/utils/transcript-language-learning.test.ts`
 - `src/utils/reader-transcript.test.ts`
@@ -175,10 +191,9 @@ Background or provider changes also require an unpacked Chromium smoke test that
 
 ## Known limitations and future seams
 
-- Reader results are not persisted. Persistence should be added behind a separate storage interface rather than inside transcript DOM code.
-- Japanese readings are model-generated and can be ambiguous for names or polyphonic kanji; the Reader supports session-local manual correction but does not persist a dictionary.
+- Transcript results persist only for the extension/browser session. Durable study history would require a separately versioned storage policy and migration path.
+- Japanese readings are model-generated and can be ambiguous for names or polyphonic kanji; the Reader supports checkpointed manual correction but does not maintain a pronunciation dictionary.
 - The response language is shared by translations and explanations. Separate source, translation, and explanation language settings may be added without changing the assistant interface.
 - Explanation prompts explicitly require the configured response language for explanation text, labels, and translations.
-- Transcript translation retries the complete operation. Per-batch retry metadata would belong inside the assistant implementation.
-- Explanation cards are plain text. Structured learning objects should be introduced only when there is a second adapter, such as flashcard export or vocabulary storage.
-- There is no request-cost estimate. Any estimate must account for multiple transcript batches and provider-specific tokenization.
+- Saved vocabulary is a lightweight local list, not a spaced-repetition system. Obsidian export currently targets the first configured vault and a fixed `Language Learning` folder.
+- Task estimates use source characters and configured prompt-group targets; they are approximate batch counts, not token or billing estimates.

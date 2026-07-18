@@ -7,8 +7,14 @@ import { Settings } from './types/types';
 import { debugLog } from './utils/debug';
 import { LanguageLearningRequest } from './utils/language-learning';
 import { runLanguageLearningRequest } from './utils/language-learning-service';
-import { isNativeCliRequest } from './utils/native-cli-contract';
-import { NativeCliUnavailableError, sendNativeCliRequest } from './utils/native-cli-service';
+import { isCliExecutionMode, isNativeCliRequest } from './utils/native-cli-contract';
+import {
+	NATIVE_CLI_LAST_RUN_STORAGE_KEY,
+	NativeCliExecutionError,
+	NativeCliUnavailableError,
+	checkNativeCliHealth,
+	sendNativeCliRequest
+} from './utils/native-cli-service';
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
 const YOUTUBE_INNERTUBE_RULE_ID = 9002;
@@ -352,8 +358,40 @@ browser.runtime.onMessage.addListener((request: unknown) => {
 		.then(response => ({ success: true, stdout: response.stdout || '' }))
 		.catch(error => ({
 			success: false,
-			errorCode: error instanceof NativeCliUnavailableError ? 'unavailable' : 'failed',
-			error: error instanceof Error ? error.message : String(error)
+			errorCode: error instanceof NativeCliUnavailableError
+				? 'unavailable'
+				: error instanceof NativeCliExecutionError ? error.code : 'failed',
+			error: error instanceof Error ? error.message : String(error),
+			errorDetails: error instanceof NativeCliExecutionError ? error.details : undefined
+		}));
+});
+
+browser.runtime.onMessage.addListener((request: unknown) => {
+	if (typeof request !== 'object' || request === null) return;
+	const message = request as { action?: string; mode?: unknown };
+	if (message.action !== 'nativeCliHealth') return;
+	if (!isCliExecutionMode(message.mode)) {
+		return Promise.resolve({ success: false, errorCode: 'invalid', error: 'Invalid CLI mode.' });
+	}
+	return checkNativeCliHealth(message.mode)
+		.then(async health => {
+			const session = (browser.storage as unknown as {
+				session?: { get(key: string): Promise<Record<string, unknown>> };
+			}).session;
+			const stored = session ? await session.get(NATIVE_CLI_LAST_RUN_STORAGE_KEY) : {};
+			return {
+				success: true,
+				health,
+				lastRun: stored[NATIVE_CLI_LAST_RUN_STORAGE_KEY]
+			};
+		})
+		.catch(error => ({
+			success: false,
+			errorCode: error instanceof NativeCliExecutionError
+				? error.code
+				: error instanceof NativeCliUnavailableError ? 'unavailable' : 'failed',
+			error: error instanceof Error ? error.message : String(error),
+			errorDetails: error instanceof NativeCliExecutionError ? error.details : undefined
 		}));
 });
 
@@ -384,7 +422,11 @@ browser.runtime.onMessage.addListener((request: unknown) => {
 		.then(promptResponses => ({ success: true, promptResponses }))
 		.catch(error => ({
 			success: false,
-			error: error instanceof Error ? error.message : String(error)
+			error: error instanceof Error ? error.message : String(error),
+			errorCode: error instanceof NativeCliExecutionError
+				? error.code
+				: error instanceof NativeCliUnavailableError ? 'unavailable' : undefined,
+			errorDetails: error instanceof NativeCliExecutionError ? error.details : undefined
 		}))
 		.finally(() => {
 			if (activeLanguageLearningRequests.get(requestId) === requestController) {

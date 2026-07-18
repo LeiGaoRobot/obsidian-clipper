@@ -5,6 +5,7 @@ import { initializeIcons } from '../icons/icons';
 import { showModal, hideModal } from '../utils/modal-utils';
 import { getMessage, translatePage } from '../utils/i18n';
 import { debugLog } from '../utils/debug';
+import { NativeCliHealthError, requestNativeCliHealth } from '../utils/native-cli-health';
 
 export interface PresetProvider {
 	id: string;
@@ -229,8 +230,12 @@ export async function initializeInterpreterSettings(): Promise<void> {
 		const executionModeSelect = document.getElementById('interpreter-execution-mode') as HTMLSelectElement;
 		if (executionModeSelect) {
 			executionModeSelect.value = generalSettings.interpreterExecutionMode ?? 'api';
-			executionModeSelect.addEventListener('change', saveInterpreterSettingsFromForm);
+			executionModeSelect.addEventListener('change', () => {
+				saveInterpreterSettingsFromForm();
+				updateNativeCliHealthVisibility();
+			});
 		}
+		initializeNativeCliHealth();
 
 		updatePromptContextVisibility();
 		initializeToggles();
@@ -253,6 +258,54 @@ export async function initializeInterpreterSettings(): Promise<void> {
 		generalSettings.interpreterEnabled = false;
 		throw error;
 	}
+}
+
+function updateNativeCliHealthVisibility(): void {
+	const executionModeSelect = document.getElementById('interpreter-execution-mode') as HTMLSelectElement | null;
+	const healthItem = document.getElementById('native-cli-health-item');
+	const healthStatus = document.getElementById('native-cli-health-status');
+	if (!executionModeSelect || !healthItem) return;
+	healthItem.hidden = executionModeSelect.value === 'api';
+	if (healthStatus) healthStatus.textContent = '';
+}
+
+function initializeNativeCliHealth(): void {
+	const executionModeSelect = document.getElementById('interpreter-execution-mode') as HTMLSelectElement | null;
+	const healthButton = document.getElementById('native-cli-health-button') as HTMLButtonElement | null;
+	const healthStatus = document.getElementById('native-cli-health-status');
+	if (!executionModeSelect || !healthButton || !healthStatus) return;
+	updateNativeCliHealthVisibility();
+	healthButton.addEventListener('click', async () => {
+		const mode = executionModeSelect.value;
+		if (mode !== 'grok' && mode !== 'codex') return;
+		healthButton.disabled = true;
+		healthStatus.classList.remove('is-success', 'is-error');
+		healthStatus.textContent = getMessage('nativeCliHealthChecking');
+		try {
+			const diagnostics = await requestNativeCliHealth(mode);
+			const details = [
+				getMessage('nativeCliHealthReady', [
+					diagnostics.health.command,
+					String(diagnostics.health.protocolVersion)
+				])
+			];
+			if (diagnostics.lastRun) {
+				details.push(getMessage('nativeCliHealthLastRun', [
+					getMessage(`nativeCliRunStatus${diagnostics.lastRun.status[0].toUpperCase()}${diagnostics.lastRun.status.slice(1)}`),
+					new Date(diagnostics.lastRun.finishedAt).toLocaleString()
+				]));
+			}
+			healthStatus.textContent = details.join(' ');
+			healthStatus.classList.add('is-success');
+		} catch (error) {
+			const code = error instanceof NativeCliHealthError ? error.code : 'failed';
+			const message = error instanceof Error ? error.message : String(error);
+			healthStatus.textContent = getMessage('nativeCliHealthFailed', [code, message]);
+			healthStatus.classList.add('is-error');
+		} finally {
+			healthButton.disabled = false;
+		}
+	});
 }
 
 function initializeInterpreterToggles(): void {

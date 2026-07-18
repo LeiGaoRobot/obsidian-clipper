@@ -24,6 +24,13 @@ export interface LearningSelection {
 	context: string;
 }
 
+export interface LearningVocabularyEntry extends LearningSelection {
+	id: string;
+	explanation: string;
+	responseLanguage: string;
+	createdAt: number;
+}
+
 export interface TranscriptReadingToken {
 	text: string;
 	reading: string;
@@ -39,21 +46,33 @@ export interface TranscriptBatchProgress {
 export interface TranscriptReadingProgress extends TranscriptBatchProgress {
 	completedSegments: number;
 	totalSegments: number;
+	readings: TranscriptReadingSegments;
 }
 
 export type TranscriptReadingProgressHandler = (progress: TranscriptReadingProgress) => void;
-export type TranscriptTranslationProgress = TranscriptBatchProgress;
+export interface TranscriptTranslationProgress extends TranscriptBatchProgress {
+	translations: string[];
+}
 export type TranscriptTranslationProgressHandler = (progress: TranscriptTranslationProgress) => void;
 
+type MaybePromise<T> = T | Promise<T>;
+
 export interface TranscriptReadingCheckpointStore {
-	load(segments: string[]): TranscriptReadingSegments | undefined;
-	save(segments: string[], readings: TranscriptReadingSegments): void;
-	clear(segments: string[]): void;
+	load(segments: string[]): MaybePromise<TranscriptReadingSegments | undefined>;
+	save(segments: string[], readings: TranscriptReadingSegments): MaybePromise<void>;
+	clear(segments: string[]): MaybePromise<void>;
+}
+
+export interface TranscriptTranslationCheckpointStore {
+	load(segments: string[]): MaybePromise<string[] | undefined>;
+	save(segments: string[], translations: string[]): MaybePromise<void>;
+	clear(segments: string[]): MaybePromise<void>;
 }
 
 export interface LanguageLearningAssistantOptions {
 	japaneseReadingPromptCharLimit?: number;
 	japaneseReadingCheckpoints?: TranscriptReadingCheckpointStore;
+	transcriptTranslationCheckpoints?: TranscriptTranslationCheckpointStore;
 }
 
 export interface LanguageLearningAssistant {
@@ -245,7 +264,7 @@ export function createLanguageLearningAssistant(
 				'Use an empty reading for kana, Latin letters, numbers, spaces, and punctuation.',
 				'Split mixed kanji and kana into separate tuples so every kanji has its own reading.'
 			];
-			const checkpoint = options.japaneseReadingCheckpoints?.load(segments);
+			const checkpoint = await options.japaneseReadingCheckpoints?.load(segments);
 			const readings: TranscriptReadingSegments = segments.map((segment, index) => {
 				const tokens = checkpoint?.[index];
 				return tokens && isCompleteTranscriptReadingSegment(tokens, segment)
@@ -258,14 +277,13 @@ export function createLanguageLearningAssistant(
 				options.japaneseReadingPromptCharLimit,
 				index => !isCompleteTranscriptReadingSegment(readings[index], segments[index])
 			);
-			if (promptGroups.length > 0) {
-				onProgress?.({
-					completed: 0,
-					total: promptGroups.length,
-					completedSegments: countCompleteTranscriptReadingSegments(readings, segments),
-					totalSegments: segments.length
-				});
-			}
+			onProgress?.({
+				completed: 0,
+				total: promptGroups.length,
+				completedSegments: countCompleteTranscriptReadingSegments(readings, segments),
+				totalSegments: segments.length,
+				readings: cloneTranscriptReadings(readings)
+			});
 			for (const [groupIndex, group] of promptGroups.entries()) {
 				throwIfRequestAborted(signal);
 				const responses = await sendRequest({
@@ -291,16 +309,14 @@ export function createLanguageLearningAssistant(
 						}
 					}
 				}
-				options.japaneseReadingCheckpoints?.save(segments, cloneTranscriptReadings(readings));
+				await options.japaneseReadingCheckpoints?.save(segments, cloneTranscriptReadings(readings));
 				onProgress?.({
 					completed: groupIndex + 1,
 					total: promptGroups.length,
 					completedSegments: countCompleteTranscriptReadingSegments(readings, segments),
-					totalSegments: segments.length
+					totalSegments: segments.length,
+					readings: cloneTranscriptReadings(readings)
 				});
-			}
-			if (isCompleteTranscriptReadings(readings, segments)) {
-				options.japaneseReadingCheckpoints?.clear(segments);
 			}
 			return readings;
 		},
@@ -317,12 +333,15 @@ export function createLanguageLearningAssistant(
 				'Preserve meaning and tone. Do not merge or omit segments.',
 				'Return exactly one line per segment using: ID|||translation'
 			];
-			const promptGroups = buildTranscriptPromptGroups(segments, promptHeader);
-
-			const translations = new Array<string>(segments.length).fill('');
-			if (promptGroups.length > 0) {
-				onProgress?.({ completed: 0, total: promptGroups.length });
-			}
+			const checkpoint = await options.transcriptTranslationCheckpoints?.load(segments);
+			const translations = segments.map((_segment, index) => checkpoint?.[index]?.trim() || '');
+			const promptGroups = buildTranscriptPromptGroups(
+				segments,
+				promptHeader,
+				MAX_TRANSCRIPT_PROMPT_CHARS,
+				index => !translations[index]
+			);
+			onProgress?.({ completed: 0, total: promptGroups.length, translations: [...translations] });
 			for (const [groupIndex, group] of promptGroups.entries()) {
 				throwIfRequestAborted(signal);
 				const responses = await sendRequest({
@@ -345,7 +364,12 @@ export function createLanguageLearningAssistant(
 						}
 					}
 				}
-				onProgress?.({ completed: groupIndex + 1, total: promptGroups.length });
+				await options.transcriptTranslationCheckpoints?.save(segments, [...translations]);
+				onProgress?.({
+					completed: groupIndex + 1,
+					total: promptGroups.length,
+					translations: [...translations]
+				});
 			}
 			return translations;
 		}

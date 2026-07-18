@@ -1,6 +1,7 @@
 import { getMessage } from './i18n';
 import {
 	LearningSelection,
+	LearningVocabularyEntry,
 	TranscriptReadingProgress,
 	TranscriptReadingSegments,
 	TranscriptReadingToken,
@@ -24,6 +25,25 @@ export interface TranscriptLanguageLearning {
 		signal?: AbortSignal
 	) => Promise<TranscriptReadingSegments>;
 	explainSelection: (selection: LearningSelection, signal?: AbortSignal) => Promise<string>;
+	getExecutionInfo?: () => Promise<TranscriptExecutionInfo>;
+	saveTranscriptTranslations?: (segments: string[], translations: string[]) => Promise<void>;
+	saveJapaneseReadings?: (segments: string[], readings: TranscriptReadingSegments) => Promise<void>;
+	clearJapaneseReadings?: (segments: string[]) => Promise<void>;
+	isVocabularyFavorite?: (selection: LearningSelection) => Promise<boolean>;
+	toggleVocabularyFavorite?: (selection: LearningSelection, explanation: string) => Promise<boolean>;
+	copyLearningText?: (text: string) => Promise<boolean>;
+	saveVocabularyToObsidian?: (selection: LearningSelection, explanation: string) => Promise<void>;
+	listVocabulary?: () => Promise<LearningVocabularyEntry[]>;
+	removeVocabulary?: (id: string) => Promise<void>;
+	setExecutionMode?: (mode: 'api' | 'grok' | 'codex') => Promise<void>;
+}
+
+export type TranscriptTaskRange = 'current' | 'next-five-minutes' | 'all';
+
+export interface TranscriptExecutionInfo {
+	mode: 'api' | 'grok' | 'codex';
+	label: string;
+	promptCharLimit: number;
 }
 
 export interface TranscriptLanguageLearningController {
@@ -31,7 +51,9 @@ export interface TranscriptLanguageLearningController {
 	toggleJapaneseReadings: () => Promise<void>;
 	regenerateJapaneseReadings: () => Promise<void>;
 	cancelActiveRequest: () => void;
-	explain: (selection: LearningSelection) => Promise<void>;
+	explain: (selection: LearningSelection, returnFocus?: HTMLElement) => Promise<void>;
+	setTaskRange: (range: TranscriptTaskRange) => void;
+	showVocabulary: () => Promise<void>;
 }
 
 interface TranscriptLanguageLearningOptions {
@@ -130,7 +152,7 @@ export function cleanupTranscriptLanguageLearning(doc: Document): void {
 	activeLearningRequests.get(doc)?.abort();
 	activeLearningRequests.delete(doc);
 	doc.querySelector('.language-learning-selection-action')?.remove();
-	doc.querySelectorAll('.player-learning-bilingual, .player-learning-cancel, .player-learning-progress, .player-learning-readings, .player-learning-readings-edit, .player-learning-readings-regenerate').forEach(element => element.remove());
+	doc.querySelectorAll('.player-learning-bilingual, .player-learning-translations-edit, .player-learning-vocabulary, .player-learning-range, .player-learning-task, .player-learning-readings, .player-learning-readings-edit, .player-learning-readings-regenerate').forEach(element => element.remove());
 	doc.querySelector('.language-learning-card')?.remove();
 }
 
@@ -185,6 +207,28 @@ function renderTranscriptReadings(
 				});
 			}
 			ruby.append(base, reading);
+			if (!editable) {
+				ruby.className = 'transcript-reading-token';
+				ruby.setAttribute('role', 'button');
+				ruby.setAttribute('tabindex', '0');
+				ruby.setAttribute('aria-pressed', 'false');
+				ruby.setAttribute('aria-label', getMessage('readerToggleReading', token.text));
+				const toggleReading = () => {
+					const hidden = ruby.classList.toggle('is-reading-hidden');
+					ruby.setAttribute('aria-pressed', String(hidden));
+				};
+				ruby.addEventListener('click', event => {
+					event.preventDefault();
+					event.stopPropagation();
+					toggleReading();
+				});
+				ruby.addEventListener('keydown', event => {
+					if (event.key !== 'Enter' && event.key !== ' ') return;
+					event.preventDefault();
+					event.stopPropagation();
+					toggleReading();
+				});
+			}
 			originalElement.appendChild(ruby);
 		});
 	} else {
@@ -266,13 +310,14 @@ export function wireTranscriptLanguageLearning({
 	const card = doc.createElement('aside');
 	card.className = 'language-learning-card';
 	card.setAttribute('role', 'dialog');
-	card.setAttribute('aria-live', 'polite');
 	card.setAttribute('tabindex', '-1');
 	card.style.display = 'none';
 
 	const cardHeader = doc.createElement('div');
 	cardHeader.className = 'language-learning-card-header';
 	const cardTitle = doc.createElement('strong');
+	cardTitle.id = `language-learning-card-title-${Math.random().toString(36).slice(2)}`;
+	card.setAttribute('aria-labelledby', cardTitle.id);
 	const closeButton = doc.createElement('button');
 	closeButton.type = 'button';
 	closeButton.className = 'language-learning-card-close';
@@ -283,6 +328,10 @@ export function wireTranscriptLanguageLearning({
 
 	const cardBody = doc.createElement('div');
 	cardBody.className = 'language-learning-card-body';
+	cardBody.setAttribute('aria-live', 'polite');
+	const cardErrorDetails = doc.createElement('details');
+	cardErrorDetails.className = 'language-learning-card-error-details';
+	cardErrorDetails.hidden = true;
 	const retryButton = doc.createElement('button');
 	retryButton.type = 'button';
 	retryButton.className = 'language-learning-card-retry';
@@ -290,27 +339,166 @@ export function wireTranscriptLanguageLearning({
 	retryButton.hidden = true;
 	const cardActions = doc.createElement('div');
 	cardActions.className = 'language-learning-card-actions';
-	cardActions.appendChild(retryButton);
+	const favoriteButton = doc.createElement('button');
+	favoriteButton.type = 'button';
+	favoriteButton.className = 'language-learning-card-action language-learning-card-favorite';
+	favoriteButton.textContent = getMessage('readerFavorite');
+	favoriteButton.hidden = true;
+	const copyButton = doc.createElement('button');
+	copyButton.type = 'button';
+	copyButton.className = 'language-learning-card-action language-learning-card-copy';
+	copyButton.textContent = getMessage('copyToClipboard');
+	copyButton.hidden = true;
+	const saveButton = doc.createElement('button');
+	saveButton.type = 'button';
+	saveButton.className = 'language-learning-card-action language-learning-card-save';
+	saveButton.textContent = getMessage('addToObsidian');
+	saveButton.hidden = true;
+	const cardFeedback = doc.createElement('span');
+	cardFeedback.className = 'language-learning-card-feedback';
+	cardFeedback.setAttribute('role', 'status');
+	cardFeedback.setAttribute('aria-live', 'polite');
+	const engineRecovery = doc.createElement('div');
+	engineRecovery.className = 'language-learning-card-engine-recovery';
+	engineRecovery.hidden = true;
+	const engineSelect = doc.createElement('select');
+	engineSelect.className = 'language-learning-card-engine-select';
+	[
+		['api', 'interpreterExecutionModeApi'],
+		['grok', 'interpreterExecutionModeGrok'],
+		['codex', 'interpreterExecutionModeCodex']
+	].forEach(([value, label]) => {
+		const option = doc.createElement('option');
+		option.value = value;
+		option.textContent = getMessage(label);
+		engineSelect.appendChild(option);
+	});
+	engineSelect.setAttribute('aria-label', getMessage('interpreterExecutionMode'));
+	const applyEngineButton = doc.createElement('button');
+	applyEngineButton.type = 'button';
+	applyEngineButton.className = 'language-learning-card-action language-learning-card-engine-apply';
+	applyEngineButton.textContent = getMessage('readerSwitchAndRetry');
+	engineRecovery.append(engineSelect, applyEngineButton);
+	cardActions.append(cardFeedback, engineRecovery, favoriteButton, copyButton, saveButton, retryButton);
 	card.appendChild(cardHeader);
 	card.appendChild(cardBody);
+	card.appendChild(cardErrorDetails);
 	card.appendChild(cardActions);
 	doc.body.appendChild(card);
 
 	let retryAction: (() => void) | null = null;
+	let currentExplanation: { selection: LearningSelection; explanation: string } | null = null;
+	let currentExecutionInfo: TranscriptExecutionInfo = {
+		mode: 'api',
+		label: getMessage('interpreterExecutionModeApi'),
+		promptCharLimit: 6000
+	};
+	let cardReturnFocus: HTMLElement | null = null;
+	let lastTaskProgress: { completed: number; total: number } | null = null;
+	const rememberCardReturnFocus = (preferred?: HTMLElement | null) => {
+		if (card.style.display !== 'none') return;
+		if (preferred?.isConnected) {
+			cardReturnFocus = preferred;
+			return;
+		}
+		const activeElement = doc.activeElement;
+		cardReturnFocus = activeElement instanceof HTMLElement && activeElement !== doc.body
+			? activeElement
+			: null;
+	};
 	const hideCard = () => {
+		const returnFocus = cardReturnFocus;
 		card.style.display = 'none';
 		card.classList.remove('is-error');
 		retryAction = null;
 		retryButton.hidden = true;
+		retryButton.textContent = getMessage('readerRetry');
+		cardErrorDetails.replaceChildren();
+		cardErrorDetails.hidden = true;
+		engineRecovery.hidden = true;
+		cardFeedback.textContent = '';
+		favoriteButton.hidden = true;
+		copyButton.hidden = true;
+		saveButton.hidden = true;
+		cardReturnFocus = null;
+		if (returnFocus?.isConnected) returnFocus.focus();
 	};
 	const showCardError = (title: string, error: unknown, retry?: () => void) => {
+		rememberCardReturnFocus();
 		cardTitle.textContent = title;
-		cardBody.textContent = error instanceof Error ? error.message : getMessage('error');
+		currentExplanation = null;
+		favoriteButton.hidden = true;
+		copyButton.hidden = true;
+		saveButton.hidden = true;
+		cardErrorDetails.replaceChildren();
+		cardErrorDetails.hidden = true;
+		const structuredError = error && typeof error === 'object'
+			? error as { code?: string; details?: Record<string, unknown>; message?: string }
+			: null;
+		const errorMode = String(structuredError?.details?.mode || currentExecutionInfo.mode);
+		const localizedErrorKeys: Record<string, string> = {
+			unavailable: 'readerCliUnavailable',
+			config: 'readerCliConfig',
+			'protocol-mismatch': 'readerCliProtocolMismatch',
+			'launch-failed': 'readerCliLaunchFailed',
+			'cli-failed': 'readerCliFailed',
+			'response-too-large': 'readerCliResponseTooLarge',
+			invalid: 'readerCliInvalid'
+		};
+		if (structuredError?.code === 'timeout') {
+			const timeoutSeconds = String(structuredError.details?.timeoutSeconds || '');
+			cardBody.textContent = getMessage('readerCliTimeout', [errorMode, timeoutSeconds]);
+		} else if (structuredError?.code && localizedErrorKeys[structuredError.code]) {
+			cardBody.textContent = getMessage(localizedErrorKeys[structuredError.code], errorMode);
+		} else {
+			cardBody.textContent = error instanceof Error ? error.message : getMessage('error');
+		}
+		const technicalMessage = error instanceof Error
+			? error.message
+			: structuredError?.message;
+		if (technicalMessage && structuredError?.code) {
+			const summary = doc.createElement('summary');
+			summary.textContent = getMessage('readerTechnicalDetails');
+			const detail = doc.createElement('div');
+			detail.className = 'language-learning-card-error-detail';
+			detail.textContent = technicalMessage;
+			cardErrorDetails.append(summary, detail);
+			cardErrorDetails.hidden = false;
+		}
+		const canSwitchEngine = Boolean(
+			structuredError?.code
+			&& structuredError.code !== 'cancelled'
+			&& tools.setExecutionMode
+		);
+		engineRecovery.hidden = !canSwitchEngine;
+		if (canSwitchEngine) {
+			const selectedErrorMode = structuredError?.details?.mode;
+			engineSelect.value = selectedErrorMode === 'grok' || selectedErrorMode === 'codex' || selectedErrorMode === 'api'
+				? selectedErrorMode
+				: currentExecutionInfo.mode;
+		}
 		card.classList.add('is-error');
 		card.style.display = 'block';
 		retryAction = retry || null;
 		retryButton.hidden = !retryAction;
+		retryButton.textContent = lastTaskProgress && lastTaskProgress.completed > 0
+			? getMessage('readerContinueRemaining', [
+				String(lastTaskProgress.completed),
+				String(lastTaskProgress.total)
+			])
+			: getMessage('readerRetry');
 		card.focus();
+	};
+	const showExplanationActions = async (selection: LearningSelection, explanation: string) => {
+		currentExplanation = { selection, explanation };
+		copyButton.hidden = !tools.copyLearningText;
+		saveButton.hidden = !tools.saveVocabularyToObsidian;
+		favoriteButton.hidden = !tools.toggleVocabularyFavorite;
+		if (tools.isVocabularyFavorite && tools.toggleVocabularyFavorite) {
+			const favorite = await tools.isVocabularyFavorite(selection);
+			if (currentExplanation?.selection !== selection) return;
+			favoriteButton.textContent = getMessage(favorite ? 'readerUnfavorite' : 'readerFavorite');
+		}
 	};
 	let explanationRequest = 0;
 	let activeRequest: AbortController | null = null;
@@ -329,19 +517,30 @@ export function wireTranscriptLanguageLearning({
 	const cancelActiveRequest = () => {
 		activeLearningRequests.get(doc)?.abort();
 	};
-	const explain = async (selection: LearningSelection) => {
+	const explain = async (selection: LearningSelection, returnFocus?: HTMLElement) => {
 		if (signal.aborted) return;
 		const request = ++explanationRequest;
+		rememberCardReturnFocus(returnFocus);
+		currentExplanation = null;
 		cardTitle.textContent = selection.text;
 		cardBody.textContent = getMessage('thinking');
 		card.classList.remove('is-error');
+		favoriteButton.hidden = true;
+		copyButton.hidden = true;
+		saveButton.hidden = true;
+		cardErrorDetails.replaceChildren();
+		cardErrorDetails.hidden = true;
+		engineRecovery.hidden = true;
+		cardFeedback.textContent = '';
 		retryAction = null;
 		retryButton.hidden = true;
 		card.style.display = 'block';
+		card.focus();
 
 		const cachedExplanation = getCachedExplanation(selection, resolvedResponseLanguage);
 		if (cachedExplanation) {
 			cardBody.textContent = cachedExplanation;
+			await showExplanationActions(selection, cachedExplanation);
 			return;
 		}
 		const requestController = startActiveRequest();
@@ -352,7 +551,9 @@ export function wireTranscriptLanguageLearning({
 			throwIfRequestAborted(requestController.signal);
 			if (explanation) cacheExplanation(selection, resolvedResponseLanguage, explanation);
 			if (request !== explanationRequest) return;
-			cardBody.textContent = explanation || getMessage('emptyResponse');
+			const resolvedExplanation = explanation || getMessage('emptyResponse');
+			cardBody.textContent = resolvedExplanation;
+			await showExplanationActions(selection, resolvedExplanation);
 		} catch (error) {
 			if (request !== explanationRequest) return;
 			if (isRequestCancelled(error) || requestController.signal.aborted) {
@@ -377,15 +578,219 @@ export function wireTranscriptLanguageLearning({
 		event.stopPropagation();
 		retryAction?.();
 	});
+	favoriteButton.addEventListener('click', async event => {
+		if (!event.isTrusted || !currentExplanation || !tools.toggleVocabularyFavorite) return;
+		const favorite = await tools.toggleVocabularyFavorite(
+			currentExplanation.selection,
+			currentExplanation.explanation
+		);
+		favoriteButton.textContent = getMessage(favorite ? 'readerUnfavorite' : 'readerFavorite');
+		cardFeedback.textContent = getMessage(favorite ? 'readerFavoriteSaved' : 'readerFavoriteRemoved');
+	});
+	copyButton.addEventListener('click', async event => {
+		if (!event.isTrusted || !currentExplanation || !tools.copyLearningText) return;
+		const copied = await tools.copyLearningText([
+			currentExplanation.selection.text,
+			currentExplanation.explanation
+		].join('\n\n'));
+		cardFeedback.textContent = getMessage(copied ? 'copied' : 'error');
+	});
+	saveButton.addEventListener('click', async event => {
+		if (!event.isTrusted || !currentExplanation || !tools.saveVocabularyToObsidian) return;
+		await tools.saveVocabularyToObsidian(
+			currentExplanation.selection,
+			currentExplanation.explanation
+		);
+		cardFeedback.textContent = getMessage('readerSavedToObsidian');
+	});
+	applyEngineButton.addEventListener('click', async event => {
+		if (!event.isTrusted || !tools.setExecutionMode || !retryAction) return;
+		const mode = engineSelect.value as 'api' | 'grok' | 'codex';
+		applyEngineButton.disabled = true;
+		try {
+			await tools.setExecutionMode(mode);
+			currentExecutionInfo = {
+				mode,
+				label: getMessage(mode === 'api'
+					? 'interpreterExecutionModeApi'
+					: mode === 'grok'
+						? 'interpreterExecutionModeGrok'
+						: 'interpreterExecutionModeCodex'),
+				promptCharLimit: mode === 'grok' ? 1600 : mode === 'codex' ? 2500 : 6000
+			};
+			const retry = retryAction;
+			hideCard();
+			retry?.();
+		} finally {
+			applyEngineButton.disabled = false;
+		}
+	});
+
+	const showVocabulary = async () => {
+		rememberCardReturnFocus();
+		cardTitle.textContent = getMessage('readerSavedVocabulary');
+		cardBody.replaceChildren();
+		card.classList.remove('is-error');
+		cardErrorDetails.hidden = true;
+		engineRecovery.hidden = true;
+		retryButton.hidden = true;
+		favoriteButton.hidden = true;
+		copyButton.hidden = true;
+		saveButton.hidden = true;
+		currentExplanation = null;
+		const entries = await tools.listVocabulary?.() || [];
+		if (entries.length === 0) {
+			cardBody.textContent = getMessage('readerSavedVocabularyEmpty');
+		} else {
+			entries.forEach(entry => {
+				const item = doc.createElement('article');
+				item.className = 'language-learning-vocabulary-entry';
+				const title = doc.createElement('strong');
+				title.textContent = entry.text;
+				const explanation = doc.createElement('p');
+				explanation.textContent = entry.explanation;
+				const actions = doc.createElement('div');
+				actions.className = 'language-learning-vocabulary-actions';
+				if (tools.copyLearningText) {
+					const copy = doc.createElement('button');
+					copy.type = 'button';
+					copy.className = 'language-learning-card-action language-learning-vocabulary-copy';
+					copy.textContent = getMessage('copyToClipboard');
+					copy.addEventListener('click', async event => {
+						if (!event.isTrusted || !tools.copyLearningText) return;
+						await tools.copyLearningText([entry.text, entry.explanation].join('\n\n'));
+					});
+					actions.appendChild(copy);
+				}
+				if (tools.saveVocabularyToObsidian) {
+					const save = doc.createElement('button');
+					save.type = 'button';
+					save.className = 'language-learning-card-action language-learning-vocabulary-save';
+					save.textContent = getMessage('addToObsidian');
+					save.addEventListener('click', async event => {
+						if (!event.isTrusted || !tools.saveVocabularyToObsidian) return;
+						await tools.saveVocabularyToObsidian(entry, entry.explanation);
+					});
+					actions.appendChild(save);
+				}
+				if (tools.removeVocabulary) {
+					const remove = doc.createElement('button');
+					remove.type = 'button';
+					remove.className = 'language-learning-card-action language-learning-vocabulary-remove';
+					remove.textContent = getMessage('remove');
+					remove.addEventListener('click', async event => {
+						if (!event.isTrusted || !tools.removeVocabulary) return;
+						await tools.removeVocabulary(entry.id);
+						await showVocabulary();
+					});
+					actions.appendChild(remove);
+				}
+				item.append(title, explanation, actions);
+				cardBody.appendChild(item);
+			});
+		}
+		card.style.display = 'block';
+		card.focus();
+	};
 	closeButton.addEventListener('click', () => {
 		hideCard();
 	});
+	doc.addEventListener('keydown', event => {
+		if (event.key !== 'Escape' || card.style.display === 'none') return;
+		event.preventDefault();
+		hideCard();
+	}, { signal });
+
+	const rangeControl = doc.createElement('label');
+	rangeControl.className = 'player-learning-range';
+	const rangeLabel = doc.createElement('span');
+	rangeLabel.textContent = getMessage('readerTaskRange');
+	const rangeSelect = doc.createElement('select');
+	const rangeOptions: Array<{ value: TranscriptTaskRange; label: string }> = [
+		{ value: 'current', label: getMessage('readerTaskRangeCurrent') },
+		{ value: 'next-five-minutes', label: getMessage('readerTaskRangeNextFiveMinutes') },
+		{ value: 'all', label: getMessage('readerTaskRangeAll') }
+	];
+	rangeOptions.forEach(({ value, label }) => {
+		const option = doc.createElement('option');
+		option.value = value;
+		option.textContent = label;
+		rangeSelect.appendChild(option);
+	});
+	rangeSelect.value = 'all';
+	rangeControl.append(rangeLabel, rangeSelect);
+	controls.appendChild(rangeControl);
+
+	const getTaskRange = (): TranscriptTaskRange => rangeSelect.value as TranscriptTaskRange;
+	const setTaskRange = (range: TranscriptTaskRange) => {
+		rangeSelect.value = range;
+	};
+	const getActiveSegmentIndex = () => {
+		const activeIndex = segments.findIndex(segment => segment.classList.contains('is-active'));
+		return activeIndex >= 0 ? activeIndex : 0;
+	};
+	const getSegmentTimestamp = (segment: HTMLElement): number | null => {
+		const timestamp = segment.querySelector<HTMLElement>('.timestamp[data-timestamp]')?.dataset.timestamp;
+		if (timestamp == null) return null;
+		const parsed = Number(timestamp);
+		return Number.isFinite(parsed) ? parsed : null;
+	};
+	const getTaskIndexes = (): number[] => {
+		const range = getTaskRange();
+		if (range === 'all') return originalTexts.map((_, index) => index);
+		const activeIndex = getActiveSegmentIndex();
+		if (range === 'current') return [activeIndex];
+		const startTime = getSegmentTimestamp(segments[activeIndex]);
+		if (startTime == null) return [activeIndex];
+		return segments
+			.map((segment, index) => ({ index, timestamp: getSegmentTimestamp(segment) }))
+			.filter(({ index, timestamp }) => index >= activeIndex && timestamp != null && timestamp <= startTime + 300)
+			.map(({ index }) => index);
+	};
 
 	const bilingualButton = doc.createElement('button');
 	bilingualButton.type = 'button';
 	bilingualButton.className = 'player-learning-action player-learning-bilingual';
 	bilingualButton.textContent = getMessage('readerBilingualSubtitles');
 	controls.appendChild(bilingualButton);
+	const vocabularyButton = doc.createElement('button');
+	vocabularyButton.type = 'button';
+	vocabularyButton.className = 'player-learning-action player-learning-vocabulary';
+	vocabularyButton.textContent = getMessage('readerSavedVocabulary');
+	vocabularyButton.hidden = !tools.listVocabulary;
+	vocabularyButton.addEventListener('click', event => {
+		if (!event.isTrusted) return;
+		event.preventDefault();
+		event.stopPropagation();
+		void showVocabulary();
+	});
+	controls.appendChild(vocabularyButton);
+
+	const translationsEditButton = doc.createElement('button');
+	translationsEditButton.type = 'button';
+	translationsEditButton.className = 'player-learning-action player-learning-translations-edit';
+	translationsEditButton.textContent = getMessage('readerEditTranslations');
+	translationsEditButton.hidden = true;
+	controls.appendChild(translationsEditButton);
+
+	const taskBar = doc.createElement('div');
+	taskBar.className = 'player-learning-task';
+	taskBar.hidden = true;
+	taskBar.setAttribute('aria-busy', 'false');
+	const taskEngine = doc.createElement('span');
+	taskEngine.className = 'player-learning-task-engine';
+	taskEngine.textContent = getMessage('interpreterExecutionModeApi');
+	const taskEstimate = doc.createElement('span');
+	taskEstimate.className = 'player-learning-task-estimate';
+	const taskElapsed = doc.createElement('span');
+	taskElapsed.className = 'player-learning-task-elapsed';
+	taskElapsed.setAttribute('aria-hidden', 'true');
+	const taskProgress = doc.createElement('progress');
+	taskProgress.className = 'player-learning-task-progress';
+	taskProgress.max = 1;
+	taskProgress.value = 0;
+	taskBar.append(taskEngine, taskEstimate, taskElapsed, taskProgress);
+	controls.appendChild(taskBar);
 
 	const cancelRequestButton = doc.createElement('button');
 	cancelRequestButton.type = 'button';
@@ -398,14 +803,14 @@ export function wireTranscriptLanguageLearning({
 		event.stopPropagation();
 		cancelActiveRequest();
 	});
-	controls.appendChild(cancelRequestButton);
+	taskBar.appendChild(cancelRequestButton);
 
 	const progressStatus = doc.createElement('span');
 	progressStatus.className = 'player-learning-progress';
 	progressStatus.setAttribute('role', 'status');
 	progressStatus.setAttribute('aria-live', 'polite');
 	progressStatus.hidden = true;
-	controls.appendChild(progressStatus);
+	taskBar.appendChild(progressStatus);
 
 	const clearProgressStatus = () => {
 		progressStatus.textContent = '';
@@ -415,8 +820,36 @@ export function wireTranscriptLanguageLearning({
 		progressStatus.textContent = message;
 		progressStatus.hidden = false;
 	};
-	const beginRequestUi = (button: HTMLButtonElement, label: string) => {
+	let elapsedTimer: number | undefined;
+	const updateExecutionInfo = async (taskTexts: string[]) => {
+		try {
+			if (tools.getExecutionInfo) currentExecutionInfo = await tools.getExecutionInfo();
+		} catch {
+			// Execution errors are reported by the requested task itself.
+		}
+		taskEngine.textContent = currentExecutionInfo.label;
+		const sourceChars = taskTexts.reduce((total, text) => total + text.length, 0);
+		const estimatedBatches = Math.max(1, Math.ceil(sourceChars / currentExecutionInfo.promptCharLimit));
+		taskEstimate.textContent = getMessage('readerTaskEstimate', [
+			String(taskTexts.length),
+			String(estimatedBatches)
+		]);
+	};
+	const beginRequestUi = async (button: HTMLButtonElement, label: string, taskTexts: string[]) => {
 		hideCard();
+		lastTaskProgress = null;
+		await updateExecutionInfo(taskTexts);
+		taskBar.hidden = false;
+		taskBar.setAttribute('aria-busy', 'true');
+		taskProgress.value = 0;
+		taskProgress.max = 1;
+		const startedAt = Date.now();
+		const updateElapsed = () => {
+			taskElapsed.textContent = getMessage('readerTaskElapsed', String(Math.floor((Date.now() - startedAt) / 1000)));
+		};
+		updateElapsed();
+		if (elapsedTimer) window.clearInterval(elapsedTimer);
+		elapsedTimer = window.setInterval(updateElapsed, 1000);
 		button.disabled = true;
 		button.setAttribute('aria-busy', 'true');
 		button.classList.add('is-loading');
@@ -430,41 +863,108 @@ export function wireTranscriptLanguageLearning({
 		button.classList.remove('is-loading');
 		button.textContent = label;
 		if (activeRequest && activeRequest !== request) return;
+		if (elapsedTimer) window.clearInterval(elapsedTimer);
+		elapsedTimer = undefined;
+		taskBar.setAttribute('aria-busy', 'false');
 		cancelRequestButton.hidden = true;
 		if (!cancelled) clearProgressStatus();
 	};
 
-	let translationsLoaded = false;
 	let translationsVisible = false;
-	const applyTranslations = (translations: string[]) => {
-		if (translations.length !== originalTexts.length || translations.some(translation => !translation.trim())) {
+	let translationEditMode = false;
+	let translationValues = new Array<string>(originalTexts.length).fill('');
+	const persistTranslations = () => {
+		if (translationValues.every(translation => translation.trim())) {
+			cacheTranslations(originalTexts, resolvedResponseLanguage, translationValues);
+		}
+		void tools.saveTranscriptTranslations?.(originalTexts, [...translationValues]);
+	};
+	const updateTranslationEditButton = () => {
+		translationsEditButton.hidden = !translationsVisible
+			|| !translationValues.some(translation => translation.trim());
+		translationsEditButton.textContent = translationEditMode
+			? getMessage('readerFinishTranslationEdit')
+			: getMessage('readerEditTranslations');
+		translationsEditButton.classList.toggle('is-enabled', translationEditMode);
+	};
+	const updateTranslationEditing = () => {
+		segments.forEach((segment, index) => {
+			const translationElement = segment.querySelector<HTMLElement>('.transcript-segment-translation');
+			if (!translationElement) return;
+			translationElement.setAttribute('contenteditable', translationEditMode ? 'true' : 'false');
+			if (translationEditMode) {
+				translationElement.setAttribute('role', 'textbox');
+				translationElement.setAttribute('aria-label', getMessage('readerTranslationEditLabel', String(index + 1)));
+				translationElement.setAttribute('aria-multiline', 'true');
+				translationElement.setAttribute('spellcheck', 'true');
+			} else {
+				translationElement.removeAttribute('role');
+				translationElement.removeAttribute('aria-label');
+				translationElement.removeAttribute('aria-multiline');
+				translationElement.removeAttribute('spellcheck');
+			}
+		});
+		transcript.classList.toggle('is-editing-translations', translationEditMode);
+		updateTranslationEditButton();
+	};
+	const renderTranslations = (translations: string[], complete: boolean) => {
+		if (translations.length !== originalTexts.length) {
 			throw new Error(getMessage('readerTranslationIncomplete'));
 		}
-		const translationElements = translations.map((translation, index) => {
+		translations.forEach((translation, index) => {
+			if (!translation.trim()) return;
 			const textElement = segments[index].querySelector('.transcript-segment-text');
 			if (!textElement) throw new Error(getMessage('readerTranslationIncomplete'));
-			const translationElement = doc.createElement('div');
-			translationElement.className = 'transcript-segment-translation';
+			let translationElement = textElement.querySelector('.transcript-segment-translation') as HTMLElement | null;
+			if (!translationElement) {
+				translationElement = doc.createElement('div');
+				translationElement.className = 'transcript-segment-translation';
+				translationElement.addEventListener('input', () => {
+					translationValues[index] = translationElement?.textContent?.trim() || '';
+					persistTranslations();
+				});
+				textElement.appendChild(translationElement);
+			}
 			translationElement.textContent = translation;
-			return { textElement, translationElement };
 		});
-		translationElements.forEach(({ textElement, translationElement }) => {
-			textElement.appendChild(translationElement);
-		});
-		translationsLoaded = true;
+		translationValues = [...translations];
 		translationsVisible = true;
 		transcript.classList.add('show-bilingual-transcript');
+		transcript.classList.toggle('has-partial-bilingual-transcript', !complete);
 		bilingualButton.classList.add('is-enabled');
+		updateTranslationEditing();
+	};
+	const applyTranslations = (translations: string[]) => {
+		if (translations.some(translation => !translation.trim())) {
+			throw new Error(getMessage('readerTranslationIncomplete'));
+		}
+		renderTranslations(translations, true);
+	};
+	const mergeTranslations = (indexes: number[], scopedTranslations: string[]): string[] => {
+		if (scopedTranslations.length !== indexes.length) {
+			throw new Error(getMessage('readerTranslationIncomplete'));
+		}
+		const merged = [...translationValues];
+		indexes.forEach((sourceIndex, scopedIndex) => {
+			merged[sourceIndex] = scopedTranslations[scopedIndex] || '';
+		});
+		return merged;
 	};
 	const toggleBilingual = async () => {
-		if (translationsLoaded) {
+		const taskIndexes = getTaskIndexes();
+		const selectedRangeLoaded = taskIndexes.every(index => translationValues[index]?.trim());
+		if (selectedRangeLoaded) {
 			translationsVisible = !translationsVisible;
+			if (!translationsVisible) translationEditMode = false;
 			transcript.classList.toggle('show-bilingual-transcript', translationsVisible);
 			bilingualButton.classList.toggle('is-enabled', translationsVisible);
+			updateTranslationEditing();
 			return;
 		}
 
-		const cachedTranslations = getCachedTranslations(originalTexts, resolvedResponseLanguage);
+		const cachedTranslations = getTaskRange() === 'all'
+			? getCachedTranslations(originalTexts, resolvedResponseLanguage)
+			: null;
 		if (cachedTranslations) {
 			try {
 				applyTranslations(cachedTranslations);
@@ -474,9 +974,16 @@ export function wireTranscriptLanguageLearning({
 			}
 		}
 
+		const taskTexts = taskIndexes.map(index => originalTexts[index]);
 		const requestController = startActiveRequest();
-		beginRequestUi(bilingualButton, getMessage('thinking'));
+		await beginRequestUi(bilingualButton, getMessage('thinking'), taskTexts);
 		const setTranslationProgress = (progress: TranscriptTranslationProgress) => {
+			if (progress.translations?.some(translation => translation.trim())) {
+				renderTranslations(mergeTranslations(taskIndexes, progress.translations), false);
+			}
+			lastTaskProgress = { completed: progress.completed, total: progress.total };
+			taskProgress.max = Math.max(1, progress.total);
+			taskProgress.value = progress.completed;
 			const label = getMessage('readerTranslationProgress', [
 				String(progress.completed),
 				String(progress.total)
@@ -484,10 +991,16 @@ export function wireTranscriptLanguageLearning({
 			setProgressStatus(label);
 		};
 		try {
-			const translations = await tools.translateTranscript(originalTexts, setTranslationProgress, requestController.signal);
 			throwIfRequestAborted(requestController.signal);
-			applyTranslations(translations);
-			cacheTranslations(originalTexts, resolvedResponseLanguage, translations);
+			const translations = await tools.translateTranscript(taskTexts, setTranslationProgress, requestController.signal);
+			throwIfRequestAborted(requestController.signal);
+			if (translations.some(translation => !translation.trim())) {
+				throw new Error(getMessage('readerTranslationIncomplete'));
+			}
+			const merged = mergeTranslations(taskIndexes, translations);
+			const complete = merged.every(translation => translation.trim());
+			renderTranslations(merged, complete);
+			if (complete) cacheTranslations(originalTexts, resolvedResponseLanguage, merged);
 		} catch (error) {
 			if (isRequestCancelled(error) || requestController.signal.aborted) {
 				if (activeRequest !== requestController) return;
@@ -510,6 +1023,14 @@ export function wireTranscriptLanguageLearning({
 		event.preventDefault();
 		event.stopPropagation();
 		void toggleBilingual();
+	});
+	translationsEditButton.addEventListener('click', event => {
+		event.preventDefault();
+		event.stopPropagation();
+		if (!translationsVisible) return;
+		translationEditMode = !translationEditMode;
+		updateTranslationEditing();
+		if (!translationEditMode) persistTranslations();
 	});
 
 	const readingsButton = doc.createElement('button');
@@ -536,28 +1057,57 @@ export function wireTranscriptLanguageLearning({
 	let japaneseReadings: TranscriptReadingSegments | null = null;
 	let readingsVisible = false;
 	let readingEditMode = false;
+	let readingsComplete = false;
+	const mergeReadings = (indexes: number[], scopedReadings: TranscriptReadingSegments): TranscriptReadingSegments => {
+		if (scopedReadings.length !== indexes.length) {
+			throw new Error(getMessage('readerReadingIncomplete'));
+		}
+		const merged = japaneseReadings
+			? cloneTranscriptReadings(japaneseReadings)
+			: originalTexts.map(() => []);
+		indexes.forEach((sourceIndex, scopedIndex) => {
+			merged[sourceIndex] = scopedReadings[scopedIndex].map(token => ({ ...token }));
+		});
+		return merged;
+	};
+	const hasCompleteReadings = (indexes: number[]) => Boolean(japaneseReadings)
+		&& indexes.every(index => isCompleteTranscriptReadings(
+			[japaneseReadings?.[index] || []],
+			[originalTexts[index]]
+		));
 	const updateReadingsEditButton = () => {
-		readingsEditButton.hidden = !japaneseReadings || !readingsVisible;
-		readingsRegenerateButton.hidden = !japaneseReadings || !readingsVisible;
+		const hasGeneratedReadings = Boolean(japaneseReadings?.some(tokens => tokens.length > 0));
+		readingsEditButton.hidden = !readingsVisible || !hasGeneratedReadings;
+		readingsRegenerateButton.hidden = !readingsVisible || !hasGeneratedReadings;
 		readingsEditButton.textContent = readingEditMode
 			? getMessage('readerFinishReadingEdit')
 			: getMessage('readerEditReadings');
 		readingsEditButton.classList.toggle('is-enabled', readingEditMode);
 	};
 	const updateReading = (segmentIndex: number, tokenIndex: number, reading: string) => {
-		const token = japaneseReadings?.[segmentIndex]?.[tokenIndex];
-		if (!token || !japaneseReadings) return;
+		const readings = japaneseReadings;
+		const token = readings?.[segmentIndex]?.[tokenIndex];
+		if (!token || !readings) return;
 		token.reading = reading;
-		if (isCompleteTranscriptReadings(japaneseReadings, originalTexts)) {
-			cacheJapaneseReadings(originalTexts, japaneseReadings);
+		if (isCompleteTranscriptReadings(readings, originalTexts)) {
+			cacheJapaneseReadings(originalTexts, readings);
 		} else {
 			removeCachedJapaneseReadings(originalTexts);
 		}
+		const taskIndexes = getTaskIndexes();
+		const checkpointIndexes = taskIndexes.includes(segmentIndex) && hasCompleteReadings(taskIndexes)
+			? taskIndexes
+			: [segmentIndex];
+		void tools.saveJapaneseReadings?.(
+			checkpointIndexes.map(index => originalTexts[index]),
+			cloneTranscriptReadings(checkpointIndexes.map(index => readings[index]))
+		);
 	};
 	const renderReadings = (show: boolean) => {
 		if (!japaneseReadings) return;
 		if (!show) readingEditMode = false;
 		japaneseReadings.forEach((tokens, index) => {
+			if (tokens.length === 0) return;
 			const textElement = segments[index].querySelector('.transcript-segment-text');
 			if (textElement) {
 				renderTranscriptReadings(
@@ -576,24 +1126,39 @@ export function wireTranscriptLanguageLearning({
 		readingsButton.classList.toggle('is-enabled', show);
 		updateReadingsEditButton();
 	};
-	const setReadingProgress = (progress: TranscriptReadingProgress) => {
-		const label = getMessage('readerJapaneseReadingsProgress', [
-			String(progress.completedSegments),
-			String(progress.totalSegments)
-		]);
-		setProgressStatus(label);
-	};
 	const generateJapaneseReadings = async () => {
+		const taskIndexes = getTaskIndexes();
+		const taskTexts = taskIndexes.map(index => originalTexts[index]);
 		const requestController = startActiveRequest();
-		beginRequestUi(readingsButton, getMessage('thinking'));
+		await beginRequestUi(readingsButton, getMessage('thinking'), taskTexts);
+		const setReadingProgress = (progress: TranscriptReadingProgress) => {
+			if (progress.readings?.some(tokens => tokens.length > 0)) {
+				japaneseReadings = mergeReadings(taskIndexes, progress.readings);
+				readingsComplete = isCompleteTranscriptReadings(japaneseReadings, originalTexts);
+				renderReadings(true);
+			}
+			lastTaskProgress = {
+				completed: progress.completedSegments,
+				total: progress.totalSegments
+			};
+			taskProgress.max = Math.max(1, progress.total);
+			taskProgress.value = progress.completed;
+			const label = getMessage('readerJapaneseReadingsProgress', [
+				String(progress.completedSegments),
+				String(progress.totalSegments)
+			]);
+			setProgressStatus(label);
+		};
 		try {
-			const readings = await tools.annotateJapaneseTranscript(originalTexts, setReadingProgress, requestController.signal);
 			throwIfRequestAborted(requestController.signal);
-			if (!isCompleteTranscriptReadings(readings, originalTexts)) {
+			const readings = await tools.annotateJapaneseTranscript(taskTexts, setReadingProgress, requestController.signal);
+			throwIfRequestAborted(requestController.signal);
+			if (!isCompleteTranscriptReadings(readings, taskTexts)) {
 				throw new Error(getMessage('readerReadingIncomplete'));
 			}
-			japaneseReadings = readings;
-			cacheJapaneseReadings(originalTexts, readings);
+			japaneseReadings = mergeReadings(taskIndexes, readings);
+			readingsComplete = isCompleteTranscriptReadings(japaneseReadings, originalTexts);
+			if (readingsComplete) cacheJapaneseReadings(originalTexts, japaneseReadings);
 			renderReadings(true);
 		} catch (error) {
 			if (isRequestCancelled(error) || requestController.signal.aborted) {
@@ -613,13 +1178,15 @@ export function wireTranscriptLanguageLearning({
 		}
 	};
 	const toggleJapaneseReadings = async () => {
-		if (japaneseReadings) {
+		const taskIndexes = getTaskIndexes();
+		if (japaneseReadings && hasCompleteReadings(taskIndexes)) {
 			renderReadings(!readingsVisible);
 			return;
 		}
 		const cachedReadings = getCachedJapaneseReadings(originalTexts);
 		if (cachedReadings && isCompleteTranscriptReadings(cachedReadings, originalTexts)) {
 			japaneseReadings = cachedReadings;
+			readingsComplete = true;
 			renderReadings(true);
 			return;
 		}
@@ -629,17 +1196,26 @@ export function wireTranscriptLanguageLearning({
 	};
 	const regenerateJapaneseReadings = async () => {
 		if (!japaneseReadings || !readingsVisible) return;
-		const previousReadings = japaneseReadings;
-		previousReadings.forEach((tokens, index) => {
+		const taskIndexes = getTaskIndexes();
+		const taskTexts = taskIndexes.map(index => originalTexts[index]);
+		const remainingReadings = cloneTranscriptReadings(japaneseReadings);
+		taskIndexes.forEach(index => {
+			const tokens = remainingReadings[index];
 			const textElement = segments[index].querySelector('.transcript-segment-text');
 			if (textElement) renderTranscriptReadings(doc, textElement, tokens, false, false);
+			remainingReadings[index] = [];
 		});
 		removeCachedJapaneseReadings(originalTexts);
-		japaneseReadings = null;
-		readingsVisible = false;
+		await tools.clearJapaneseReadings?.(taskTexts);
+		japaneseReadings = remainingReadings.some(tokens => tokens.length > 0)
+			? remainingReadings
+			: null;
+		readingsVisible = Boolean(japaneseReadings);
 		readingEditMode = false;
-		transcript.classList.remove('show-japanese-readings', 'is-editing-japanese-readings');
-		readingsButton.classList.remove('is-enabled');
+		readingsComplete = false;
+		transcript.classList.toggle('show-japanese-readings', readingsVisible);
+		transcript.classList.remove('is-editing-japanese-readings');
+		readingsButton.classList.toggle('is-enabled', readingsVisible);
 		updateReadingsEditButton();
 		await generateJapaneseReadings();
 	};
@@ -683,6 +1259,17 @@ export function wireTranscriptLanguageLearning({
 	};
 
 	const readSelection = () => getTranscriptLearningSelection(doc, transcript, segments, originalTexts);
+	const getSelectionFocusTarget = (): HTMLElement | null => {
+		const selectionNode = doc.getSelection()?.anchorNode;
+		const selectionElement = selectionNode?.nodeType === 1
+			? selectionNode as Element
+			: selectionNode?.parentElement;
+		const sourceSegment = selectionElement?.closest('.transcript-segment') as HTMLElement | null;
+		if (sourceSegment && !sourceSegment.hasAttribute('tabindex')) {
+			sourceSegment.setAttribute('tabindex', '-1');
+		}
+		return sourceSegment;
+	};
 
 	const updateSelectionButton = () => {
 		const selection = readSelection();
@@ -712,8 +1299,9 @@ export function wireTranscriptLanguageLearning({
 		const selection = pendingSelection || pressedSelection;
 		pressedSelection = null;
 		if (!selection) return;
+		const returnFocus = getSelectionFocusTarget();
 		hideSelectionButton();
-		await explain(selection);
+		await explain(selection, returnFocus || undefined);
 	});
 
 	transcript.addEventListener('dblclick', (event) => {
@@ -724,8 +1312,9 @@ export function wireTranscriptLanguageLearning({
 			if (signal.aborted) return;
 			const selection = readSelection();
 			if (!selection || selection.kind !== 'word') return;
+			const returnFocus = getSelectionFocusTarget();
 			hideSelectionButton();
-			explain(selection);
+			explain(selection, returnFocus || undefined);
 		}, 0);
 	}, { signal });
 
@@ -749,6 +1338,8 @@ export function wireTranscriptLanguageLearning({
 		toggleJapaneseReadings,
 		regenerateJapaneseReadings,
 		cancelActiveRequest,
-		explain
+		explain,
+		setTaskRange,
+		showVocabulary
 	};
 }

@@ -1,14 +1,15 @@
 import browser from './browser-polyfill';
 import type { PromptVariable } from '../types/types';
 import { getMessage } from './i18n';
-import { buildNativeCliRequest } from './native-cli-contract';
+import { buildNativeCliRequest, type NativeCliErrorCode } from './native-cli-contract';
 import { parsePromptResponses } from './cli-execution-contract';
 
 interface NativeCliBackgroundResponse {
 	success: boolean;
 	stdout?: string;
 	error?: string;
-	errorCode?: 'unavailable' | 'failed' | 'invalid';
+	errorCode?: NativeCliErrorCode | 'failed';
+	errorDetails?: Record<string, unknown>;
 }
 
 export async function executeNativeCli(

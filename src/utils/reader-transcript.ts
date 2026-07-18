@@ -817,7 +817,7 @@ export function wireTranscript(
 	// OS double-click interval is longer, restore the position after the seek.
 	transcript.addEventListener('click', (e: MouseEvent) => {
 		const target = e.target as HTMLElement;
-		if (target.closest('.transcript-segment-translation, .player-learning-action, .language-learning-selection-action')) return;
+		if (target.closest('.transcript-segment-translation, .transcript-reading-token, .player-learning-action, .language-learning-selection-action')) return;
 		if (e.detail > 1) {
 			transcriptClickGuard.cancel();
 			return;

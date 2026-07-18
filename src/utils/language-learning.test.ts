@@ -5,6 +5,7 @@ import {
 	TranscriptReadingCheckpointStore,
 	TranscriptReadingProgress,
 	TranscriptReadingSegments,
+	TranscriptTranslationCheckpointStore,
 	replaceTextSelection
 } from './language-learning';
 import { RequestCancelledError } from './request-cancellation';
@@ -221,20 +222,37 @@ describe('Language learning assistant', () => {
 		await assistant.annotateJapaneseTranscript(segments, next => progress.push(next));
 
 		expect(progress).toEqual([
-			{ completed: 0, total: 2, completedSegments: 0, totalSegments: 2 },
-			{ completed: 1, total: 2, completedSegments: 1, totalSegments: 2 },
-			{ completed: 2, total: 2, completedSegments: 2, totalSegments: 2 }
+			{ completed: 0, total: 2, completedSegments: 0, totalSegments: 2, readings: [[], []] },
+			{
+				completed: 1,
+				total: 2,
+				completedSegments: 1,
+				totalSegments: 2,
+				readings: [[{ text: segments[0], reading: 'ひ' }], []]
+			},
+			{
+				completed: 2,
+				total: 2,
+				completedSegments: 2,
+				totalSegments: 2,
+				readings: [
+					[{ text: segments[0], reading: 'ひ' }],
+					[{ text: segments[1], reading: 'ひ' }]
+				]
+			}
 		]);
 	});
 
-	test('clears completed Japanese reading checkpoints so regeneration starts fresh', async () => {
+	test('retains completed Japanese reading checkpoints so a later Reader can reuse them', async () => {
 		let checkpoint: TranscriptReadingSegments | undefined;
+		const clear = vi.fn();
 		const checkpoints: TranscriptReadingCheckpointStore = {
-			load: () => checkpoint,
-			save: (_segments, readings) => {
+			load: async () => checkpoint,
+			save: async (_segments, readings) => {
 				checkpoint = readings.map(tokens => tokens.map(token => ({ ...token })));
 			},
-			clear: () => {
+			clear: async () => {
+				clear();
 				checkpoint = undefined;
 			}
 		};
@@ -250,8 +268,9 @@ describe('Language learning assistant', () => {
 		await assistant.annotateJapaneseTranscript(['日本語']);
 		await assistant.annotateJapaneseTranscript(['日本語']);
 
-		expect(sendRequest).toHaveBeenCalledTimes(2);
-		expect(checkpoint).toBeUndefined();
+		expect(sendRequest).toHaveBeenCalledTimes(1);
+		expect(checkpoint).toEqual([[{ text: '日本語', reading: 'にほんご' }]]);
+		expect(clear).not.toHaveBeenCalled();
 	});
 
 	test('long transcripts are translated in bounded provider requests', async () => {
@@ -285,16 +304,64 @@ describe('Language learning assistant', () => {
 	});
 
 	test('reports translation progress for sequential batches', async () => {
-		const progress: Array<{ completed: number; total: number }> = [];
-		const assistant = createLanguageLearningAssistant(async () => []);
+		const progress: Array<{ completed: number; total: number; translations?: string[] }> = [];
+		const assistant = createLanguageLearningAssistant(async request => {
+			const index = request.prompts[0].prompt.includes('0|||') ? 0 : 1;
+			return [{
+				key: 'prompt_1',
+				prompt: request.prompts[0].prompt,
+				user_response: `${index}|||${index === 0 ? '第一段' : '第二段'}`
+			}];
+		});
 		const segments = ['A'.repeat(3500), 'B'.repeat(3500)];
 
 		await assistant.translateTranscript(segments, 'Simplified Chinese', next => progress.push(next));
 
 		expect(progress).toEqual([
-			{ completed: 0, total: 2 },
-			{ completed: 1, total: 2 },
-			{ completed: 2, total: 2 }
+			{ completed: 0, total: 2, translations: ['', ''] },
+			{ completed: 1, total: 2, translations: ['第一段', ''] },
+			{ completed: 2, total: 2, translations: ['第一段', '第二段'] }
+		]);
+	});
+
+	test('resumes translation from an asynchronous checkpoint and saves each completed batch', async () => {
+		let checkpoint = ['第一段', ''];
+		const checkpoints: TranscriptTranslationCheckpointStore = {
+			load: vi.fn(async () => [...checkpoint]),
+			save: vi.fn(async (_segments, translations) => {
+				checkpoint = [...translations];
+			}),
+			clear: vi.fn(async () => {
+				checkpoint = [];
+			})
+		};
+		const sendRequest = vi.fn(async request => [{
+			key: 'prompt_1',
+			prompt: request.prompts[0].prompt,
+			user_response: '1|||第二段'
+		}]);
+		const assistant = createLanguageLearningAssistant(sendRequest, {
+			transcriptTranslationCheckpoints: checkpoints
+		});
+		const progress: Array<{ completed: number; total: number; translations?: string[] }> = [];
+
+		const translations = await assistant.translateTranscript(
+			['First.', 'Second.'],
+			'Simplified Chinese',
+			next => progress.push(next)
+		);
+
+		expect(translations).toEqual(['第一段', '第二段']);
+		expect(sendRequest).toHaveBeenCalledTimes(1);
+		expect(sendRequest.mock.calls[0][0].prompts[0].prompt).not.toContain('0|||First.');
+		expect(sendRequest.mock.calls[0][0].prompts[0].prompt).toContain('1|||Second.');
+		expect(checkpoints.save).toHaveBeenCalledWith(
+			['First.', 'Second.'],
+			['第一段', '第二段']
+		);
+		expect(progress).toEqual([
+			{ completed: 0, total: 1, translations: ['第一段', ''] },
+			{ completed: 1, total: 1, translations: ['第一段', '第二段'] }
 		]);
 	});
 

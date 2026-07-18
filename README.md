@@ -79,7 +79,9 @@ npm run build:chrome
 npm run install:native-host -- --extension-id <your-chrome-extension-id>
 ```
 
-The installer records the detected `grok` and `codex` executable paths, so the host does not depend on Chrome's shell `PATH`. In Web Clipper **Settings → Interpreter**, enable Interpreter and choose **Grok CLI** or **Codex CLI** under **Execution mode**. The local CLI must already be installed and authenticated. The installer currently supports macOS and Linux.
+The installer records the detected `grok` and `codex` executable paths, so the host does not depend on Chrome's shell `PATH`. In Web Clipper **Settings → Interpreter**, enable Interpreter, choose **Grok CLI** or **Codex CLI** under **Execution mode**, then select **Check connection**. The check verifies the Native Messaging protocol and executable path without sending page content. The local CLI must already be installed and authenticated. The installer currently supports macOS and Linux.
+
+Re-run the installer after changing the unpacked extension ID or rebuilding a source version that changes the Native Messaging protocol.
 
 ### Install the extension locally
 

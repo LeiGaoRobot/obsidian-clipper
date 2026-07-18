@@ -535,6 +535,36 @@
 	"nativeCliFailed": {
 		"message": "The local CLI request failed. Check the CLI output and Native Messaging Host installation."
 	},
+	"nativeCliHealth": {
+		"message": "Local CLI connection"
+	},
+	"nativeCliHealthCheck": {
+		"message": "Check connection"
+	},
+	"nativeCliHealthChecking": {
+		"message": "Checking the Native Messaging Host and selected CLI…"
+	},
+	"nativeCliHealthDescription": {
+		"message": "Check the Native Messaging Host and selected CLI without sending page content."
+	},
+	"nativeCliHealthFailed": {
+		"message": "Connection check failed ($1): $2"
+	},
+	"nativeCliHealthLastRun": {
+		"message": "Last run: $1 at $2."
+	},
+	"nativeCliHealthReady": {
+		"message": "Connected to $1 (protocol $2)."
+	},
+	"nativeCliRunStatusCancelled": {
+		"message": "cancelled"
+	},
+	"nativeCliRunStatusFailed": {
+		"message": "failed"
+	},
+	"nativeCliRunStatusSuccess": {
+		"message": "successful"
+	},
 	"nativeCliUnavailable": {
 		"message": "The local CLI is unavailable. Install the Native Messaging Host and make sure the selected CLI is installed and signed in."
 	},
@@ -798,6 +828,30 @@
 	"readerBilingualSubtitles": {
 		"message": "Bilingual subtitles"
 	},
+	"readerCliConfig": {
+		"message": "$1 is not configured. Check the local host configuration and try again."
+	},
+	"readerCliFailed": {
+		"message": "$1 could not complete this task. You can retry or switch execution mode."
+	},
+	"readerCliInvalid": {
+		"message": "The $1 request was invalid. Rebuild the extension and reinstall the Native Messaging Host."
+	},
+	"readerCliLaunchFailed": {
+		"message": "$1 could not be started. Confirm that it is installed and signed in."
+	},
+	"readerCliProtocolMismatch": {
+		"message": "The extension and Native Messaging Host versions do not match. Reinstall the host."
+	},
+	"readerCliResponseTooLarge": {
+		"message": "$1 returned too much data. Retry a smaller transcript range."
+	},
+	"readerCliTimeout": {
+		"message": "$1 did not finish within $2 seconds. Completed segments were kept."
+	},
+	"readerCliUnavailable": {
+		"message": "$1 is unavailable. Check the Native Messaging Host and CLI installation."
+	},
 	"readerBlendImages": {
 		"message": "Blend images"
 	},
@@ -864,7 +918,22 @@
 	"readerEditReadings": {
 		"message": "Edit readings"
 	},
+	"readerEditTranslations": {
+		"message": "Edit translations"
+	},
+	"readerFavorite": {
+		"message": "Favorite"
+	},
+	"readerFavoriteRemoved": {
+		"message": "Removed from saved vocabulary."
+	},
+	"readerFavoriteSaved": {
+		"message": "Saved to vocabulary."
+	},
 	"readerFinishReadingEdit": {
+		"message": "Done editing"
+	},
+	"readerFinishTranslationEdit": {
 		"message": "Done editing"
 	},
 	"readerReadingEditLabel": {
@@ -878,6 +947,9 @@
 	},
 	"readerRetry": {
 		"message": "Retry"
+	},
+	"readerContinueRemaining": {
+		"message": "Continue remaining ($1/$2 complete)"
 	},
 	"readerFont": {
 		"message": "Font options"
@@ -966,6 +1038,39 @@
 	"readerSettings": {
 		"message": "Reader settings"
 	},
+	"readerSavedToObsidian": {
+		"message": "Saved to Obsidian."
+	},
+	"readerSavedVocabulary": {
+		"message": "Saved vocabulary"
+	},
+	"readerSavedVocabularyEmpty": {
+		"message": "No saved words or sentences yet."
+	},
+	"readerSwitchAndRetry": {
+		"message": "Switch and retry"
+	},
+	"readerTaskElapsed": {
+		"message": "$1s"
+	},
+	"readerTaskEstimate": {
+		"message": "$1 segments · about $2 batches"
+	},
+	"readerTaskRange": {
+		"message": "AI range"
+	},
+	"readerTaskRangeAll": {
+		"message": "Entire transcript"
+	},
+	"readerTaskRangeCurrent": {
+		"message": "Current segment"
+	},
+	"readerTaskRangeNextFiveMinutes": {
+		"message": "Next 5 minutes"
+	},
+	"readerTechnicalDetails": {
+		"message": "Technical details"
+	},
 	"readerTheme": {
 		"message": "Theme"
 	},
@@ -983,6 +1088,15 @@
 	},
 	"readerTranslationIncomplete": {
 		"message": "The model missed one or more transcript segments. Try again."
+	},
+	"readerTranslationEditLabel": {
+		"message": "Edit translation for segment $1"
+	},
+	"readerToggleReading": {
+		"message": "Hide or reveal the reading for $1"
+	},
+	"readerUnfavorite": {
+		"message": "Unfavorite"
 	},
 	"readerReadingIncomplete": {
 		"message": "The model missed readings for one or more transcript segments. Try again."
