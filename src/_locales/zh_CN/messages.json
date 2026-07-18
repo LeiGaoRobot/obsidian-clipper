@@ -855,6 +855,9 @@
 	"readerJapaneseReadingsProgress": {
 		"message": "正在生成读音（$1/$2）…"
 	},
+	"readerJapaneseReadingsTimeoutRetry": {
+		"message": "已保留完成的字幕段。点击“重试”将使用更小的批次继续。"
+	},
 	"readerAiCancelled": {
 		"message": "AI 请求已取消。"
 	},

@@ -855,6 +855,9 @@
 	"readerJapaneseReadingsProgress": {
 		"message": "Generating readings ($1/$2)…"
 	},
+	"readerJapaneseReadingsTimeoutRetry": {
+		"message": "Completed segments were kept. Retry will continue with smaller batches."
+	},
 	"readerAiCancelled": {
 		"message": "AI request cancelled."
 	},

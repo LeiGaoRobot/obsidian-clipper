@@ -139,8 +139,8 @@ describe('Configured language learning runtime', () => {
 			...settings,
 			interpreterExecutionMode: 'grok'
 		});
-		const segmentA = '日'.repeat(1100);
-		const segmentB = '本'.repeat(1100);
+		const segmentA = '日'.repeat(800);
+		const segmentB = '本'.repeat(800);
 		mocks.sendMessage.mockImplementation((message: {
 			action: string;
 			request?: { prompts: Array<{ prompt: string }> };
@@ -167,7 +167,7 @@ describe('Configured language learning runtime', () => {
 			next => progress.push(next)
 		);
 
-		expect(output.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([1100, 1100]);
+		expect(output.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([800, 800]);
 		expect(output.map(tokens => tokens[0]?.reading ?? '')).toEqual(['ひ', 'ひ']);
 		expect(progress).toEqual([
 			{ completed: 0, total: 2, completedSegments: 0, totalSegments: 2 },
@@ -177,15 +177,93 @@ describe('Configured language learning runtime', () => {
 		expect(mocks.sendMessage).toHaveBeenCalledTimes(2);
 	});
 
+	test('keeps the larger Japanese reading batch for Codex CLI', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			interpreterExecutionMode: 'codex'
+		});
+		const segments = ['日'.repeat(800), '本'.repeat(800)];
+		mocks.sendMessage.mockImplementation((message: {
+			action: string;
+			request?: { prompts: Array<{ prompt: string }> };
+		}) => {
+			if (message.action !== 'languageLearningRequest' || !message.request) {
+				return Promise.resolve({ success: true });
+			}
+			const prompt = message.request.prompts[0].prompt;
+			return Promise.resolve({
+				success: true,
+				promptResponses: [{
+					key: 'prompt_1',
+					prompt,
+					user_response: segments.map((segment, index) => (
+						`${index}|||[["${segment}","ひ"]]`
+					)).join('\n')
+				}]
+			});
+		});
+
+		const output = await configuredLanguageLearning.annotateJapaneseTranscript(segments);
+
+		expect(output.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([800, 800]);
+		expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+		expect(mocks.sendMessage.mock.calls[0][0].request.prompts[0].prompt)
+			.toContain('0|||');
+		expect(mocks.sendMessage.mock.calls[0][0].request.prompts[0].prompt)
+			.toContain('1|||');
+	});
+
+	test('reduces Japanese reading batch size on explicit retry after a Grok timeout', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			interpreterExecutionMode: 'grok'
+		});
+		const segments = ['日'.repeat(500), '本'.repeat(500)];
+		const requestedPrompts: string[] = [];
+		mocks.sendMessage.mockImplementation((message: {
+			action: string;
+			request?: { prompts: Array<{ prompt: string }> };
+		}) => {
+			if (message.action !== 'languageLearningRequest' || !message.request) {
+				return Promise.resolve({ success: true });
+			}
+			const prompt = message.request.prompts[0].prompt;
+			requestedPrompts.push(prompt);
+			if (prompt.includes('0|||') && prompt.includes('1|||')) {
+				return Promise.reject(new Error('grok CLI timed out after 120 seconds.'));
+			}
+			const index = prompt.includes('0|||') ? 0 : 1;
+			return Promise.resolve({
+				success: true,
+				promptResponses: [{
+					key: 'prompt_1',
+					prompt,
+					user_response: `${index}|||[["${segments[index]}","ひ"]]`
+				}]
+			});
+		});
+
+		await expect(configuredLanguageLearning.annotateJapaneseTranscript(segments))
+			.rejects.toThrow(/grok CLI timed out after 120 seconds.*readerJapaneseReadingsTimeoutRetry/);
+		const readings = await configuredLanguageLearning.annotateJapaneseTranscript(segments);
+
+		expect(readings.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([500, 500]);
+		expect(requestedPrompts).toHaveLength(3);
+		expect(requestedPrompts[1]).toContain('0|||');
+		expect(requestedPrompts[1]).not.toContain('1|||');
+		expect(requestedPrompts[2]).toContain('1|||');
+		expect(requestedPrompts[2]).not.toContain('0|||');
+	});
+
 	test('retries only Japanese reading segments missing after a failed batch', async () => {
 		mocks.loadSettings.mockResolvedValue({
 			...settings,
 			interpreterExecutionMode: 'grok'
 		});
 		const segments = [
-			'日'.repeat(800),
-			'本'.repeat(800),
-			'語'.repeat(800)
+			'日'.repeat(500),
+			'本'.repeat(500),
+			'語'.repeat(500)
 		];
 		const requestedPrompts: string[] = [];
 		mocks.sendMessage.mockImplementation((message: {
@@ -223,7 +301,7 @@ describe('Configured language learning runtime', () => {
 			next => retryProgress.push(next)
 		);
 
-		expect(readings.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([800, 800, 800]);
+		expect(readings.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([500, 500, 500]);
 		expect(requestedPrompts).toHaveLength(3);
 		expect(requestedPrompts[0]).toContain('0|||');
 		expect(requestedPrompts[1]).toContain('2|||');
