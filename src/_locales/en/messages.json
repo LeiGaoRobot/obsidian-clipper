@@ -828,8 +828,17 @@
 	"readerAutoScrollDescription": {
 		"message": "Automatically scroll the transcript to follow playback."
 	},
+	"readerPlaybackControls": {
+		"message": "Playback"
+	},
+	"readerLearningControls": {
+		"message": "Language learning"
+	},
 	"readerBilingualSubtitles": {
 		"message": "Bilingual subtitles"
+	},
+	"readerBilingualSubtitlesRestoreDescription": {
+		"message": "Show completed translations when they are already saved. Missing translations are never generated automatically."
 	},
 	"readerCliConfig": {
 		"message": "$1 is not configured. Check the local host configuration and try again."
@@ -897,8 +906,14 @@
 	"readerJapaneseReadings": {
 		"message": "Japanese readings"
 	},
+	"readerJapaneseReadingsRestoreDescription": {
+		"message": "Show completed readings when they are already saved. Missing readings are never generated automatically."
+	},
 	"readerCompactPlayer": {
 		"message": "Compact player"
+	},
+	"readerCompactPlayerDescription": {
+		"message": "Start Reading layout with the video collapsed. You can reveal it at any time."
 	},
 	"readerShowPlayer": {
 		"message": "Show player"
@@ -911,6 +926,9 @@
 	},
 	"readerTranscriptLayout": {
 		"message": "Transcript layout"
+	},
+	"readerTranscriptLayoutDescription": {
+		"message": "Default layout for YouTube transcripts."
 	},
 	"readerTranscriptLayoutReading": {
 		"message": "Reading"

@@ -1,14 +1,20 @@
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { comparePng } from './png-visual-diff.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputDir = path.join(root, 'dev');
 const verify = process.argv.includes('--verify');
+const update = process.argv.includes('--update');
+const captureMode = verify || update;
+const baselineDir = path.join(root, 'tests', 'visual', 'transcript');
+const maxVisualChangeRatio = Number(process.env.TRANSCRIPT_VISUAL_THRESHOLD || 0.0025);
+if (verify && update) throw new Error('Use either --verify or --update, not both.');
 const mimeTypes = new Map([
 	['.css', 'text/css; charset=utf-8'],
 	['.html', 'text/html; charset=utf-8'],
@@ -158,6 +164,21 @@ async function captureScreenshot({ chrome, args, profileDir, url, preview, scree
 					const details = document.querySelector('.player-controls-more');
 					const panel = document.querySelector('.player-controls-panel');
 					if (!root || !details || !panel) return false;
+					if (${width} <= 768) {
+						if (document.documentElement.scrollWidth > innerWidth + 1) return false;
+						const compactAction = document.querySelector('.player-compact-toggle');
+						if ('${layout}' !== 'reading' && compactAction
+							&& getComputedStyle(compactAction).display !== 'none') return false;
+						const visiblePrimaryActions = [
+							document.querySelector('.player-learning-bilingual'),
+							document.querySelector('.player-learning-readings')
+						];
+						if (visiblePrimaryActions.some(action => {
+							if (!action || getComputedStyle(action).display === 'none') return true;
+							const rect = action.getBoundingClientRect();
+							return rect.width <= 0 || rect.height < 44;
+						})) return false;
+					}
 					if ('${expectedControls}' === 'closed') return panel.parentElement === details;
 					const stickyControls = document.querySelector('.player-toggles');
 					const active = document.querySelector('.transcript-segment.is-active');
@@ -173,7 +194,45 @@ async function captureScreenshot({ chrome, args, profileDir, url, preview, scree
 			});
 			return ready.result?.value === true;
 		}, `Chrome did not reach the expected ${layout}/${expectedControls} transcript preview state.`);
-		await waitForPreviewState(preview.initialControls || controls);
+		const previewDiagnostics = async () => {
+			const result = await cdp.send('Runtime.evaluate', {
+				expression: `(() => {
+					const rect = selector => {
+						const element = document.querySelector(selector);
+						if (!element) return null;
+						const bounds = element.getBoundingClientRect();
+						return {
+							top: bounds.top,
+							bottom: bounds.bottom,
+							width: bounds.width,
+							height: bounds.height,
+							display: getComputedStyle(element).display
+						};
+					};
+					return {
+						previewReady: document.documentElement.dataset.previewReady,
+						previewControls: document.documentElement.dataset.previewControls,
+						previewPanelHost: document.documentElement.dataset.previewPanelHost,
+						viewport: { width: innerWidth, height: innerHeight },
+						documentScrollWidth: document.documentElement.scrollWidth,
+						player: rect('.player-container'),
+						controls: rect('.player-toggles'),
+						active: rect('.transcript-segment.is-active'),
+						panel: rect('.player-controls-panel'),
+						bilingual: rect('.player-learning-bilingual'),
+						readings: rect('.player-learning-readings')
+					};
+				})()`,
+				returnByValue: true
+			});
+			return result.result?.value;
+		};
+		const assertPreviewState = async expectedControls => {
+			await waitForPreviewState(expectedControls).catch(async error => {
+				throw new Error(`${error.message} ${JSON.stringify(await previewDiagnostics())}`);
+			});
+		};
+		await assertPreviewState(preview.initialControls || controls);
 		if (interaction === 'cycle-controls') {
 			const click = async selector => {
 				const result = await cdp.send('Runtime.evaluate', {
@@ -189,12 +248,12 @@ async function captureScreenshot({ chrome, args, profileDir, url, preview, scree
 				}
 			};
 			await click('.player-controls-more > summary');
-			await waitForPreviewState('open');
+			await assertPreviewState('open');
 			await click('[data-preview-close-controls]');
-			await waitForPreviewState('closed');
+			await assertPreviewState('closed');
 			await click('.player-controls-more > summary');
 		}
-		await waitForPreviewState(controls);
+		await assertPreviewState(controls);
 		await cdp.send('Runtime.evaluate', {
 			expression: 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
 			awaitPromise: true
@@ -271,11 +330,11 @@ const server = http.createServer((request, response) => {
 	response.end(readFileSync(filePath));
 });
 
-server.listen(verify ? 0 : 4173, '127.0.0.1', async () => {
+server.listen(captureMode ? 0 : 4173, '127.0.0.1', async () => {
 	const address = server.address();
 	if (!address || typeof address === 'string') throw new Error('Could not start preview server.');
 	const url = `http://127.0.0.1:${address.port}/transcript-layout-preview.html`;
-	if (!verify) {
+	if (!captureMode) {
 		console.log(`Transcript preview: ${url}`);
 		return;
 	}
@@ -307,6 +366,7 @@ server.listen(verify ? 0 : 4173, '127.0.0.1', async () => {
 		{ name: 'study-tools-desktop', layout: 'notebook', controls: 'closed', width: 1440, height: 1000 },
 		{ name: 'split-desktop', layout: 'focus', controls: 'closed', width: 1440, height: 1000 },
 		{ name: 'split-768', layout: 'focus', controls: 'closed', width: 768, height: 900 },
+		{ name: 'split-390', layout: 'focus', controls: 'closed', width: 390, height: 844 },
 		{
 			name: 'split-768-controls-open',
 			layout: 'focus',
@@ -315,6 +375,15 @@ server.listen(verify ? 0 : 4173, '127.0.0.1', async () => {
 			interaction: 'cycle-controls',
 			width: 768,
 			height: 900
+		},
+		{
+			name: 'split-390-controls-open',
+			layout: 'focus',
+			controls: 'open',
+			initialControls: 'closed',
+			interaction: 'cycle-controls',
+			width: 390,
+			height: 844
 		}
 	];
 	try {
@@ -347,7 +416,28 @@ server.listen(verify ? 0 : 4173, '127.0.0.1', async () => {
 				preview,
 				screenshot
 			});
-			console.log(`Transcript preview passed (${preview.name}): ${screenshot}`);
+			const baseline = path.join(baselineDir, `${preview.name}.png`);
+			if (update) {
+				await mkdir(baselineDir, { recursive: true });
+				await copyFile(screenshot, baseline);
+				console.log(`Transcript preview baseline updated (${preview.name}): ${baseline}`);
+				continue;
+			}
+			if (!existsSync(baseline)) {
+				throw new Error(`Missing transcript preview baseline: ${baseline}. Run npm run update:transcript-preview.`);
+			}
+			const result = comparePng(readFileSync(baseline), readFileSync(screenshot));
+			if (result.ratio > maxVisualChangeRatio) {
+				const diff = path.join(os.tmpdir(), `obsidian-clipper-transcript-preview-${preview.name}-diff.png`);
+				await writeFile(diff, result.diff);
+				throw new Error(
+					`Transcript preview changed ${Math.round(result.ratio * 10000) / 100}% `
+					+ `(${result.changedPixels}/${result.totalPixels} pixels) for ${preview.name}. Diff: ${diff}`
+				);
+			}
+			console.log(
+				`Transcript preview passed (${preview.name}, ${(result.ratio * 100).toFixed(3)}% changed): ${screenshot}`
+			);
 		}
 	} finally {
 		server.close();

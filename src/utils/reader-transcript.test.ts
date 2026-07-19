@@ -161,6 +161,8 @@ describe('Transcript layout integration', () => {
 		expect(primaryActions).toBeTruthy();
 		expect(moreControls.open).toBe(false);
 		expect(morePanel.querySelectorAll('.player-toggle')).toHaveLength(3);
+		expect(morePanel.querySelectorAll('.player-control-section')).toHaveLength(2);
+		expect(morePanel.querySelectorAll('.player-control-section-title')).toHaveLength(2);
 		expect(morePanel.querySelector('.player-study')).toBeTruthy();
 		expect(compactButton.getAttribute('aria-pressed')).toBe('false');
 
@@ -191,6 +193,110 @@ describe('Transcript layout integration', () => {
 
 		expect(moreControls.open).toBe(false);
 		expect(morePanel.parentElement).toBe(moreControls);
+	});
+
+	test('restores the compact-player preference and persists later changes', () => {
+		vi.stubGlobal('CSS', {});
+		document.body.innerHTML = `
+			<article>
+				<a href="https://www.youtube.com/watch?v=test">Video</a>
+				<div class="youtube transcript">
+					<div class="transcript-segment">
+						<strong><span class="timestamp" data-timestamp="0">0:00</span></strong>
+						Hello world.
+					</div>
+				</div>
+			</article>
+		`;
+		const article = document.querySelector('article') as HTMLElement;
+		const onSettingChange = vi.fn();
+
+		wireTranscript(document, article, {
+			pinPlayer: true,
+			autoScroll: true,
+			highlightActiveLine: true,
+			transcriptLayout: 'reading',
+			compactPlayer: true
+		}, {
+			getStickyOffset: () => 0,
+			scrollTo: vi.fn(),
+			programmaticScroll: () => false
+		}, onSettingChange);
+
+		const player = article.querySelector('.player-container') as HTMLElement;
+		const button = article.querySelector('.player-compact-toggle') as HTMLButtonElement;
+		expect(player.classList.contains('is-compact')).toBe(true);
+		expect(button.getAttribute('aria-pressed')).toBe('true');
+
+		button.click();
+		expect(onSettingChange).toHaveBeenLastCalledWith('compactPlayer', false);
+	});
+
+	test('uses a modal, keyboard-contained bottom sheet for mobile secondary controls', () => {
+		vi.stubGlobal('CSS', {});
+		vi.stubGlobal('matchMedia', vi.fn(() => ({
+			matches: true,
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn()
+		})));
+		vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+		document.body.innerHTML = `
+			<article>
+				<a href="https://www.youtube.com/watch?v=test">Video</a>
+				<div class="youtube transcript">
+					<div class="transcript-segment is-active">
+						<strong><span class="timestamp" data-timestamp="0">0:00</span></strong>
+						Hello world.
+					</div>
+				</div>
+			</article>
+		`;
+		const article = document.querySelector('article') as HTMLElement;
+		wireTranscript(document, article, {
+			pinPlayer: true,
+			autoScroll: true,
+			highlightActiveLine: true,
+			transcriptLayout: 'reading'
+		}, {
+			getStickyOffset: () => 0,
+			scrollTo: vi.fn(),
+			programmaticScroll: () => false
+		});
+
+		const root = article.querySelector('.transcript-study-layout') as HTMLElement;
+		const details = root.querySelector('.player-controls-more') as HTMLDetailsElement;
+		const summary = details.querySelector('summary') as HTMLElement;
+		const panel = root.querySelector('.player-controls-panel') as HTMLElement;
+		const close = panel.querySelector('.player-controls-close') as HTMLButtonElement;
+		const activeSegment = root.querySelector('.transcript-segment.is-active') as HTMLElement;
+		activeSegment.scrollIntoView = vi.fn();
+		activeSegment.getBoundingClientRect = () => ({ top: 450, bottom: 520 } as DOMRect);
+		(root.querySelector('.player-toggles') as HTMLElement).getBoundingClientRect = () => ({ bottom: 400 } as DOMRect);
+		panel.getBoundingClientRect = () => ({ top: 760 } as DOMRect);
+
+		details.open = true;
+		details.dispatchEvent(new Event('toggle'));
+
+		expect(panel.getAttribute('role')).toBe('dialog');
+		expect(panel.getAttribute('aria-modal')).toBe('true');
+		expect(panel.getAttribute('aria-labelledby')).toBeTruthy();
+		expect(document.activeElement).toBe(close);
+		expect(root.querySelector('.player-controls-backdrop')).toBeTruthy();
+
+		document.dispatchEvent(new KeyboardEvent('keydown', {
+			key: 'Tab',
+			shiftKey: true,
+			bubbles: true
+		}));
+		const lastControl = document.activeElement;
+		expect(lastControl).not.toBe(close);
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+		expect(document.activeElement).toBe(close);
+
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		expect(details.open).toBe(false);
+		expect(document.activeElement).toBe(summary);
+		expect(root.querySelector('.player-controls-backdrop')).toBeNull();
 	});
 
 	test('moves an open controls drawer when the viewport crosses the mobile breakpoint', () => {

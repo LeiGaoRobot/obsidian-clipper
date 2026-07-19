@@ -1,9 +1,7 @@
-import Defuddle from 'defuddle/full';
 import browser from './browser-polyfill';
 import { detectBrowser } from './browser-detection';
 import { flattenShadowDom as flattenShadowDomUtil } from './flatten-shadow-dom';
 import { getLocalStorage, setLocalStorage } from './storage-utils';
-import hljs from 'highlight.js';
 import { getDomain } from './string-utils';
 import type { HighlighterAPI } from './highlighter';
 import * as localHighlighter from './highlighter';
@@ -26,9 +24,7 @@ function hl(): HighlighterAPI {
 import { copyToClipboard } from './clipboard-utils';
 import { getMessage, initializeI18n } from './i18n';
 import { getFontCss, isFontAvailable } from './font-utils';
-import { createMarkdownContent } from 'defuddle/full';
 import { saveFile } from './file-utils';
-import { parseForClip } from './clip-utils';
 import { updateSidebarWidth, addResizeHandle, cleanupResizeHandlers } from './iframe-resize';
 import { setElementHTML, setSVGChildren, serializeChildren } from './dom-utils';
 import { cloneBodyIfSafe } from './reader-dom-cleanup';
@@ -165,6 +161,9 @@ export class Reader {
 		autoScroll: true,
 		highlightActiveLine: true,
 		transcriptLayout: 'reading',
+		compactPlayer: false,
+		bilingualSubtitles: false,
+		japaneseReadings: false,
 		learningResponseLanguage: '',
 		learningVault: '',
 		learningFolder: DEFAULT_LANGUAGE_LEARNING_FOLDER,
@@ -299,7 +298,7 @@ export class Reader {
 				if (action === 'copyToClipboard') {
 					const originalText = itemLabel.textContent;
 					if (Reader.isReaderPage) {
-						Reader.copyMarkdownOnReaderPage(doc);
+						await Reader.copyMarkdownOnReaderPage(doc);
 					} else {
 						browser.runtime.sendMessage({ action: 'copyMarkdownToClipboard' });
 					}
@@ -308,7 +307,7 @@ export class Reader {
 				} else if (action === 'saveFile') {
 					clipDropdown.classList.remove('is-open');
 					if (Reader.isReaderPage) {
-						Reader.saveMarkdownOnReaderPage(doc);
+						await Reader.saveMarkdownOnReaderPage(doc);
 					} else {
 						browser.runtime.sendMessage({ action: 'saveMarkdownToFile' });
 					}
@@ -903,6 +902,9 @@ export class Reader {
 			return pre;
 		}
 
+		const { default: Defuddle } = await import(
+			/* webpackChunkName: 'reader-content-extraction' */ 'defuddle'
+		);
 		const defuddle = new Defuddle(doc, { url: doc.URL });
 		const defuddled = await defuddle.parseAsync();
 
@@ -1451,9 +1453,16 @@ export class Reader {
 		}
 	}
 
-	private static initializeCodeHighlighting(doc: Document) {
+	private static async initializeCodeHighlighting(doc: Document): Promise<void> {
 		// Find all pre > code blocks
 		const codeBlocks = doc.querySelectorAll('pre > code');
+		const inlineCode = doc.querySelectorAll('code:not(pre > code)');
+		if (codeBlocks.length === 0 && !Array.from(inlineCode).some(code => (
+			code.className.split(' ').some(className => className.startsWith('language-'))
+		))) return;
+		const { default: hljs } = await import(
+			/* webpackChunkName: 'reader-syntax-highlighting' */ 'highlight.js/lib/common'
+		);
 		codeBlocks.forEach(block => {
 			// Try to detect the language from class
 			const classes = block.className.split(' ');
@@ -1477,7 +1486,6 @@ export class Reader {
 		});
 
 		// Also highlight inline code with specified language
-		const inlineCode = doc.querySelectorAll('code:not(pre > code)');
 		inlineCode.forEach(code => {
 			const classes = code.className.split(' ');
 			const languageClass = classes.find(c => c.startsWith('language-'));
@@ -2687,7 +2695,7 @@ export class Reader {
 			leftSidebar.classList.toggle('is-empty', !this.observer);
 		}
 		this.initializeFootnotes(doc);
-		this.initializeCodeHighlighting(doc);
+		await this.initializeCodeHighlighting(doc);
 		this.initializeCopyButtons(doc);
 		this.initializeLightbox(doc);
 		this.wrapTables(doc);
@@ -2793,11 +2801,22 @@ export class Reader {
 		container.addEventListener('animationend', () => hl().repositionHighlights(), { once: true });
 	}
 
-	static copyMarkdownOnReaderPage(doc: Document): void {
+	private static async createReaderPageMarkdown(doc: Document) {
+		const [{ parseForClip }, { createMarkdownContent }] = await Promise.all([
+			import(/* webpackChunkName: 'reader-markdown' */ './clip-utils'),
+			import(/* webpackChunkName: 'reader-markdown' */ 'defuddle/full')
+		]);
+		const defuddled = parseForClip(doc);
+		return {
+			defuddled,
+			markdown: createMarkdownContent(defuddled.content, doc.URL)
+		};
+	}
+
+	static async copyMarkdownOnReaderPage(doc: Document): Promise<void> {
 		try {
-			const defuddled = parseForClip(doc);
-			const markdown = createMarkdownContent(defuddled.content, doc.URL);
-			navigator.clipboard.writeText(markdown).catch(() => {
+			const { markdown } = await this.createReaderPageMarkdown(doc);
+			await navigator.clipboard.writeText(markdown).catch(() => {
 				const textArea = doc.createElement('textarea');
 				textArea.value = markdown;
 				doc.body.appendChild(textArea);
@@ -2812,8 +2831,7 @@ export class Reader {
 
 	static async saveMarkdownOnReaderPage(doc: Document): Promise<void> {
 		try {
-			const defuddled = parseForClip(doc);
-			const markdown = createMarkdownContent(defuddled.content, doc.URL);
+			const { defuddled, markdown } = await this.createReaderPageMarkdown(doc);
 			const title = defuddled.title || doc.title || 'Untitled';
 			const fileName = title.replace(/[/\\?%*:|"<>]/g, '-');
 			await saveFile({ content: markdown, fileName, mimeType: 'text/markdown' });

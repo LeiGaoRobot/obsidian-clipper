@@ -828,8 +828,17 @@
 	"readerAutoScrollDescription": {
 		"message": "自动滚动字幕稿以跟随播放进度。"
 	},
+	"readerPlaybackControls": {
+		"message": "播放"
+	},
+	"readerLearningControls": {
+		"message": "语言学习"
+	},
 	"readerBilingualSubtitles": {
 		"message": "双语字幕"
+	},
+	"readerBilingualSubtitlesRestoreDescription": {
+		"message": "已有完整翻译时自动显示；缺失内容不会自动调用 AI 生成。"
 	},
 	"readerCliConfig": {
 		"message": "$1 尚未配置，请检查本机 Host 配置后重试。"
@@ -897,8 +906,14 @@
 	"readerJapaneseReadings": {
 		"message": "日语读音"
 	},
+	"readerJapaneseReadingsRestoreDescription": {
+		"message": "已有完整读音时自动显示；缺失内容不会自动调用 AI 生成。"
+	},
 	"readerCompactPlayer": {
 		"message": "收起播放器"
+	},
+	"readerCompactPlayerDescription": {
+		"message": "进入阅读布局时默认收起视频，随时可以重新显示。"
 	},
 	"readerShowPlayer": {
 		"message": "显示播放器"
@@ -911,6 +926,9 @@
 	},
 	"readerTranscriptLayout": {
 		"message": "字幕布局"
+	},
+	"readerTranscriptLayoutDescription": {
+		"message": "设置 YouTube 字幕稿的默认布局。"
 	},
 	"readerTranscriptLayoutReading": {
 		"message": "阅读"

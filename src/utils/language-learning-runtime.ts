@@ -215,6 +215,27 @@ export const configuredLanguageLearning = {
 		await saveSettings({ interpreterExecutionMode: mode });
 	},
 
+	async loadTranscriptTranslations(segments: string[]): Promise<string[] | undefined> {
+		const settings = await loadSettings();
+		const responseLanguage = settings.readerSettings.learningResponseLanguage.trim()
+			|| (typeof navigator !== 'undefined' ? navigator.language : '')
+			|| 'English';
+		const translations = await createTranslationCheckpointStore(
+			`shared:${responseLanguage}`
+		).load(segments);
+		return translations?.length === segments.length
+			&& translations.every(translation => translation.trim())
+			? [...translations]
+			: undefined;
+	},
+
+	async loadJapaneseReadings(segments: string[]): Promise<TranscriptReadingSegments | undefined> {
+		const readings = await createJapaneseReadingCheckpointStore('shared').load(segments);
+		return readings && isCompleteTranscriptReadings(readings, segments)
+			? cloneTranscriptReadings(readings)
+			: undefined;
+	},
+
 	async saveTranscriptTranslations(segments: string[], translations: string[]): Promise<void> {
 		if (translations.length !== segments.length) return;
 		const { transcriptTranslationCheckpoints } = await loadConfiguredAssistant();

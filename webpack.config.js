@@ -65,16 +65,26 @@ module.exports = (env, argv) => {
 			style: './src/style.scss',
 			highlighter: './src/highlighter.scss',
 			reader: './src/reader.scss',
-			'reader-script': './src/reader-script.ts',
+			'reader-script': ['./src/extension-public-path.ts', './src/reader-script.ts'],
 			...(!isProduction ? { 'transcript-layout-preview': './src/previews/transcript-layout-preview.ts' } : {})
 		},
 		output: {
 			path: path.resolve(__dirname, outputDir),
+			clean: true,
 			filename: '[name].js',
 			chunkFilename: 'chunks/[name].js',
+			chunkFormat: 'module',
+			chunkLoading: 'import',
+			publicPath: '',
 			module: false,
 		},
 		devtool: isProduction ? false : 'source-map',
+		performance: isProduction ? {
+			hints: 'warning',
+			maxAssetSize: 1_500_000,
+			maxEntrypointSize: 1_500_000,
+			assetFilter: assetName => /\.(?:js|css)$/.test(assetName)
+		} : false,
 		optimization: {
 			minimize: true,
 			minimizer: [

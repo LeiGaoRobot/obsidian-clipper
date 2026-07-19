@@ -71,6 +71,9 @@ export interface ReaderSettings {
 	autoScroll: boolean;
 	highlightActiveLine: boolean;
 	transcriptLayout: TranscriptLayoutMode;
+	compactPlayer?: boolean;
+	bilingualSubtitles?: boolean;
+	japaneseReadings?: boolean;
 	learningResponseLanguage: string;
 	learningVault?: string;
 	learningFolder?: string;

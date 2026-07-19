@@ -14,7 +14,7 @@ The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clippe
 1. Open Web Clipper **Settings**.
 2. In **Interpreter**, open the language-learning setup assistant. Enable Interpreter and either configure at least one enabled provider and model, or choose a local **Grok CLI**/**Codex CLI** execution mode. For Native Messaging setup, see [[Interpret web pages#Local Grok and Codex CLI modes|Local Grok and Codex CLI modes]].
 3. Run the readiness check. For a local CLI, it verifies the Native Messaging Host and selected executable without sending page content. A successful check shows that language learning is ready.
-4. In **Reader** → **Transcripts**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`. You can also choose the Obsidian vault and folder used for learning notes.
+4. In **Reader** → **Transcripts**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`. You can also set the default compact-player, bilingual-subtitle, and Japanese-reading visibility, and choose the Obsidian vault and folder used for learning notes.
 
 If the response-language field is empty, Web Clipper uses your browser language. The setting controls transcript translations, word and sentence explanations, and presets that use a response language.
 
@@ -45,9 +45,9 @@ The preview stores a snapshot of the clipping. If the clipping changes before yo
 
 Open Reader on a YouTube page that has an available transcript, then select **Bilingual subtitles** in the transcript controls.
 
-Use the transcript layout switcher to choose **Reading**, **Study tools**, or **Split view**. Reading keeps the video above a centered transcript; select **Compact player** to hide the media without recreating it or losing the playback position. Study tools moves the learning controls into a left study rail, and Split view keeps the player beside the transcript on wider screens. Web Clipper remembers the selected layout. Changing layouts only rearranges the existing player, controls, transcript, and explanation state; it does not start an AI request. On narrower screens, Study tools and Split view fall back to a single-column layout.
+Use the transcript layout switcher to choose **Reading**, **Study tools**, or **Split view**. Reading keeps the video above a centered transcript; select **Compact player** to hide the media without recreating it or losing the playback position. Study tools moves the learning controls into a left study rail, and Split view keeps the player beside the transcript on wider screens. Web Clipper remembers the selected layout, compact-player state, and whether bilingual subtitles or Japanese readings were visible. On reload, it restores only a complete result already saved in the local session checkpoint. If no saved result exists, it leaves the action available and does not start an AI request. Changing layouts only rearranges the existing player, controls, transcript, and explanation state; it does not start an AI request. On narrower screens, Study tools and Split view fall back to a single-column layout.
 
-The most common transcript actions stay in the main control row. Open **More** for player pinning, auto-scroll, active-line highlighting, AI range, saved vocabulary, and local playback study controls. On screens up to 768 pixels wide, **More** opens as a closable bottom drawer and keeps the active transcript line above the drawer.
+The most common transcript actions stay in the main control row, including **Bilingual subtitles**, **Japanese readings**, and the compact-player action when it applies to the current layout. Open **More** for player pinning, auto-scroll, active-line highlighting, AI range, saved vocabulary, and local playback study controls. On screens up to 768 pixels wide, these primary actions remain visible while **More** opens as a bottom drawer, keeps the active transcript line above the drawer, traps keyboard focus while open, closes with Escape or the backdrop, and returns focus to **More**. On phone-width screens, opening the drawer temporarily collapses the player without recreating it so the active line and scrollable controls both remain usable; closing the drawer restores the same player.
 
 Before starting, use **AI range** to choose the current segment, the next five minutes, or the entire transcript. The task bar shows the selected engine, segment count, estimated batch count, elapsed time, and completed batches. A smaller range is useful when testing a local CLI or studying only the current part of a long video.
 
@@ -66,7 +66,7 @@ Long transcripts are processed in sequential batches, with smaller batches in lo
 After readings load—even for **Current segment** or **Next 5 minutes**—select **Edit readings**, edit a reading directly above its kanji, then select **Done editing**. Select **Regenerate readings** when the model chose the wrong reading; this explicitly starts a fresh request for the selected range while preserving readings outside that range. Corrections are stored with the transcript checkpoint and in your persistent personal reading dictionary. Known words are reused in later transcripts, and a segment whose kanji are all covered by the dictionary is annotated locally without an AI request.
 
 > [!note] Session checkpoints
-> Transcript translations, Japanese readings, and manual corrections are stored in extension session storage, not in the webpage. They survive Reader and service-worker reloads in Chromium but can be cleared when the browser session ends. Browsers without extension session storage use an in-memory fallback. These results are not automatically added to the clipping.
+> Transcript translations, Japanese readings, and manual corrections are stored in extension session storage, not in the webpage. Reader accesses that storage through the extension background, so the host page cannot read the checkpoints. They survive Reader and service-worker reloads in supported Chromium and Firefox versions but can be cleared when the browser session ends. Browsers without extension session storage use an in-memory fallback. These results are not automatically added to the clipping.
 
 ## Explain a word
 
@@ -89,7 +89,7 @@ Select a phrase, sentence, or text spanning adjacent transcript segments. Then s
 
 The explanation includes a natural translation, the grammar structure, and important expressions in context. The same response language, selection kind, text, and context are cached for the current Reader session, so reopening the same explanation does not create another model request. Changing the response language creates a new explanation instead of reusing one in the previous language. New explanations can be cancelled and failed explanations can be retried from the card.
 
-The selection action also works with touch selection on mobile browsers that support Reader transcripts. Press Escape to close an explanation or error card and return focus to the control that opened it.
+The selection action also works with touch selection on mobile browsers that support Reader transcripts. While an explanation or error card is open, the Reader behind it is inactive and keyboard focus stays inside the card. Press Escape to close it and return focus to the control that opened it.
 
 ## Model selection and requests
 
@@ -138,7 +138,6 @@ Check the provider URL, API key, enabled model, quota, local-model server, or Na
 - AI output quality and language accuracy depend on the selected model.
 - Japanese names and context-dependent kanji readings may need manual correction.
 - The Learning Center does not implement spaced repetition or flashcard scheduling.
-- Transcript checkpoints remain session-scoped even though vocabulary and personal Japanese readings are persistent local data.
 
 ## Developer reference
 

@@ -13,6 +13,7 @@ import {
 	updateTranscriptPlayerHeight
 } from './transcript-layout';
 import { TranscriptStudyController, wireTranscriptStudy } from './transcript-study';
+import { trapFocus } from './focus-trap';
 
 // CJK-aware text boundary helpers
 const SENT_END = /[.!?。！？]/;
@@ -108,6 +109,9 @@ interface TranscriptSettings {
 	autoScroll: boolean;
 	highlightActiveLine: boolean;
 	transcriptLayout: TranscriptLayoutMode;
+	compactPlayer?: boolean;
+	bilingualSubtitles?: boolean;
+	japaneseReadings?: boolean;
 	learningResponseLanguage?: string;
 }
 
@@ -168,7 +172,9 @@ export function wireTranscript(
 	const autoScrollDefault = settings.autoScroll;
 	const highlightDefault = settings.highlightActiveLine;
 	const initialLayout = normalizeTranscriptLayoutMode(settings.transcriptLayout);
-	playerContainer.className = 'player-container' + (pinDefault ? ' pin-player' : '');
+	playerContainer.className = 'player-container'
+		+ (pinDefault ? ' pin-player' : '')
+		+ (settings.compactPlayer ? ' is-compact' : '');
 	layoutRoot.classList.toggle('is-player-pinned', pinDefault);
 	layoutRoot.appendChild(playerContainer);
 	playerContainer.appendChild(playerEl);
@@ -193,6 +199,7 @@ export function wireTranscript(
 		toggle.className = 'player-toggle-switch';
 		const input = doc.createElement('input');
 		input.type = 'checkbox';
+		input.tabIndex = -1;
 		input.checked = defaultOn;
 		toggle.appendChild(input);
 
@@ -253,9 +260,21 @@ export function wireTranscript(
 
 	const toggleGroup = doc.createElement('div');
 	toggleGroup.className = 'player-toggle-group is-open';
-	toggleGroup.appendChild(pinToggle);
-	toggleGroup.appendChild(autoScrollToggle);
-	toggleGroup.appendChild(highlightToggle);
+	const createControlSection = (title: string) => {
+		const section = doc.createElement('section');
+		section.className = 'player-control-section';
+		const heading = doc.createElement('h3');
+		heading.className = 'player-control-section-title';
+		heading.textContent = title;
+		const items = doc.createElement('div');
+		items.className = 'player-control-section-items';
+		section.append(heading, items);
+		return { section, items };
+	};
+	const playbackControls = createControlSection(getMessage('readerPlaybackControls'));
+	playbackControls.items.append(pinToggle, autoScrollToggle, highlightToggle);
+	const learningControls = createControlSection(getMessage('readerLearningControls'));
+	toggleGroup.append(playbackControls.section, learningControls.section);
 
 	const primaryActions = doc.createElement('div');
 	primaryActions.className = 'player-primary-actions';
@@ -273,6 +292,7 @@ export function wireTranscript(
 		playerContainer.classList.toggle('is-compact');
 		updateCompactPlayer();
 		updatePlayerHeight();
+		onSettingChange?.('compactPlayer', playerContainer.classList.contains('is-compact'));
 	}, listenerOptions);
 	primaryActions.appendChild(compactPlayerButton);
 	updateCompactPlayer();
@@ -285,35 +305,75 @@ export function wireTranscript(
 	moreSummary.setAttribute('aria-expanded', 'false');
 	const morePanel = doc.createElement('div');
 	morePanel.className = 'player-controls-panel';
+	morePanel.setAttribute('tabindex', '-1');
+	const morePanelHandle = doc.createElement('div');
+	morePanelHandle.className = 'player-controls-panel-handle';
+	morePanelHandle.setAttribute('aria-hidden', 'true');
 	const morePanelHeader = doc.createElement('div');
 	morePanelHeader.className = 'player-controls-panel-header';
 	const morePanelTitle = doc.createElement('strong');
+	morePanelTitle.id = `player-controls-title-${Math.random().toString(36).slice(2)}`;
 	morePanelTitle.textContent = getMessage('readerMoreControls');
 	const closeMoreButton = doc.createElement('button');
 	closeMoreButton.type = 'button';
 	closeMoreButton.className = 'player-controls-close';
 	closeMoreButton.textContent = getMessage('done');
 	morePanelHeader.append(morePanelTitle, closeMoreButton);
-	morePanel.append(morePanelHeader, toggleGroup);
+	morePanel.append(morePanelHandle, morePanelHeader, toggleGroup);
 	moreControls.append(moreSummary, morePanel);
+	const controlsBackdrop = doc.createElement('div');
+	controlsBackdrop.className = 'player-controls-backdrop';
+	controlsBackdrop.setAttribute('aria-hidden', 'true');
 	const controlsViewport = doc.defaultView?.matchMedia?.('(max-width: 768px)');
+	let mobileDialogOpen = false;
 	const syncMoreControls = () => {
+		const isMobile = controlsViewport?.matches === true;
 		syncTranscriptControlsPanel({
 			doc,
 			root: layoutRoot,
 			details: moreControls,
 			panel: morePanel,
 			controls: toggleBar,
-			isMobile: controlsViewport?.matches === true
+			isMobile
 		});
+		const nextMobileDialogOpen = moreControls.open && isMobile;
+		doc.documentElement.classList.toggle('transcript-controls-modal-open', nextMobileDialogOpen);
+		if (nextMobileDialogOpen) {
+			morePanel.setAttribute('role', 'dialog');
+			morePanel.setAttribute('aria-modal', 'true');
+			morePanel.setAttribute('aria-labelledby', morePanelTitle.id);
+			layoutRoot.insertBefore(controlsBackdrop, morePanel);
+			if (!mobileDialogOpen) closeMoreButton.focus();
+		} else {
+			morePanel.removeAttribute('role');
+			morePanel.removeAttribute('aria-modal');
+			morePanel.removeAttribute('aria-labelledby');
+			controlsBackdrop.remove();
+		}
+		mobileDialogOpen = nextMobileDialogOpen;
 	};
-	const closeMoreControls = () => {
+	const closeMoreControls = (restoreFocus = false) => {
 		moreControls.open = false;
 		syncMoreControls();
+		if (restoreFocus) moreSummary.focus();
 	};
-	closeMoreButton.addEventListener('click', closeMoreControls, listenerOptions);
+	closeMoreButton.addEventListener('click', () => closeMoreControls(true), listenerOptions);
+	controlsBackdrop.addEventListener('click', () => closeMoreControls(true), listenerOptions);
 	moreControls.addEventListener('toggle', syncMoreControls, listenerOptions);
 	controlsViewport?.addEventListener?.('change', syncMoreControls, listenerOptions);
+	doc.addEventListener('keydown', event => {
+		if (!mobileDialogOpen) return;
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			closeMoreControls(true);
+			return;
+		}
+		trapFocus(event, morePanel);
+	}, listenerOptions);
+	eventController.signal.addEventListener('abort', () => {
+		controlsBackdrop.remove();
+		doc.documentElement.classList.remove('transcript-controls-modal-open');
+	}, { once: true });
 
 	const placeToggleBar = (mode: TranscriptLayoutMode) => {
 		if (mode === 'reading') {
@@ -397,13 +457,16 @@ export function wireTranscript(
 			doc,
 			transcript,
 				segments,
-				controls: toggleGroup,
+				controls: learningControls.items,
 				tools: languageLearning,
 				responseLanguage: settings.learningResponseLanguage,
+				restoreBilingualSubtitles: settings.bilingualSubtitles,
+				restoreJapaneseReadings: settings.japaneseReadings,
+				onPreferenceChange: (key, value) => onSettingChange?.(key, value),
 			cancelPendingSeek: transcriptClickGuard.cancel
 		});
 		for (const selector of ['.player-learning-bilingual', '.player-learning-readings']) {
-			const primaryAction = toggleGroup.querySelector(selector);
+			const primaryAction = learningControls.items.querySelector(selector);
 			if (primaryAction) primaryActions.appendChild(primaryAction);
 		}
 	}
@@ -722,7 +785,7 @@ export function wireTranscript(
 	};
 	studyController = wireTranscriptStudy({
 		doc,
-		controls: toggleGroup,
+		controls: learningControls.items,
 		segmentTimes,
 		getSegmentEnd,
 		getActiveIndex: () => activeIndex,

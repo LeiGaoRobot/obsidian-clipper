@@ -80,6 +80,71 @@ describe('Transcript language learning controls', () => {
 		expect(transcript.classList.contains('show-bilingual-transcript')).toBe(true);
 	});
 
+	test('restores saved bilingual subtitles without starting a model request', async () => {
+		const { controls, transcript, segments } = createTranscript();
+		const translateTranscript = vi.fn();
+		const onPreferenceChange = vi.fn();
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript,
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn(),
+				loadTranscriptTranslations: vi.fn().mockResolvedValue(['你好，世界。'])
+			},
+			restoreBilingualSubtitles: true,
+			onPreferenceChange,
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.ready;
+
+		expect(segments[0].querySelector('.transcript-segment-translation')?.textContent)
+			.toBe('你好，世界。');
+		expect(transcript.classList.contains('show-bilingual-transcript')).toBe(true);
+		expect(translateTranscript).not.toHaveBeenCalled();
+		expect(onPreferenceChange).not.toHaveBeenCalled();
+
+		await controller.toggleBilingual();
+		expect(onPreferenceChange).toHaveBeenLastCalledWith('bilingualSubtitles', false);
+	});
+
+	test('waits for a pending bilingual restore before handling an immediate user action', async () => {
+		const { controls, transcript, segments } = createTranscript();
+		const translateTranscript = vi.fn();
+		let resolveTranslations!: (translations: string[]) => void;
+		const loadTranscriptTranslations = vi.fn(() => new Promise<string[]>(resolve => {
+			resolveTranslations = resolve;
+		}));
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript,
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn(),
+				loadTranscriptTranslations
+			},
+			restoreBilingualSubtitles: true,
+			cancelPendingSeek: vi.fn()
+		});
+
+		const toggle = controller.toggleBilingual();
+		expect(translateTranscript).not.toHaveBeenCalled();
+		resolveTranslations(['你好，世界。']);
+		await toggle;
+
+		expect(transcript.classList.contains('show-bilingual-transcript')).toBe(true);
+		expect(segments[0].querySelector('.transcript-segment-translation')?.textContent)
+			.toBe('你好，世界。');
+		expect(translateTranscript).not.toHaveBeenCalled();
+	});
+
 	test('adds Japanese readings only after an explicit reading action', async () => {
 		const { controls, transcript, segments } = createTranscript(['私は日本語を勉強します。']);
 		const annotateJapaneseTranscript = vi.fn().mockResolvedValue([[
@@ -144,6 +209,73 @@ describe('Transcript language learning controls', () => {
 		await secondController.toggleJapaneseReadings();
 		expect(secondAnnotateJapaneseTranscript).not.toHaveBeenCalled();
 		expect(transcript.querySelector('ruby rt')?.textContent).toBe('わたし');
+	});
+
+	test('restores saved Japanese readings without starting a model request', async () => {
+		const { controls, transcript, segments } = createTranscript(['日本語を勉強します。']);
+		const annotateJapaneseTranscript = vi.fn();
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript,
+				loadJapaneseReadings: vi.fn().mockResolvedValue([[
+					{ text: '日本語', reading: 'にほんご' },
+					{ text: 'を', reading: '' },
+					{ text: '勉強', reading: 'べんきょう' },
+					{ text: 'します。', reading: '' }
+				]])
+			},
+			restoreJapaneseReadings: true,
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.ready;
+
+		expect(transcript.classList.contains('show-japanese-readings')).toBe(true);
+		expect(transcript.querySelector('ruby rt')?.textContent).toBe('にほんご');
+		expect(annotateJapaneseTranscript).not.toHaveBeenCalled();
+	});
+
+	test('waits for a pending reading restore before handling an immediate user action', async () => {
+		const { controls, transcript, segments } = createTranscript(['日本語を勉強します。']);
+		const annotateJapaneseTranscript = vi.fn();
+		let resolveReadings!: (readings: Array<Array<{ text: string; reading: string }>>) => void;
+		const loadJapaneseReadings = vi.fn(() => new Promise<Array<Array<{ text: string; reading: string }>>>(resolve => {
+			resolveReadings = resolve;
+		}));
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript,
+				loadJapaneseReadings
+			},
+			restoreJapaneseReadings: true,
+			cancelPendingSeek: vi.fn()
+		});
+
+		const toggle = controller.toggleJapaneseReadings();
+		expect(annotateJapaneseTranscript).not.toHaveBeenCalled();
+		resolveReadings([[
+			{ text: '日本語', reading: 'にほんご' },
+			{ text: 'を', reading: '' },
+			{ text: '勉強', reading: 'べんきょう' },
+			{ text: 'します。', reading: '' }
+		]]);
+		await toggle;
+
+		expect(transcript.classList.contains('show-japanese-readings')).toBe(true);
+		expect(transcript.querySelector('ruby rt')?.textContent).toBe('にほんご');
+		expect(annotateJapaneseTranscript).not.toHaveBeenCalled();
 	});
 
 	test('lets a partial reading range be edited and regenerated in place', async () => {
@@ -467,6 +599,34 @@ describe('Transcript language learning controls', () => {
 		expect(explainSelection).not.toHaveBeenCalled();
 	});
 
+	test('does not reopen or re-inert the page when cleanup interrupts Learning Center loading', async () => {
+		const { controls, transcript, segments } = createTranscript();
+		let resolveVocabulary!: (entries: []) => void;
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn(),
+				listVocabulary: vi.fn(() => new Promise<[]>(resolve => {
+					resolveVocabulary = resolve;
+				}))
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		const loading = controller.showVocabulary();
+		cleanupTranscriptLanguageLearning(document);
+		resolveVocabulary([]);
+		await loading;
+
+		expect(document.querySelector('.language-learning-card')).toBeNull();
+		expect(transcript.hasAttribute('inert')).toBe(false);
+	});
+
 	test('shows an engine-aware task estimate and recovery switch', async () => {
 		const { controls, transcript, segments } = createTranscript(['First.', 'Second.']);
 		const timeout = Object.assign(new Error('grok failed'), {
@@ -658,10 +818,49 @@ describe('Transcript language learning controls', () => {
 		});
 
 		await controller.explain({ kind: 'word', text: 'Hello', context: 'Hello world.' });
+		expect(trigger.hasAttribute('inert')).toBe(true);
 		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
 		expect((document.querySelector('.language-learning-card') as HTMLElement).style.display).toBe('none');
+		expect(trigger.hasAttribute('inert')).toBe(false);
 		expect(document.activeElement).toBe(trigger);
+	});
+
+	test('keeps keyboard focus inside the explanation dialog', async () => {
+		const { controls, transcript, segments } = createTranscript();
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection: vi.fn().mockResolvedValue('Explanation'),
+				annotateJapaneseTranscript: vi.fn(),
+				copyLearningText: vi.fn().mockResolvedValue(true)
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.explain({ kind: 'word', text: 'Hello', context: 'Hello world.' });
+
+		const card = document.querySelector('.language-learning-card') as HTMLElement;
+		const close = card.querySelector('.language-learning-card-close') as HTMLButtonElement;
+		const copy = card.querySelector('.language-learning-card-copy') as HTMLButtonElement;
+		expect(card.getAttribute('aria-modal')).toBe('true');
+		expect(transcript.hasAttribute('inert')).toBe(true);
+		expect(document.activeElement).toBe(close);
+
+		copy.focus();
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+		expect(document.activeElement).toBe(close);
+
+		document.dispatchEvent(new KeyboardEvent('keydown', {
+			key: 'Tab',
+			shiftKey: true,
+			bubbles: true
+		}));
+		expect(document.activeElement).toBe(copy);
 	});
 
 	test('restores selection explanations to their transcript source after the transient trigger hides', async () => {
@@ -1070,23 +1269,26 @@ describe('Transcript language learning controls', () => {
 		expect(explainSelection).not.toHaveBeenCalled();
 	});
 
-	test('cleanup removes learning UI left by a previous transcript', () => {
+	test('cleanup removes learning UI and restores the modal background', async () => {
 		const { controls, transcript, segments } = createTranscript();
-		wireTranscriptLanguageLearning({
+		const controller = wireTranscriptLanguageLearning({
 			doc: document,
 			transcript,
 			segments,
 			controls,
 			tools: {
 				translateTranscript: vi.fn(),
-				explainSelection: vi.fn(),
+				explainSelection: vi.fn().mockResolvedValue('Explanation'),
 				annotateJapaneseTranscript: vi.fn()
 			},
 			cancelPendingSeek: vi.fn()
 		});
+		await controller.explain({ kind: 'word', text: 'Hello', context: 'Hello world.' });
+		expect(transcript.hasAttribute('inert')).toBe(true);
 
 		cleanupTranscriptLanguageLearning(document);
 
+		expect(transcript.hasAttribute('inert')).toBe(false);
 		expect(document.querySelector('.language-learning-card')).toBeNull();
 		expect(document.querySelector('.language-learning-selection-action')).toBeNull();
 		expect(document.querySelector('.player-learning-readings')).toBeNull();

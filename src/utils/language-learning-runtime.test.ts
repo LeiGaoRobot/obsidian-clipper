@@ -157,6 +157,19 @@ describe('Configured language learning runtime', () => {
 		expect(mocks.sendMessage).not.toHaveBeenCalled();
 	});
 
+	test('loads saved translations without requiring an enabled Interpreter', async () => {
+		await configuredLanguageLearning.saveTranscriptTranslations(['Hello.'], ['你好。']);
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			interpreterEnabled: false
+		});
+		mocks.sendMessage.mockClear();
+
+		await expect(configuredLanguageLearning.loadTranscriptTranslations(['Hello.']))
+			.resolves.toEqual(['你好。']);
+		expect(mocks.sendMessage).not.toHaveBeenCalled();
+	});
+
 	test('reuses completed transcript work after an explicit engine switch', async () => {
 		mocks.loadSettings.mockResolvedValue({
 			...settings,
@@ -194,6 +207,21 @@ describe('Configured language learning runtime', () => {
 		expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
 			action: 'languageLearningRequest'
 		}));
+	});
+
+	test('loads saved Japanese readings without requiring an enabled Interpreter', async () => {
+		const segments = ['日本語'];
+		const readings = [[{ text: '日本語', reading: 'にほんご' }]];
+		await configuredLanguageLearning.saveJapaneseReadings(segments, readings);
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			interpreterEnabled: false
+		});
+		mocks.sendMessage.mockClear();
+
+		await expect(configuredLanguageLearning.loadJapaneseReadings(segments))
+			.resolves.toEqual(readings);
+		expect(mocks.sendMessage).not.toHaveBeenCalled();
 	});
 
 	test('reuses personal Japanese readings without sending an AI request', async () => {

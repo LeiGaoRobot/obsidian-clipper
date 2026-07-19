@@ -35,6 +35,10 @@ function initializeTranscriptLayoutPreview(doc: Document): void {
 	if (!root || !player || !transcript) return;
 	const moreControls = root.querySelector<HTMLDetailsElement>('.player-controls-more');
 	const morePanel = root.querySelector<HTMLElement>('.player-controls-panel');
+	const morePanelTitle = root.querySelector<HTMLElement>('#preview-controls-title');
+	const controlsBackdrop = doc.createElement('div');
+	controlsBackdrop.className = 'player-controls-backdrop';
+	controlsBackdrop.setAttribute('aria-hidden', 'true');
 	const updateMoreControls = () => {
 		if (!moreControls || !morePanel) return;
 		const isMobile = (doc.defaultView?.innerWidth || 0) <= 768;
@@ -48,9 +52,25 @@ function initializeTranscriptLayoutPreview(doc: Document): void {
 			controls,
 			isMobile
 		});
+		const modalOpen = moreControls.open && isMobile;
+		if (modalOpen) {
+			morePanel.setAttribute('role', 'dialog');
+			morePanel.setAttribute('aria-modal', 'true');
+			if (morePanelTitle) morePanel.setAttribute('aria-labelledby', morePanelTitle.id);
+			root.insertBefore(controlsBackdrop, morePanel);
+		} else {
+			morePanel.removeAttribute('role');
+			morePanel.removeAttribute('aria-modal');
+			morePanel.removeAttribute('aria-labelledby');
+			controlsBackdrop.remove();
+		}
 		doc.documentElement.dataset.previewControls = moreControls.open ? 'open' : 'closed';
 		doc.documentElement.dataset.previewPanelHost = morePanel.parentElement === root ? 'root' : 'details';
 	};
+	controlsBackdrop.addEventListener('click', () => {
+		if (moreControls) moreControls.open = false;
+		updateMoreControls();
+	});
 
 	root.addEventListener('click', event => {
 		const target = event.target as HTMLElement;

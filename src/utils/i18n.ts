@@ -3,6 +3,14 @@ import browser from './browser-polyfill';
 import { getLocalStorage, setLocalStorage } from './storage-utils';
 import DOMPurify from 'dompurify';
 
+interface LocaleMessage {
+	message: string;
+	placeholders?: Record<string, { content: string }>;
+}
+
+type LocaleMessages = Record<string, LocaleMessage>;
+const englishMessages = require('../_locales/en/messages.json') as LocaleMessages;
+
 // Import dayjs locales that match our supported languages
 import 'dayjs/locale/ar';
 import 'dayjs/locale/ca';
@@ -63,7 +71,7 @@ export function setDayjsLocale(locale: string): void {
 	}
 }
 
-let currentLanguage: string | null = null;
+let currentMessages: LocaleMessages = englishMessages;
 
 // Return raw values, translation will be handled by the i18n system
 export function getAvailableLanguages(): { code: string; name: string }[] {
@@ -143,67 +151,42 @@ export function matchBrowserLanguage(): string {
 
 export async function initializeI18n() {
 	const { code } = await getEffectiveLanguage();
-	currentLanguage = code;
+	currentMessages = englishMessages;
+	if (code !== 'en') {
+		try {
+			const response = await fetch(browser.runtime.getURL(`_locales/${code}/messages.json`));
+			if (!response.ok) throw new Error(`Locale request failed with ${response.status}`);
+			currentMessages = await response.json() as LocaleMessages;
+		} catch (error) {
+			console.warn(`Failed to load messages for language ${code}; using English fallback`, error);
+		}
+	}
 	setDayjsLocale(code);
 }
 
-export function getMessage(messageName: string, substitutions?: string | string[]): string {
-	try {
-		// Load messages for the current language
-		const messages = require(`../_locales/${currentLanguage || 'en'}/messages.json`);
-		const messageObj = messages[messageName];
-
-		if (!messageObj) {
-			// If message not found in current language, try English
-			if (currentLanguage !== 'en') {
-				const enMessages = require('../_locales/en/messages.json');
-				const enMessageObj = enMessages[messageName];
-				if (enMessageObj) {
-					let text = enMessageObj.message;
-					// Handle substitutions and placeholders for English fallback
-					if (substitutions) {
-						const subsArray = Array.isArray(substitutions) ? substitutions : [substitutions];
-						subsArray.forEach((sub, index) => {
-							text = text.replace(`$${index + 1}`, sub);
-						});
-					}
-					if (enMessageObj.placeholders) {
-						Object.entries(enMessageObj.placeholders).forEach(([key, value]) => {
-							const placeholder = `$${key}$`;
-							const content = (value as { content: string }).content;
-							text = text.replace(placeholder, content);
-						});
-					}
-					return text;
-				}
-			}
-			return browser.i18n.getMessage(messageName, substitutions) || messageName;
-		}
-
-		let text = messageObj.message;
-
-		// Handle substitutions first
-		if (substitutions) {
-			const subsArray = Array.isArray(substitutions) ? substitutions : [substitutions];
-			subsArray.forEach((sub, index) => {
-				text = text.replace(`$${index + 1}`, sub);
-			});
-		}
-
-		// Handle placeholders if they exist
-		if (messageObj.placeholders) {
-			Object.entries(messageObj.placeholders).forEach(([key, value]) => {
-				const placeholder = `$${key}$`;
-				const content = (value as { content: string }).content;
-				text = text.replace(placeholder, content);
-			});
-		}
-
-		return text;
-	} catch (error) {
-		console.warn(`Failed to load messages for language ${currentLanguage}`, error);
-		return browser.i18n.getMessage(messageName, substitutions) || messageName;
+function formatMessage(
+	message: LocaleMessage,
+	substitutions?: string | string[]
+): string {
+	let text = message.message;
+	if (message.placeholders) {
+		Object.entries(message.placeholders).forEach(([key, value]) => {
+			text = text.split(`$${key}$`).join(value.content);
+		});
 	}
+	if (substitutions) {
+		const values = Array.isArray(substitutions) ? substitutions : [substitutions];
+		values.forEach((substitution, index) => {
+			text = text.split(`$${index + 1}`).join(substitution);
+		});
+	}
+	return text;
+}
+
+export function getMessage(messageName: string, substitutions?: string | string[]): string {
+	const message = currentMessages[messageName] || englishMessages[messageName];
+	if (message) return formatMessage(message, substitutions);
+	return browser.i18n.getMessage(messageName, substitutions) || messageName;
 }
 
 export async function translatePage() {

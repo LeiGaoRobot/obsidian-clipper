@@ -23,11 +23,6 @@ import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
-import { configuredLanguageLearning } from '../utils/language-learning-runtime';
-import {
-	initializeLanguageLearningPopup,
-	isLanguageLearningPopupAvailable
-} from '../utils/language-learning-popup';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -386,7 +381,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 				populateTemplateDropdown();
 				setupEventListeners(currentTabId);
 				await initializeUI();
-				initializeLanguageLearningTools();
+				await initializeLanguageLearningTools();
 
 				determineMainAction();
 
@@ -611,7 +606,12 @@ async function initializeUI() {
 	}
 }
 
-function initializeLanguageLearningTools(): void {
+async function initializeLanguageLearningTools(): Promise<void> {
+	const [{ configuredLanguageLearning }, popupLanguageLearning] = await Promise.all([
+		import(/* webpackChunkName: 'popup-language-learning' */ '../utils/language-learning-runtime'),
+		import(/* webpackChunkName: 'popup-language-learning' */ '../utils/language-learning-popup')
+	]);
+	const { initializeLanguageLearningPopup, isLanguageLearningPopupAvailable } = popupLanguageLearning;
 	initializeLanguageLearningPopup({
 		enabled: isLanguageLearningPopupAvailable(generalSettings),
 		transformContent: configuredLanguageLearning.transformContent,

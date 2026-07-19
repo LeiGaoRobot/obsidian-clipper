@@ -8,7 +8,7 @@ const createWebpackConfig = require('../webpack.config.js') as (
 	argv: { mode: string }
 ) => Array<{
 	entry: Record<string, unknown>;
-	output: { chunkFilename?: string };
+	output: { clean?: boolean; chunkFilename?: string; chunkFormat?: string; chunkLoading?: string; publicPath?: string };
 	plugins: unknown[];
 }>;
 
@@ -44,6 +44,22 @@ describe('Webpack extension entries', () => {
 		);
 
 		expect(config.output.chunkFilename).toBe('chunks/[name].js');
+		expect(config.output.clean).toBe(true);
+	});
+
+	test('sets the injected Reader chunk root from the extension runtime', () => {
+		const [config] = createWebpackConfig(
+			{ BROWSER: 'chrome' },
+			{ mode: 'production' }
+		);
+
+		expect(config.output.publicPath).toBe('');
+		expect(config.output.chunkFormat).toBe('module');
+		expect(config.output.chunkLoading).toBe('import');
+		expect(config.entry['reader-script']).toEqual([
+			'./src/extension-public-path.ts',
+			'./src/reader-script.ts'
+		]);
 	});
 
 	test('allows generated chunks in each browser manifest', () => {
@@ -56,6 +72,7 @@ describe('Webpack extension entries', () => {
 			const resources = manifest.web_accessible_resources
 				.flatMap((entry: { resources?: string[] }) => entry.resources ?? []);
 			expect(resources).toContain('chunks/*.js');
+			expect(resources).toContain('_locales/*/messages.json');
 		}
 	});
 });

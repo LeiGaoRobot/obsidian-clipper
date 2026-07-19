@@ -13,6 +13,7 @@ import {
 	throwIfRequestAborted
 } from './request-cancellation';
 import { renderLanguageLearningCenter } from './language-learning-center';
+import { trapFocus } from './focus-trap';
 
 export interface TranscriptLanguageLearning {
 	translateTranscript: (
@@ -27,6 +28,8 @@ export interface TranscriptLanguageLearning {
 	) => Promise<TranscriptReadingSegments>;
 	explainSelection: (selection: LearningSelection, signal?: AbortSignal) => Promise<string>;
 	getExecutionInfo?: () => Promise<TranscriptExecutionInfo>;
+	loadTranscriptTranslations?: (segments: string[]) => Promise<string[] | undefined>;
+	loadJapaneseReadings?: (segments: string[]) => Promise<TranscriptReadingSegments | undefined>;
 	saveTranscriptTranslations?: (segments: string[], translations: string[]) => Promise<void>;
 	saveJapaneseReadings?: (segments: string[], readings: TranscriptReadingSegments) => Promise<void>;
 	clearJapaneseReadings?: (segments: string[]) => Promise<void>;
@@ -58,6 +61,7 @@ export interface TranscriptExecutionInfo {
 }
 
 export interface TranscriptLanguageLearningController {
+	ready: Promise<void>;
 	toggleBilingual: () => Promise<void>;
 	toggleJapaneseReadings: () => Promise<void>;
 	regenerateJapaneseReadings: () => Promise<void>;
@@ -74,6 +78,12 @@ interface TranscriptLanguageLearningOptions {
 	controls: HTMLElement;
 	tools: TranscriptLanguageLearning;
 	responseLanguage?: string;
+	restoreBilingualSubtitles?: boolean;
+	restoreJapaneseReadings?: boolean;
+	onPreferenceChange?: (
+		key: 'bilingualSubtitles' | 'japaneseReadings',
+		value: boolean
+	) => void;
 	cancelPendingSeek: () => void;
 }
 
@@ -308,6 +318,9 @@ export function wireTranscriptLanguageLearning({
 	controls,
 	tools,
 	responseLanguage,
+	restoreBilingualSubtitles,
+	restoreJapaneseReadings,
+	onPreferenceChange,
 	cancelPendingSeek
 }: TranscriptLanguageLearningOptions): TranscriptLanguageLearningController {
 	cleanupTranscriptLanguageLearning(doc);
@@ -321,6 +334,7 @@ export function wireTranscriptLanguageLearning({
 	const card = doc.createElement('aside');
 	card.className = 'language-learning-card';
 	card.setAttribute('role', 'dialog');
+	card.setAttribute('aria-modal', 'true');
 	card.setAttribute('tabindex', '-1');
 	card.style.display = 'none';
 
@@ -406,6 +420,33 @@ export function wireTranscriptLanguageLearning({
 	};
 	let cardReturnFocus: HTMLElement | null = null;
 	let lastTaskProgress: { completed: number; total: number } | null = null;
+	const inertCardBackground = new Map<HTMLElement, boolean>();
+	const setCardBackgroundInert = (inert: boolean) => {
+		const HTMLElementConstructor = doc.defaultView?.HTMLElement;
+		if (!HTMLElementConstructor) return;
+		if (inert) {
+			Array.from(doc.body.children).forEach(child => {
+				if (!(child instanceof HTMLElementConstructor) || child === card) return;
+				if (!inertCardBackground.has(child)) {
+					inertCardBackground.set(child, child.hasAttribute('inert'));
+				}
+				child.setAttribute('inert', '');
+			});
+			return;
+		}
+		inertCardBackground.forEach((wasInert, element) => {
+			if (!element.isConnected) return;
+			if (wasInert) element.setAttribute('inert', '');
+			else element.removeAttribute('inert');
+		});
+		inertCardBackground.clear();
+	};
+	const showCard = () => {
+		card.style.display = 'block';
+		setCardBackgroundInert(true);
+		closeButton.focus();
+	};
+	signal.addEventListener('abort', () => setCardBackgroundInert(false), { once: true });
 	const rememberCardReturnFocus = (preferred?: HTMLElement | null) => {
 		if (card.style.display !== 'none') return;
 		if (preferred?.isConnected) {
@@ -420,6 +461,7 @@ export function wireTranscriptLanguageLearning({
 	const hideCard = () => {
 		const returnFocus = cardReturnFocus;
 		card.style.display = 'none';
+		setCardBackgroundInert(false);
 		card.classList.remove('is-error');
 		retryAction = null;
 		retryButton.hidden = true;
@@ -489,7 +531,7 @@ export function wireTranscriptLanguageLearning({
 				: currentExecutionInfo.mode;
 		}
 		card.classList.add('is-error');
-		card.style.display = 'block';
+		showCard();
 		retryAction = retry || null;
 		retryButton.hidden = !retryAction;
 		retryButton.textContent = lastTaskProgress && lastTaskProgress.completed > 0
@@ -498,7 +540,6 @@ export function wireTranscriptLanguageLearning({
 				String(lastTaskProgress.total)
 			])
 			: getMessage('readerRetry');
-		card.focus();
 	};
 	const showExplanationActions = async (selection: LearningSelection, explanation: string) => {
 		currentExplanation = { selection, explanation };
@@ -545,8 +586,7 @@ export function wireTranscriptLanguageLearning({
 		cardFeedback.textContent = '';
 		retryAction = null;
 		retryButton.hidden = true;
-		card.style.display = 'block';
-		card.focus();
+		showCard();
 
 		const cachedExplanation = getCachedExplanation(selection, resolvedResponseLanguage);
 		if (cachedExplanation) {
@@ -656,16 +696,20 @@ export function wireTranscriptLanguageLearning({
 			onFeedback: message => { cardFeedback.textContent = message; }
 		});
 		await center.ready;
-		card.style.display = 'block';
-		card.focus();
+		if (signal.aborted || !card.isConnected) return;
+		showCard();
 	};
 	closeButton.addEventListener('click', () => {
 		hideCard();
 	});
 	doc.addEventListener('keydown', event => {
-		if (event.key !== 'Escape' || card.style.display === 'none') return;
-		event.preventDefault();
-		hideCard();
+		if (card.style.display === 'none') return;
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			hideCard();
+			return;
+		}
+		trapFocus(event, card);
 	}, { signal });
 
 	const rangeControl = doc.createElement('label');
@@ -840,6 +884,8 @@ export function wireTranscriptLanguageLearning({
 	let translationsVisible = false;
 	let translationEditMode = false;
 	let translationValues = new Array<string>(originalTexts.length).fill('');
+	let restorePromise: Promise<void> = Promise.resolve();
+	let restoreComplete = !restoreBilingualSubtitles && !restoreJapaneseReadings;
 	const persistTranslations = () => {
 		if (translationValues.every(translation => translation.trim())) {
 			cacheTranslations(originalTexts, resolvedResponseLanguage, translationValues);
@@ -918,6 +964,10 @@ export function wireTranscriptLanguageLearning({
 		return merged;
 	};
 	const toggleBilingual = async () => {
+		const wasRestoring = !restoreComplete;
+		if (wasRestoring) await restorePromise;
+		if (signal.aborted) return;
+		if (wasRestoring && translationsVisible) return;
 		const taskIndexes = getTaskIndexes();
 		const selectedRangeLoaded = taskIndexes.every(index => translationValues[index]?.trim());
 		if (selectedRangeLoaded) {
@@ -926,6 +976,7 @@ export function wireTranscriptLanguageLearning({
 			transcript.classList.toggle('show-bilingual-transcript', translationsVisible);
 			bilingualButton.classList.toggle('is-enabled', translationsVisible);
 			updateTranslationEditing();
+			onPreferenceChange?.('bilingualSubtitles', translationsVisible);
 			return;
 		}
 
@@ -935,6 +986,7 @@ export function wireTranscriptLanguageLearning({
 		if (cachedTranslations) {
 			try {
 				applyTranslations(cachedTranslations);
+				onPreferenceChange?.('bilingualSubtitles', true);
 				return;
 			} catch {
 				transcriptTranslationCache.delete(getTranscriptTranslationCacheKey(originalTexts, resolvedResponseLanguage));
@@ -968,6 +1020,7 @@ export function wireTranscriptLanguageLearning({
 			const complete = merged.every(translation => translation.trim());
 			renderTranslations(merged, complete);
 			if (complete) cacheTranslations(originalTexts, resolvedResponseLanguage, merged);
+			onPreferenceChange?.('bilingualSubtitles', true);
 		} catch (error) {
 			if (isRequestCancelled(error) || requestController.signal.aborted) {
 				if (activeRequest !== requestController) return;
@@ -1150,9 +1203,14 @@ export function wireTranscriptLanguageLearning({
 		}
 	};
 	const toggleJapaneseReadings = async () => {
+		const wasRestoring = !restoreComplete;
+		if (wasRestoring) await restorePromise;
+		if (signal.aborted) return;
+		if (wasRestoring && readingsVisible) return;
 		const taskIndexes = getTaskIndexes();
 		if (japaneseReadings && hasCompleteReadings(taskIndexes)) {
 			renderReadings(!readingsVisible);
+			onPreferenceChange?.('japaneseReadings', readingsVisible);
 			return;
 		}
 		const cachedReadings = getCachedJapaneseReadings(originalTexts);
@@ -1160,13 +1218,17 @@ export function wireTranscriptLanguageLearning({
 			japaneseReadings = cachedReadings;
 			readingsComplete = true;
 			renderReadings(true);
+			onPreferenceChange?.('japaneseReadings', true);
 			return;
 		}
 		if (cachedReadings) removeCachedJapaneseReadings(originalTexts);
 
 		await generateJapaneseReadings();
+		if (readingsVisible) onPreferenceChange?.('japaneseReadings', true);
 	};
 	const regenerateJapaneseReadings = async () => {
+		if (!restoreComplete) await restorePromise;
+		if (signal.aborted) return;
 		if (!japaneseReadings || !readingsVisible) return;
 		const taskIndexes = getTaskIndexes();
 		const taskTexts = taskIndexes.map(index => originalTexts[index]);
@@ -1305,7 +1367,39 @@ export function wireTranscriptLanguageLearning({
 		selectionChangeTimer = window.setTimeout(updateSelectionButton, 200);
 	}, { signal });
 
+	restorePromise = (async () => {
+		if (restoreBilingualSubtitles) {
+			const savedTranslations = getCachedTranslations(originalTexts, resolvedResponseLanguage)
+				?? await tools.loadTranscriptTranslations?.(originalTexts);
+			if (!signal.aborted && savedTranslations) {
+				try {
+					applyTranslations(savedTranslations);
+				} catch {
+					// Ignore incomplete saved work; a user action can retry it explicitly.
+				}
+			}
+		}
+		if (restoreJapaneseReadings && containsJapaneseKanji(originalTexts)) {
+			const savedReadings = getCachedJapaneseReadings(originalTexts)
+				?? await tools.loadJapaneseReadings?.(originalTexts);
+			if (
+				!signal.aborted
+				&& savedReadings
+				&& isCompleteTranscriptReadings(savedReadings, originalTexts)
+			) {
+				japaneseReadings = cloneTranscriptReadings(savedReadings);
+				readingsComplete = true;
+				renderReadings(true);
+			}
+		}
+	})()
+		.catch(() => {
+			// Restoring local checkpoints is best-effort and never starts a paid request.
+		})
+		.finally(() => { restoreComplete = true; });
+
 	return {
+		ready: restorePromise,
 		toggleBilingual,
 		toggleJapaneseReadings,
 		regenerateJapaneseReadings,

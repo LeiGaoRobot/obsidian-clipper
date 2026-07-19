@@ -129,6 +129,24 @@
 	}
 }
 .player-toggle-group {
+	display: grid;
+	gap: 12px;
+	min-width: 0;
+}
+.player-control-section {
+	min-width: 0;
+}
+.player-control-section-title {
+	margin: 0 0 6px;
+	font-family: var(--font-ui);
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	line-height: 1.2;
+	color: var(--text-faint);
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+}
+.player-control-section-items {
 	display: flex;
 	align-items: center;
 	flex-wrap: wrap;
@@ -197,6 +215,10 @@
 		margin-top: 6px;
 		box-shadow: none;
 	}
+}
+.player-controls-panel-handle,
+.player-controls-backdrop {
+	display: none;
 }
 .player-controls-panel-header,
 .player-controls-close {
@@ -412,6 +434,13 @@
 @media (prefers-reduced-motion: reduce) {
 	.player-learning-action.is-loading::before {
 		animation: none;
+	}
+	.player-toggles,
+	.player-toggle-switch,
+	.player-toggle-switch::after,
+	.player-current-pos,
+	.transcript-segment {
+		transition: none;
 	}
 }
 .player-learning-progress {
@@ -844,7 +873,6 @@ html.transcript-layout-focus .obsidian-reader-content {
 		padding-top: 18px;
 	}
 	.transcript-layout-switcher,
-	.player-toggle-group,
 	.player-primary-actions,
 	.player-controls-more {
 		width: 100%;
@@ -873,6 +901,10 @@ html.transcript-layout-focus .obsidian-reader-content {
 	.player-toggle {
 		width: 100%;
 		box-sizing: border-box;
+	}
+	.player-control-section-items {
+		align-items: stretch;
+		flex-direction: column;
 	}
 }
 
@@ -981,7 +1013,6 @@ html.transcript-layout-focus .language-learning-card {
 			padding-top: 14px;
 		}
 		.transcript-layout-switcher,
-		.player-toggle-group,
 		.player-primary-actions {
 			width: auto;
 			flex-direction: row;
@@ -993,6 +1024,14 @@ html.transcript-layout-focus .language-learning-card {
 			width: auto;
 			text-align: center;
 		}
+		.player-toggle-group {
+			display: flex;
+			align-items: flex-start;
+			flex-wrap: wrap;
+		}
+		.player-control-section-items {
+			flex-direction: row;
+		}
 	}
 	html.transcript-layout-notebook .language-learning-card,
 	html.transcript-layout-focus .language-learning-card {
@@ -1001,6 +1040,9 @@ html.transcript-layout-focus .language-learning-card {
 }
 
 @media (max-width: 768px) {
+	html.transcript-controls-modal-open {
+		overflow: hidden;
+	}
 	.player-toggles {
 		display: flex !important;
 		align-items: stretch;
@@ -1016,17 +1058,24 @@ html.transcript-layout-focus .language-learning-card {
 	}
 	.player-toggle-group {
 		width: 100%;
+		display: grid;
+		gap: 14px;
+	}
+	.player-control-section + .player-control-section {
+		padding-top: 12px;
+		border-top: 1px solid var(--background-modifier-border);
+	}
+	.player-control-section-items {
+		align-items: stretch;
+		flex-direction: column;
 	}
 	.player-primary-actions {
-		flex: 1 1 auto;
+		flex: 1 1 240px;
 		width: auto;
-		> .player-compact-toggle,
-		> .player-learning-readings {
-			display: none;
-		}
-		> .player-learning-bilingual {
-			width: 100%;
+		> .player-learning-action {
+			flex: 1 1 calc(50% - 3px);
 			min-height: 44px;
+			text-align: center;
 		}
 	}
 	.player-controls-more {
@@ -1046,11 +1095,27 @@ html.transcript-layout-focus .language-learning-card {
 		border-width: 1px 0 0;
 		border-radius: var(--radius-l) var(--radius-l) 0 0;
 		box-shadow: var(--shadow-l);
+		outline: 0;
 		.player-study-panel {
 			position: static;
 			inset: auto;
 			width: 100%;
 		}
+	}
+	.player-controls-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: calc(var(--layer-menu) + 1);
+		display: block;
+		background: rgba(0, 0, 0, 0.36);
+	}
+	.player-controls-panel-handle {
+		display: block;
+		width: 36px;
+		height: 4px;
+		margin: 0 auto 10px;
+		background: var(--background-modifier-border-hover);
+		border-radius: 999px;
 	}
 	.player-controls-panel-header {
 		position: sticky;
@@ -1126,4 +1191,32 @@ html.transcript-layout-focus .language-learning-card {
 		grid-template-columns: 1fr;
 	}
 	.language-learning-center-count { justify-self: start; }
+}
+
+@media (max-width: 480px) {
+	.transcript-study-layout.is-controls-open {
+		> .player-container { display: none; }
+		> .youtube.transcript {
+			padding-top: 64px;
+			padding-bottom: min(42vh, 360px);
+		}
+		.player-controls-panel { max-height: min(42vh, 360px); }
+	}
+}
+
+@media (forced-colors: active) {
+	.transcript-layout-option[aria-pressed="true"],
+	.player-learning-action.is-enabled,
+	.player-study-action[aria-pressed="true"],
+	.player-toggle.is-enabled .player-toggle-switch {
+		border: 2px solid Highlight;
+	}
+	.player-toggle-switch::after {
+		background: ButtonText;
+	}
+	.transcript-segment.is-active,
+	.language-learning-card,
+	.player-controls-panel {
+		border-color: Highlight;
+	}
 }

@@ -358,6 +358,32 @@ export async function initializeReaderSettings() {
 		saveSettings({ ...generalSettings, readerSettings: { ...generalSettings.readerSettings, highlightActiveLine: checked } });
 	});
 
+	const transcriptLayoutSelect = document.getElementById('reader-transcript-layout') as HTMLSelectElement;
+	if (transcriptLayoutSelect) {
+		transcriptLayoutSelect.value = generalSettings.readerSettings.transcriptLayout;
+		transcriptLayoutSelect.addEventListener('change', () => {
+			saveSettings({
+				...generalSettings,
+				readerSettings: {
+					...generalSettings.readerSettings,
+					transcriptLayout: transcriptLayoutSelect.value as 'reading' | 'notebook' | 'focus'
+				}
+			});
+		});
+	}
+
+	initializeSettingToggle('reader-compact-player', generalSettings.readerSettings.compactPlayer ?? false, (checked) => {
+		saveSettings({ ...generalSettings, readerSettings: { ...generalSettings.readerSettings, compactPlayer: checked } });
+	});
+
+	initializeSettingToggle('reader-bilingual-subtitles', generalSettings.readerSettings.bilingualSubtitles ?? false, (checked) => {
+		saveSettings({ ...generalSettings, readerSettings: { ...generalSettings.readerSettings, bilingualSubtitles: checked } });
+	});
+
+	initializeSettingToggle('reader-japanese-readings', generalSettings.readerSettings.japaneseReadings ?? false, (checked) => {
+		saveSettings({ ...generalSettings, readerSettings: { ...generalSettings.readerSettings, japaneseReadings: checked } });
+	});
+
 	const learningResponseLanguageInput = document.getElementById('reader-learning-response-language') as HTMLInputElement;
 	const learningResponseLanguageEffective = document.getElementById('reader-learning-response-language-effective');
 	if (learningResponseLanguageInput) {

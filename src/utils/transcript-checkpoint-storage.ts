@@ -1,6 +1,6 @@
 import browser from './browser-polyfill';
 
-const STORAGE_PREFIX = 'languageLearningTranscriptCheckpointV1:';
+export const TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX = 'languageLearningTranscriptCheckpointV1:';
 const MAX_CHECKPOINTS = 20;
 
 interface StoredTranscriptCheckpoint {
@@ -21,7 +21,42 @@ interface StorageAreaLike {
 const memoryCheckpoints = new Map<string, StoredTranscriptCheckpoint>();
 
 function getSessionStorage(): StorageAreaLike | undefined {
-	return (browser.storage as unknown as { session?: StorageAreaLike }).session;
+	const direct = (browser.storage as unknown as { session?: StorageAreaLike }).session;
+	if (typeof location === 'undefined' || !browser.runtime?.getURL) return direct;
+	try {
+		const extensionOrigin = new URL(browser.runtime.getURL('')).origin;
+		if (location.origin === extensionOrigin) return direct;
+	} catch {
+		return direct;
+	}
+	if (!browser.runtime?.sendMessage) return direct;
+	return {
+		async get(keys) {
+			const response = await browser.runtime.sendMessage({
+				action: 'transcriptCheckpointStorage',
+				operation: 'get',
+				keys: keys ?? null
+			}) as { success?: boolean; values?: Record<string, unknown> };
+			if (!response?.success || !response.values) throw new Error('Session checkpoint storage is unavailable.');
+			return response.values;
+		},
+		async set(values) {
+			const response = await browser.runtime.sendMessage({
+				action: 'transcriptCheckpointStorage',
+				operation: 'set',
+				values
+			}) as { success?: boolean };
+			if (!response?.success) throw new Error('Session checkpoint storage is unavailable.');
+		},
+		async remove(keys) {
+			const response = await browser.runtime.sendMessage({
+				action: 'transcriptCheckpointStorage',
+				operation: 'remove',
+				keys
+			}) as { success?: boolean };
+			if (!response?.success) throw new Error('Session checkpoint storage is unavailable.');
+		}
+	};
 }
 
 function hashText(value: string): string {
@@ -38,7 +73,7 @@ function checkpointId(namespace: string, scope: string, segments: string[]): str
 }
 
 function checkpointStorageKey(id: string): string {
-	return `${STORAGE_PREFIX}${id}`;
+	return `${TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX}${id}`;
 }
 
 function isStoredCheckpoint(value: unknown): value is StoredTranscriptCheckpoint {
@@ -78,7 +113,7 @@ function pruneMemoryCheckpoints(): void {
 async function pruneStoredCheckpoints(storage: StorageAreaLike): Promise<void> {
 	const values = await storage.get(null);
 	const entries = Object.entries(values)
-		.filter(([key, value]) => key.startsWith(STORAGE_PREFIX) && isStoredCheckpoint(value))
+		.filter(([key, value]) => key.startsWith(TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX) && isStoredCheckpoint(value))
 		.sort(([, left], [, right]) => (
 			(right as StoredTranscriptCheckpoint).updatedAt - (left as StoredTranscriptCheckpoint).updatedAt
 		));
@@ -158,7 +193,7 @@ export function createSessionTranscriptCheckpointStore<T>(
 				const values = await storage.get(null);
 				const storageKeys = Object.entries(values)
 					.filter(([key, value]) => (
-						key.startsWith(STORAGE_PREFIX)
+						key.startsWith(TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX)
 						&& isStoredCheckpoint(value)
 						&& value.namespace === namespace
 						&& value.scope === scope

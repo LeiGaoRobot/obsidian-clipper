@@ -467,6 +467,46 @@
 									</div>
 									<div class="setting-item mod-horizontal">
 										<div class="setting-item-info">
+											<label for="reader-transcript-layout" data-i18n="readerTranscriptLayout">Transcript layout</label>
+											<div class="setting-item-description" data-i18n="readerTranscriptLayoutDescription">Default layout for YouTube transcripts.</div>
+										</div>
+										<div class="setting-item-control">
+											<select id="reader-transcript-layout">
+												<option value="reading" data-i18n="readerTranscriptLayoutReading">Reading</option>
+												<option value="notebook" data-i18n="readerTranscriptLayoutNotebook">Study tools</option>
+												<option value="focus" data-i18n="readerTranscriptLayoutFocus">Split view</option>
+											</select>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal mod-toggle">
+										<div class="setting-item-info">
+											<label for="reader-compact-player" data-i18n="readerCompactPlayer">Compact player</label>
+											<div class="setting-item-description" data-i18n="readerCompactPlayerDescription">Start Reading layout with the video collapsed.</div>
+										</div>
+										<div class="setting-item-control">
+											<div class="checkbox-container"><input type="checkbox" id="reader-compact-player" /></div>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal mod-toggle">
+										<div class="setting-item-info">
+											<label for="reader-bilingual-subtitles" data-i18n="readerBilingualSubtitles">Bilingual subtitles</label>
+											<div class="setting-item-description" data-i18n="readerBilingualSubtitlesRestoreDescription">Show completed translations when they are already saved. Missing translations are never generated automatically.</div>
+										</div>
+										<div class="setting-item-control">
+											<div class="checkbox-container"><input type="checkbox" id="reader-bilingual-subtitles" /></div>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal mod-toggle">
+										<div class="setting-item-info">
+											<label for="reader-japanese-readings" data-i18n="readerJapaneseReadings">Japanese readings</label>
+											<div class="setting-item-description" data-i18n="readerJapaneseReadingsRestoreDescription">Show completed readings when they are already saved. Missing readings are never generated automatically.</div>
+										</div>
+										<div class="setting-item-control">
+											<div class="checkbox-container"><input type="checkbox" id="reader-japanese-readings" /></div>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal">
+										<div class="setting-item-info">
 											<label for="reader-learning-response-language" data-i18n="readerLearningResponseLanguage">AI response language</label>
 											<div class="setting-item-description" data-i18n="readerLearningResponseLanguageDescription">Language used for subtitle translations and AI explanations. Leave empty to use your browser language.</div>
 											<div id="reader-learning-response-language-effective" class="setting-item-description" aria-live="polite"></div>

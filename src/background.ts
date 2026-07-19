@@ -15,10 +15,26 @@ import {
 	checkNativeCliHealth,
 	sendNativeCliRequest
 } from './utils/native-cli-service';
+import { TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX } from './utils/transcript-checkpoint-storage';
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
 const YOUTUBE_INNERTUBE_RULE_ID = 9002;
 const activeLanguageLearningRequests = new Map<string, AbortController>();
+
+type TranscriptCheckpointStorageRequest = {
+	action?: string;
+	operation?: 'get' | 'set' | 'remove';
+	keys?: string | string[] | null;
+	values?: Record<string, unknown>;
+};
+
+function validTranscriptCheckpointKeys(keys: unknown, allowNull = false): keys is string | string[] | null {
+	if (allowNull && keys === null) return true;
+	const values = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : [];
+	return values.length > 0 && values.every(key => (
+		typeof key === 'string' && key.startsWith(TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX)
+	));
+}
 
 // Chrome: declarativeNetRequest to rewrite Referer on YouTube embeds.
 // Safari/Firefox use the native video element instead (see reader.ts).
@@ -393,6 +409,47 @@ browser.runtime.onMessage.addListener((request: unknown) => {
 			error: error instanceof Error ? error.message : String(error),
 			errorDetails: error instanceof NativeCliExecutionError ? error.details : undefined
 		}));
+});
+
+// Keep transcript checkpoints in the trusted extension context. Chrome and
+// Firefox do not expose storage.session to content scripts by default.
+browser.runtime.onMessage.addListener((request: unknown) => {
+	if (typeof request !== 'object' || request === null) return;
+	const message = request as TranscriptCheckpointStorageRequest;
+	if (message.action !== 'transcriptCheckpointStorage') return;
+	const session = (browser.storage as unknown as {
+		session?: {
+			get(keys?: string | string[] | null): Promise<Record<string, unknown>>;
+			set(values: Record<string, unknown>): Promise<void>;
+			remove(keys: string | string[]): Promise<void>;
+		};
+	}).session;
+	if (!session) return Promise.resolve({ success: false });
+
+	return (async () => {
+		try {
+			if (message.operation === 'get' && validTranscriptCheckpointKeys(message.keys, true)) {
+				const values = await session.get(message.keys);
+				return {
+					success: true,
+					values: Object.fromEntries(Object.entries(values).filter(([key]) => (
+						key.startsWith(TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX)
+					)))
+				};
+			}
+			if (message.operation === 'set' && message.values && validTranscriptCheckpointKeys(Object.keys(message.values))) {
+				await session.set(message.values);
+				return { success: true };
+			}
+			if (message.operation === 'remove' && message.keys !== null && validTranscriptCheckpointKeys(message.keys)) {
+				await session.remove(message.keys);
+				return { success: true };
+			}
+			return { success: false };
+		} catch {
+			return { success: false };
+		}
+	})();
 });
 
 // Language-learning requests can originate in Reader content scripts, where

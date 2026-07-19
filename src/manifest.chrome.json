@@ -47,7 +47,7 @@
 	],
 	"web_accessible_resources": [
 		{
-			"resources": ["reader.css", "reader-script.js", "browser-polyfill.min.js", "style.css", "side-panel.html", "flatten-shadow-dom.js", "highlighter.css", "chunks/*.js"],
+			"resources": ["reader.css", "reader-script.js", "browser-polyfill.min.js", "style.css", "side-panel.html", "flatten-shadow-dom.js", "highlighter.css", "chunks/*.js", "_locales/*/messages.json"],
 			"extension_ids": ["*"],
 			"matches": [ "*://*/*" ]
 		}

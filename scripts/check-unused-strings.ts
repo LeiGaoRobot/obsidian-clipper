@@ -77,7 +77,7 @@ async function findUsedMessages(srcDir: string): Promise<Set<string>> {
 }
 
 async function checkUnusedStrings(): Promise<void> {
-	const LOCALES_DIR = path.join(__dirname, '../src/locales');
+	const LOCALES_DIR = path.join(__dirname, '../src/_locales');
 	const SRC_DIR = path.join(__dirname, '../src');
 
 	try {
@@ -112,7 +112,8 @@ async function checkUnusedStrings(): Promise<void> {
 
 	} catch (error) {
 		console.error('Error checking unused strings:', error);
+		process.exitCode = 1;
 	}
 }
 
-checkUnusedStrings(); 
+checkUnusedStrings();

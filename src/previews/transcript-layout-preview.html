@@ -51,21 +51,32 @@
 							</details>
 						</div>
 						<div class="player-controls-panel">
-							<div class="player-controls-panel-header"><strong>更多控制</strong><button class="player-controls-close" data-preview-close-controls>完成</button></div>
+							<div class="player-controls-panel-handle" aria-hidden="true"></div>
+							<div class="player-controls-panel-header"><strong id="preview-controls-title">更多控制</strong><button class="player-controls-close" data-preview-close-controls>完成</button></div>
 							<div class="player-toggle-group is-open">
-								<label class="player-toggle is-enabled" role="switch" aria-checked="true"><span>固定播放器</span><span class="player-toggle-switch"><input type="checkbox" checked></span></label>
-								<label class="player-toggle is-enabled" role="switch" aria-checked="true"><span>自动滚动</span><span class="player-toggle-switch"><input type="checkbox" checked></span></label>
-								<label class="player-toggle is-enabled" role="switch" aria-checked="true"><span>高亮当前句</span><span class="player-toggle-switch"><input type="checkbox" checked></span></label>
-								<label class="player-learning-range"><span>AI 范围</span><select><option>当前句</option><option>接下来五分钟</option><option selected>全部字幕</option></select></label>
-								<details class="player-study">
-									<summary>学习</summary>
-									<div class="player-study-panel">
-										<button class="player-study-action player-study-repeat" data-preview-pressed aria-pressed="true">重复当前句</button>
-										<button class="player-study-action player-study-auto-pause" data-preview-pressed aria-pressed="false">逐句停顿</button>
-										<div class="player-study-range"><button class="player-study-action">设 A</button><button class="player-study-action">设 B</button><span class="player-study-range-status">29:23–29:35</span></div>
-										<label class="player-study-speed"><span>速度</span><select><option>0.75×</option><option selected>1×</option><option>1.25×</option></select></label>
+								<section class="player-control-section">
+									<h3 class="player-control-section-title">播放</h3>
+									<div class="player-control-section-items">
+										<label class="player-toggle is-enabled" role="switch" tabindex="0" aria-checked="true"><span>固定播放器</span><span class="player-toggle-switch"><input type="checkbox" tabindex="-1" checked></span></label>
+										<label class="player-toggle is-enabled" role="switch" tabindex="0" aria-checked="true"><span>自动滚动</span><span class="player-toggle-switch"><input type="checkbox" tabindex="-1" checked></span></label>
+										<label class="player-toggle is-enabled" role="switch" tabindex="0" aria-checked="true"><span>高亮当前句</span><span class="player-toggle-switch"><input type="checkbox" tabindex="-1" checked></span></label>
 									</div>
-								</details>
+								</section>
+								<section class="player-control-section">
+									<h3 class="player-control-section-title">语言学习</h3>
+									<div class="player-control-section-items">
+										<label class="player-learning-range"><span>AI 范围</span><select><option>当前句</option><option>接下来五分钟</option><option selected>全部字幕</option></select></label>
+										<details class="player-study">
+											<summary>学习</summary>
+											<div class="player-study-panel">
+												<button class="player-study-action player-study-repeat" data-preview-pressed aria-pressed="true">重复当前句</button>
+												<button class="player-study-action player-study-auto-pause" data-preview-pressed aria-pressed="false">逐句停顿</button>
+												<div class="player-study-range"><button class="player-study-action">设 A</button><button class="player-study-action">设 B</button><span class="player-study-range-status">29:23–29:35</span></div>
+												<label class="player-study-speed"><span>速度</span><select><option>0.75×</option><option selected>1×</option><option>1.25×</option></select></label>
+											</div>
+										</details>
+									</div>
+								</section>
 							</div>
 						</div>
 						<div class="youtube transcript show-bilingual-transcript show-japanese-readings">

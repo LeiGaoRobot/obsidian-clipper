@@ -36,7 +36,7 @@ Get the Obsidian Web Clipper extension from the official directory for your brow
 	- Use an API provider or a local Grok/Codex CLI through Chrome Native Messaging.
 - [[Language learning]]
 	- Revise clipped text, translate selected YouTube transcript ranges, use sentence playback controls, switch Reader layouts, add reusable Japanese readings, explain words or sentences, and manage saved learning items before sending them to Obsidian.
-	- Use Reading, Study tools, or Split view with a compact player and responsive transcript controls.
+	- Use Reading, Study tools, or Split view with remembered player and subtitle preferences, a compact player, and responsive transcript controls.
 - [[Troubleshoot Web Clipper|Troubleshooting]]
 	- Resolve common issues with Web Clipper.
 - [[Obsidian Web Clipper/Templates|Templates]]

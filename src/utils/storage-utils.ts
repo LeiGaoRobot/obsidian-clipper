@@ -1,7 +1,6 @@
 import browser from './browser-polyfill';
 import { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating, InterpreterExecutionMode, TranscriptLayoutMode } from '../types/types';
 import { debugLog } from './debug';
-import { copyToClipboard } from 'core/popup';
 import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from './language-learning-defaults';
 
 export type { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating };
@@ -40,6 +39,9 @@ export let generalSettings: Settings = {
 		autoScroll: true,
 		highlightActiveLine: true,
 		transcriptLayout: 'reading',
+		compactPlayer: false,
+		bilingualSubtitles: false,
+		japaneseReadings: false,
 		learningResponseLanguage: '',
 		learningVault: '',
 		learningFolder: DEFAULT_LANGUAGE_LEARNING_FOLDER,
@@ -95,6 +97,9 @@ interface StorageData {
 		autoScroll?: boolean;
 		highlightActiveLine?: boolean;
 		transcriptLayout?: TranscriptLayoutMode;
+		compactPlayer?: boolean;
+		bilingualSubtitles?: boolean;
+		japaneseReadings?: boolean;
 		learningResponseLanguage?: string;
 		learningVault?: string;
 		learningFolder?: string;
@@ -162,6 +167,9 @@ export async function loadSettings(): Promise<Settings> {
 			autoScroll: true,
 			highlightActiveLine: true,
 			transcriptLayout: 'reading',
+			compactPlayer: false,
+			bilingualSubtitles: false,
+			japaneseReadings: false,
 			learningResponseLanguage: '',
 			learningVault: '',
 			learningFolder: DEFAULT_LANGUAGE_LEARNING_FOLDER,
@@ -234,6 +242,9 @@ export async function loadSettings(): Promise<Settings> {
 			transcriptLayout: data.reader_settings?.transcriptLayout === 'notebook' || data.reader_settings?.transcriptLayout === 'focus'
 				? data.reader_settings.transcriptLayout
 				: defaultSettings.readerSettings.transcriptLayout,
+			compactPlayer: data.reader_settings?.compactPlayer ?? defaultSettings.readerSettings.compactPlayer,
+			bilingualSubtitles: data.reader_settings?.bilingualSubtitles ?? defaultSettings.readerSettings.bilingualSubtitles,
+			japaneseReadings: data.reader_settings?.japaneseReadings ?? defaultSettings.readerSettings.japaneseReadings,
 			learningResponseLanguage: data.reader_settings?.learningResponseLanguage ?? defaultSettings.readerSettings.learningResponseLanguage,
 			learningVault: data.reader_settings?.learningVault ?? defaultSettings.readerSettings.learningVault,
 			learningFolder: data.reader_settings?.learningFolder ?? defaultSettings.readerSettings.learningFolder,
@@ -296,6 +307,9 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 			autoScroll: generalSettings.readerSettings.autoScroll,
 			highlightActiveLine: generalSettings.readerSettings.highlightActiveLine,
 			transcriptLayout: generalSettings.readerSettings.transcriptLayout,
+			compactPlayer: generalSettings.readerSettings.compactPlayer ?? false,
+			bilingualSubtitles: generalSettings.readerSettings.bilingualSubtitles ?? false,
+			japaneseReadings: generalSettings.readerSettings.japaneseReadings ?? false,
 			learningResponseLanguage: generalSettings.readerSettings.learningResponseLanguage,
 			learningVault: generalSettings.readerSettings.learningVault ?? '',
 			learningFolder: generalSettings.readerSettings.learningFolder ?? DEFAULT_LANGUAGE_LEARNING_FOLDER,

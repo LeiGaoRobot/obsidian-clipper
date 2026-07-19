@@ -42,11 +42,12 @@ This document describes the implemented language-learning MVP and the interfaces
 | `src/utils/transcript-layout.ts` | Pure Reader transcript-layout switching, selected-state semantics, and layout class management |
 | `src/utils/reader-transcript.ts` | Player integration and single-click versus double-click seek coordination |
 | `src/utils/transcript-study.ts` | Local sentence repeat, A–B loop, auto-pause, speed, and shortcut controller |
+| `src/utils/focus-trap.ts` | Shared dialog focus containment, Escape handling, focus return, and cleanup |
 | `src/utils/language-learning-service.ts` | Background validation, stored-model resolution, and local CLI dispatch |
 | `src/utils/llm-client.ts` | DOM-free provider adapter and response parser shared with Interpreter |
 | `src/utils/native-cli-service.ts` | Background Native Messaging bridge for local Grok/Codex execution |
 | `src/utils/native-cli-health.ts` | Settings-page client for explicit Host and CLI diagnostics |
-| `src/background.ts` | `languageLearningRequest` message handler and background execution seam |
+| `src/background.ts` | `languageLearningRequest` execution seam and prefix-restricted transcript checkpoint bridge for content scripts |
 
 The request path is:
 
@@ -115,9 +116,9 @@ Japanese reading responses use compact `[text, reading]` tuples to reduce genera
 
 Translation batches report `completed`, `total`, and an aligned partial translation array; Japanese reading progress additionally reports `completedSegments`, `totalSegments`, and aligned partial token arrays. Reader merges a selected task range back into the full transcript and renders completed segments immediately while preserving stable source indexes.
 
-After each successful batch, the runtime stores an aligned partial checkpoint keyed by response language where applicable and the exact ordered task text. Checkpoints are shared across an explicit execution-mode switch so the next engine receives only incomplete segments. `browser.storage.session` uses one key per checkpoint to avoid lost updates between Reader tabs, with a bounded 20-entry set and an in-memory fallback. A later explicit retry or Reader reload loads the checkpoint and sends only incomplete or invalid segments. When a local CLI reports a timeout, that transcript's next explicit retry halves the Japanese-reading prompt target down to a 600-character minimum; successful completion clears this adaptive limit. No automatic provider retry is created. Complete checkpoints remain available for reuse until session storage is cleared. Translation and ruby edits update the checkpoint without making a model request.
+After each successful batch, the runtime stores an aligned partial checkpoint keyed by response language where applicable and the exact ordered task text. Checkpoints are shared across an explicit execution-mode switch so the next engine receives only incomplete segments. `browser.storage.session` uses one key per checkpoint to avoid lost updates between Reader tabs, with a bounded 20-entry set and an in-memory fallback. Because Chromium and Firefox do not expose session storage directly to content scripts by default, page-side Reader code uses a prefix-restricted background message bridge; the host page never receives storage access or checkpoint values. A later explicit retry or Reader reload loads the checkpoint and sends only incomplete or invalid segments. Toggle actions await an in-progress local restore before deciding whether work is missing, preventing an immediate click from racing the restore into a duplicate paid request. When a local CLI reports a timeout, that transcript's next explicit retry halves the Japanese-reading prompt target down to a 600-character minimum; successful completion clears this adaptive limit. No automatic provider retry is created. Complete checkpoints remain available for reuse until session storage is cleared. Reader may restore one when the saved bilingual or Japanese-reading visibility preference is enabled; a missing or incomplete checkpoint never triggers an automatic provider request. Translation and ruby edits update the checkpoint without making a model request.
 
-Page-owned AI controls expose a compact task bar with engine, selected segment count, approximate batch count, elapsed time, progress, and a visible cancel action. The range selector supports the active segment, the next five minutes, or the full transcript. Failed transcript requests remain retryable through the error card, which reports completed work, offers an explicit execution-mode switch, and keeps raw error text collapsed. Japanese readings additionally expose an explicit regenerate action because a corrected or context-sensitive reading may require a fresh model request. Editable translations and ruby readings use textbox semantics and labels; non-editing ruby elements support keyboard hide/reveal practice. Dialogs close with Escape and restore focus.
+Page-owned AI controls expose a compact task bar with engine, selected segment count, approximate batch count, elapsed time, progress, and a visible cancel action. The range selector supports the active segment, the next five minutes, or the full transcript. Failed transcript requests remain retryable through the error card, which reports completed work, offers an explicit execution-mode switch, and keeps raw error text collapsed. Japanese readings additionally expose an explicit regenerate action because a corrected or context-sensitive reading may require a fresh model request. Editable translations and ruby readings use textbox semantics and labels; non-editing ruby elements support keyboard hide/reveal practice. Dialogs make their background siblings inert, trap focus, close with Escape, restore focus, and release inert state during SPA cleanup.
 
 Manual ruby corrections are also written to a persistent personal dictionary. Before generating readings, the configured runtime resolves known surfaces locally and sends only segments with unresolved kanji. Personal entries override matching model tokens. If every kanji occurrence in the requested range is known, the runtime returns aligned tokens without loading a configured assistant or sending a background request.
 
@@ -139,8 +140,8 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 
 - The Reader exposes **Reading**, **Study tools**, and **Split view** layouts. The selected mode is stored in `readerSettings.transcriptLayout`; the internal `notebook` value remains stable for stored-setting compatibility. Switching modes moves the existing controls without recreating transcript, translation, reading, or explanation state and never sends a provider request.
 - Study tools and Split view use wider Reader content widths on desktop and fall back to the single-column reading flow below the responsive breakpoint.
-- Reading exposes a session-local compact-player toggle. It changes only layout visibility, so the existing media element and playback position remain intact.
-- Primary transcript actions stay visible while pinning, scrolling, highlighting, range, vocabulary, and playback-study controls live under a closed-by-default **More** disclosure. At 768 pixels and below, that disclosure becomes a closable bottom drawer; opening it adds transcript clearance and centers the active line.
+- Reading exposes a persisted compact-player toggle. It changes only layout visibility, so the existing media element and playback position remain intact. Compact-player, bilingual-subtitle, and Japanese-reading visibility preferences share the Reader settings object and can also be configured from Settings.
+- Primary transcript actions—including bilingual subtitles and Japanese readings—stay visible while pinning, scrolling, highlighting, range, vocabulary, and playback-study controls live under a closed-by-default **More** disclosure. At 768 pixels and below, the primary actions keep 44-pixel touch targets and that disclosure becomes a modal bottom drawer; opening it adds transcript clearance and centers the active line. At 480 pixels and below, the open drawer temporarily collapses the existing player and limits its own height so controls and the active segment remain usable without recreating media. The drawer traps focus, supports Escape and backdrop close, restores focus to its trigger, locks page scrolling, and cleans up its listeners and temporary DOM state.
 - Original segment text is captured before translations are appended.
 - Japanese readings are rendered as ruby elements only after the explicit **Japanese readings** action; the original text remains selectable and can be toggled back to its unannotated form.
 - **Edit translations** and **Edit readings** put generated output into labeled content-editable controls. Corrections do not create a provider request and are written to the session checkpoint.
@@ -172,6 +173,7 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 ## Security and privacy
 
 - The host page cannot trigger paid actions through synthetic clicks or double-clicks.
+- Content scripts can read and write only transcript-checkpoint-prefixed session keys through the internal background bridge; provider credentials and unrelated session data remain inaccessible.
 - Model credentials are resolved from extension storage only in the background/client path.
 - Model output is inserted with `textContent`, not interpreted as HTML.
 - The feature does not add telemetry or send requests to an Obsidian-owned intermediary.
@@ -194,9 +196,12 @@ Focused coverage lives in:
 - `src/utils/transcript-study.test.ts`
 - `src/utils/transcript-layout.test.ts`
 - `src/utils/llm-client.test.ts`
+- `src/utils/i18n.test.ts`
+- `src/utils/storage-utils.test.ts`
+- `src/utils/focus-trap.test.ts`
+- `src/previews/png-visual-diff.test.ts`
 - `src/webpack-config.test.ts`
 - `native-host/obsidian-clipper-host.test.ts`
-- `src/webpack-config.test.ts`
 
 Run the complete verification gate with:
 
@@ -205,15 +210,21 @@ TZ=America/Los_Angeles npm test
 npx tsc --noEmit --module es2020
 npm run build
 npm run test:bundle-boundaries
+npm run test:bundle-size
 npm run build:cli
 npm run build:api
 npm run test:transcript-preview
+npm run test:e2e:chrome
+npm run test:e2e:firefox
+npm run test:package:safari
 git diff --check
 ```
 
-`npm run preview:transcript` builds and serves the deterministic transcript layout at `http://127.0.0.1:4173/`. The automated preview gate verifies runtime-ready, selected-layout, and responsive-control markers in headless Chrome, then writes dimension-checked screenshots for Reading, Study tools, and Split view at 1440×1000 plus closed and open-control Split view states at 768×900 under the system temporary directory. The open mobile state is produced by opening, closing, and reopening **More**; the gate waits for two painted frames and rejects the capture unless the drawer is inside the viewport and the active segment remains between the sticky controls and drawer.
+`npm run preview:transcript` builds and serves the deterministic transcript layout at `http://127.0.0.1:4173/`. `npm run test:transcript-preview` verifies runtime-ready, selected-layout, responsive-control, touch-target, and horizontal-overflow markers in headless Chrome, then compares dimension-checked captures for Reading, Study tools, and Split view at 1440×1000 plus closed and open-control Split view states at 768×900 and 390×844 against the PNG baselines in `tests/visual/transcript/`. The default per-pixel change limit is 0.25%. Use `npm run update:transcript-preview` only after reviewing an intentional visual change. Each open mobile state is produced by opening, closing, and reopening **More**; the gate waits for two painted frames and rejects the capture unless the drawer is inside the viewport and the active segment remains between the sticky controls and drawer.
 
-Reader language-learning code and Settings Interpreter management are lazy chunks. Generated chunks are web-accessible for Reader content-script execution, while `background.js` remains a synchronous MV3 service-worker entry with no runtime-loaded network chunk. Background or provider changes also require an unpacked Chromium smoke test that sends a request to a local mock provider. Confirm that `background.js` starts without DOM globals or runtime chunk loading and that the parsed response reaches the extension page.
+Reader extraction, syntax highlighting, Markdown conversion, language-learning code, Popup learning controls, and Settings Interpreter management are lazy chunks. Injected Reader chunks use native module imports with an extension URL established by `extension-public-path.ts`, so they execute inside the content-script isolated world instead of registering a JSONP callback in the host page. Generated chunks and runtime locale files are web-accessible, while `background.js` remains a synchronous MV3 service-worker entry with no runtime-loaded network chunk. Webpack cleans each output directory before writing so deleted chunk names cannot survive as stale assets.
+
+`npm run test:bundle-boundaries` enforces those entry/chunk seams for Chrome, Firefox, and Safari. `npm run analyze:bundles` reports raw and gzip sizes, and `npm run test:bundle-size` enforces explicit raw-size budgets. The Chrome E2E gate loads the real unpacked extension through the DevTools Extensions domain, verifies Chinese settings and saved Reader preferences, seeds complete bilingual and Japanese-reading session checkpoints, opens a fixture tab, and proves that Reader restores both through the background bridge without an automatic language-model request. The Firefox E2E gate installs the real temporary extension through WebDriver BiDi and validates the same localization, dynamic-import, preference, and checkpoint behavior. The Safari package gate converts `dist_safari` with Apple's converter, rejects unsupported manifest-key warnings, builds an unsigned macOS container app with Xcode, and checks that the generated extension bundle contains the Reader chunks plus English and Simplified Chinese locale files. Enabling and interacting with the converted Safari extension still requires Safari's normal user-controlled extension approval.
 
 ## Known limitations and future seams
 
