@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-clipper",
-	"version": "1.7.0",
+	"version": "1.8.0",
 	"description": "Official web clipper for Obsidian.",
 	"bin": {
 		"obsidian-clipper": "./dist/cli.cjs"
@@ -27,6 +27,7 @@
 		"test:e2e:chrome": "npm run build:chrome && node scripts/extension-e2e.mjs",
 		"test:e2e:firefox": "npm run build:firefox && node scripts/firefox-e2e.mjs",
 		"test:package:safari": "npm run build:safari && node scripts/safari-package-smoke.mjs",
+		"package:native-host": "node scripts/package-native-host.mjs",
 		"build:chrome": "webpack --env BROWSER=chrome --mode production",
 		"build:firefox": "webpack --env BROWSER=firefox --mode production",
 		"build:safari": "webpack --env BROWSER=safari --mode production",
@@ -69,7 +70,7 @@
 		"@types/safari-extension": "^0.0.33",
 		"dayjs": "^1.11.13",
 		"defuddle": "^0.19.0",
-		"dompurify": "^3.0.9",
+		"dompurify": "^3.4.12",
 		"highlight.js": "^11.11.1",
 		"linkedom": "^0.18.0",
 		"lucide": "^0.359.0",

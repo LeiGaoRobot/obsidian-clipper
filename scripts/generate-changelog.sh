@@ -21,6 +21,7 @@ if [ "$VERSION" = "$LAST_TAG" ]; then
 fi
 
 OUTPUT="$ROOT_DIR/changelogs/$VERSION.md"
+mkdir -p "$(dirname "$OUTPUT")"
 
 echo "Generating changelog for $VERSION (commits since $LAST_TAG)"
 
@@ -33,9 +34,10 @@ while IFS= read -r subject; do
 	if echo "$subject" | grep -qiE '^bump version|^version bump|^docs:'; then
 		continue
 	elif echo "$subject" | grep -qiE '^fix'; then
-		subject=$(echo "$subject" | sed -E 's/^fix: /Fix /i;s/^fix/Fix/')
+		subject=$(echo "$subject" | sed -E 's/^fix(\([^)]*\))?!?:[[:space:]]*/Fix /i;s/^fix/Fix/')
 		FIXES+="- $subject"$'\n'
-	elif echo "$subject" | grep -qiE '^add|^new'; then
+	elif echo "$subject" | grep -qiE '^feat(\([^)]*\))?!?:|^add|^new'; then
+		subject=$(echo "$subject" | sed -E 's/^feat(\([^)]*\))?!?:[[:space:]]*//i')
 		NEW+="- $subject"$'\n'
 	else
 		IMPROVED+="- $subject"$'\n'

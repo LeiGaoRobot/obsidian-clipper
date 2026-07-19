@@ -23,7 +23,6 @@ JSON_FILES=(
 	"src/manifest.chrome.json"
 	"src/manifest.firefox.json"
 	"src/manifest.safari.json"
-	"dev/manifest.json"
 )
 
 PBXPROJ="xcode/Obsidian Web Clipper/Obsidian Web Clipper.xcodeproj/project.pbxproj"
@@ -38,6 +37,14 @@ for file in "${JSON_FILES[@]}"; do
 	sed -i '' "s/\"version\": \"$old_version\"/\"version\": \"$NEW_VERSION\"/" "$filepath"
 	echo "Updated $file: $old_version -> $NEW_VERSION"
 done
+
+# Keep the root package metadata in the lockfile aligned without rewriting
+# dependency entries that happen to use the same version.
+LOCKFILE="$ROOT_DIR/package-lock.json"
+old_lock_version=$(grep -o '"version": "[^"]*"' "$LOCKFILE" | head -1 | sed 's/"version": "//;s/"//')
+sed -i '' "1,20s/\"version\": \"$old_lock_version\"/\"version\": \"$NEW_VERSION\"/g" "$LOCKFILE"
+lock_version_count=$(head -20 "$LOCKFILE" | grep -c "\"version\": \"$NEW_VERSION\"")
+echo "Updated package-lock.json root versions: $old_lock_version -> $NEW_VERSION ($lock_version_count occurrences)"
 
 # Update MARKETING_VERSION in Xcode project
 pbxpath="$ROOT_DIR/$PBXPROJ"

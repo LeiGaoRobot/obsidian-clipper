@@ -20,6 +20,8 @@ If the response-language field is empty, Web Clipper uses your browser language.
 
 Word and sentence explanations instruct the model to use this language for all explanation text, labels, and translations.
 
+On Firefox, the install or update prompt discloses website-content transmission because these tools can send selected clipping or transcript content to your configured provider. Granting that permission does not start a language-learning request; the actions described below remain user initiated. This release requires Firefox 140 or newer on desktop and Firefox for Android 142 or newer so that disclosure is available.
+
 ## Revise clipped content with AI
 
 The AI editing controls appear in the extension popup and side panel when Interpreter is enabled and either an API model or a configured local CLI mode is available.
