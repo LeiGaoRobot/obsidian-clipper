@@ -20,9 +20,8 @@
 		.preview-player-media span { padding: 1rem; text-align: center; }
 		.preview-heading { max-width: 760px; margin: 0 auto 20px; color: var(--text-muted); }
 		.preview-heading strong { color: var(--text-normal); }
-		.player-study-panel { display: flex; }
 		.youtube.transcript:not(.show-japanese-readings) rt { display: none; }
-		@media (max-width: 720px) { .preview-heading { margin-bottom: 12px; } }
+		@media (max-width: 768px) { .preview-heading { margin-bottom: 12px; } }
 	</style>
 </head>
 <body>
@@ -39,16 +38,27 @@
 						<div class="player-toggles">
 							<div class="transcript-layout-switcher" role="group" aria-label="字幕布局">
 								<button class="transcript-layout-option" data-transcript-layout="reading" aria-pressed="false">阅读</button>
-								<button class="transcript-layout-option" data-transcript-layout="notebook" aria-pressed="false">笔记</button>
+								<button class="transcript-layout-option" data-transcript-layout="notebook" aria-pressed="false">学习工具</button>
 								<button class="transcript-layout-option" data-transcript-layout="focus" aria-pressed="true">分屏</button>
 							</div>
+							<div class="player-primary-actions">
+								<button class="player-learning-action player-compact-toggle" data-preview-compact data-compact-label="收起播放器" data-expanded-label="显示播放器" aria-pressed="false">收起播放器</button>
+								<button class="player-learning-action player-learning-bilingual is-enabled" data-preview-toggle="bilingual" aria-pressed="true">双语字幕</button>
+								<button class="player-learning-action player-learning-readings is-enabled" data-preview-toggle="readings" aria-pressed="true">日语读音</button>
+							</div>
+							<details class="player-controls-more">
+								<summary aria-label="打开字幕与学习控制" aria-expanded="false">更多</summary>
+							</details>
+						</div>
+						<div class="player-controls-panel">
+							<div class="player-controls-panel-header"><strong>更多控制</strong><button class="player-controls-close" data-preview-close-controls>完成</button></div>
 							<div class="player-toggle-group is-open">
 								<label class="player-toggle is-enabled" role="switch" aria-checked="true"><span>固定播放器</span><span class="player-toggle-switch"><input type="checkbox" checked></span></label>
 								<label class="player-toggle is-enabled" role="switch" aria-checked="true"><span>自动滚动</span><span class="player-toggle-switch"><input type="checkbox" checked></span></label>
-								<button class="player-learning-action is-enabled" data-preview-toggle="bilingual" aria-pressed="true">双语字幕</button>
-								<button class="player-learning-action is-enabled" data-preview-toggle="readings" aria-pressed="true">日语读音</button>
-								<details class="player-study" open>
-									<summary>学习模式</summary>
+								<label class="player-toggle is-enabled" role="switch" aria-checked="true"><span>高亮当前句</span><span class="player-toggle-switch"><input type="checkbox" checked></span></label>
+								<label class="player-learning-range"><span>AI 范围</span><select><option>当前句</option><option>接下来五分钟</option><option selected>全部字幕</option></select></label>
+								<details class="player-study">
+									<summary>学习</summary>
 									<div class="player-study-panel">
 										<button class="player-study-action player-study-repeat" data-preview-pressed aria-pressed="true">重复当前句</button>
 										<button class="player-study-action player-study-auto-pause" data-preview-pressed aria-pressed="false">逐句停顿</button>

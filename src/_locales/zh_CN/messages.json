@@ -897,6 +897,18 @@
 	"readerJapaneseReadings": {
 		"message": "日语读音"
 	},
+	"readerCompactPlayer": {
+		"message": "收起播放器"
+	},
+	"readerShowPlayer": {
+		"message": "显示播放器"
+	},
+	"readerMoreControls": {
+		"message": "更多"
+	},
+	"readerMoreControlsDescription": {
+		"message": "打开字幕与学习控制"
+	},
 	"readerTranscriptLayout": {
 		"message": "字幕布局"
 	},
@@ -904,7 +916,7 @@
 		"message": "阅读"
 	},
 	"readerTranscriptLayoutNotebook": {
-		"message": "笔记"
+		"message": "学习工具"
 	},
 	"readerTranscriptLayoutFocus": {
 		"message": "分屏"

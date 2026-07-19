@@ -43,6 +43,7 @@ describe('Transcript click guard', () => {
 
 describe('Transcript layout integration', () => {
 	afterEach(() => {
+		vi.useRealTimers();
 		vi.unstubAllGlobals();
 	});
 
@@ -84,8 +85,10 @@ describe('Transcript layout integration', () => {
 		const toggleBar = layoutRoot.querySelector('.player-toggles') as HTMLElement;
 		const focusButton = layoutRoot.querySelector('[data-transcript-layout="focus"]') as HTMLButtonElement;
 		const readingButton = layoutRoot.querySelector('[data-transcript-layout="reading"]') as HTMLButtonElement;
+		const notebookButton = layoutRoot.querySelector('[data-transcript-layout="notebook"]') as HTMLButtonElement;
 
 		expect(playerContainer.contains(toggleBar)).toBe(true);
+		expect(notebookButton.textContent).toBe('Study tools');
 
 		focusButton.click();
 
@@ -98,6 +101,155 @@ describe('Transcript layout integration', () => {
 		expect(layoutRoot.classList.contains('transcript-layout-reading')).toBe(true);
 		expect(playerContainer.contains(toggleBar)).toBe(true);
 		expect(onSettingChange).toHaveBeenLastCalledWith('transcriptLayout', 'reading');
+	});
+
+	test('keeps one primary control row and collapses secondary controls by default', () => {
+		vi.stubGlobal('CSS', {});
+		vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+		document.body.innerHTML = `
+			<article>
+				<a href="https://www.youtube.com/watch?v=test">Video</a>
+				<div class="youtube transcript">
+					<div class="transcript-segment">
+						<strong><span class="timestamp" data-timestamp="0">0:00</span></strong>
+						Hello world.
+					</div>
+				</div>
+			</article>
+		`;
+		const article = document.querySelector('article') as HTMLElement;
+
+		wireTranscript(
+			document,
+			article,
+			{
+				pinPlayer: true,
+				autoScroll: true,
+				highlightActiveLine: true,
+				transcriptLayout: 'reading'
+			},
+			{
+				getStickyOffset: () => 0,
+				scrollTo: vi.fn(),
+				programmaticScroll: () => false
+			}
+		);
+
+		const layoutRoot = article.querySelector('.transcript-study-layout') as HTMLElement;
+		const playerContainer = layoutRoot.querySelector('.player-container') as HTMLElement;
+		const toggleBar = layoutRoot.querySelector('.player-toggles') as HTMLElement;
+		const primaryActions = layoutRoot.querySelector('.player-primary-actions') as HTMLElement;
+		const moreControls = layoutRoot.querySelector('.player-controls-more') as HTMLDetailsElement;
+		const morePanel = moreControls?.querySelector('.player-controls-panel') as HTMLElement;
+		const compactButton = primaryActions?.querySelector('.player-compact-toggle') as HTMLButtonElement;
+		const activeSegment = layoutRoot.querySelector('.transcript-segment') as HTMLElement;
+		const scrollIntoView = vi.fn();
+		const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+		playerContainer.getBoundingClientRect = () => ({
+			height: playerContainer.classList.contains('is-compact') ? 44 : 360
+		} as DOMRect);
+		activeSegment.classList.add('is-active');
+		activeSegment.scrollIntoView = scrollIntoView;
+		activeSegment.getBoundingClientRect = () => ({
+			top: 300,
+			bottom: 380,
+			height: 80
+		} as DOMRect);
+		toggleBar.getBoundingClientRect = () => ({ bottom: 420 } as DOMRect);
+		morePanel.getBoundingClientRect = () => ({ top: 760 } as DOMRect);
+
+		expect(primaryActions).toBeTruthy();
+		expect(moreControls.open).toBe(false);
+		expect(morePanel.querySelectorAll('.player-toggle')).toHaveLength(3);
+		expect(morePanel.querySelector('.player-study')).toBeTruthy();
+		expect(compactButton.getAttribute('aria-pressed')).toBe('false');
+
+		compactButton.click();
+
+		expect(playerContainer.classList.contains('is-compact')).toBe(true);
+		expect(compactButton.getAttribute('aria-pressed')).toBe('true');
+		expect(compactButton.textContent).toBe('Show player');
+		expect(layoutRoot.style.getPropertyValue('--transcript-player-height')).toBe('44px');
+		expect(playerContainer.querySelector('a[href*="youtube.com/watch"]')?.isConnected).toBe(true);
+
+		compactButton.click();
+
+		expect(playerContainer.classList.contains('is-compact')).toBe(false);
+		expect(compactButton.getAttribute('aria-pressed')).toBe('false');
+		expect(compactButton.textContent).toBe('Compact player');
+		expect(layoutRoot.style.getPropertyValue('--transcript-player-height')).toBe('360px');
+
+		moreControls.open = true;
+		moreControls.dispatchEvent(new Event('toggle'));
+
+		expect(layoutRoot.classList.contains('is-controls-open')).toBe(true);
+		expect(morePanel.parentElement).toBe(layoutRoot);
+		expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+		expect(scrollBy).toHaveBeenCalledWith({ behavior: 'auto', top: -132 });
+
+		(morePanel.querySelector('.player-controls-close') as HTMLButtonElement).click();
+
+		expect(moreControls.open).toBe(false);
+		expect(morePanel.parentElement).toBe(moreControls);
+	});
+
+	test('moves an open controls drawer when the viewport crosses the mobile breakpoint', () => {
+		vi.stubGlobal('CSS', {});
+		let viewportListener: ((event: MediaQueryListEvent) => void) | undefined;
+		const viewportQuery = {
+			matches: false,
+			addEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
+				viewportListener = listener;
+			}),
+			removeEventListener: vi.fn()
+		};
+		vi.stubGlobal('matchMedia', vi.fn(() => viewportQuery));
+		vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+		document.body.innerHTML = `
+			<article>
+				<a href="https://www.youtube.com/watch?v=test">Video</a>
+				<div class="youtube transcript">
+					<div class="transcript-segment is-active">
+						<strong><span class="timestamp" data-timestamp="0">0:00</span></strong>
+						Hello world.
+					</div>
+				</div>
+			</article>
+		`;
+		const article = document.querySelector('article') as HTMLElement;
+
+		wireTranscript(document, article, {
+			pinPlayer: true,
+			autoScroll: true,
+			highlightActiveLine: true,
+			transcriptLayout: 'focus'
+		}, {
+			getStickyOffset: () => 0,
+			scrollTo: vi.fn(),
+			programmaticScroll: () => false
+		});
+
+		const root = article.querySelector('.transcript-study-layout') as HTMLElement;
+		const details = root.querySelector('.player-controls-more') as HTMLDetailsElement;
+		const panel = root.querySelector('.player-controls-panel') as HTMLElement;
+		const activeSegment = root.querySelector('.transcript-segment.is-active') as HTMLElement;
+		activeSegment.scrollIntoView = vi.fn();
+		activeSegment.getBoundingClientRect = () => ({ top: 450, bottom: 520 } as DOMRect);
+		(root.querySelector('.player-toggles') as HTMLElement).getBoundingClientRect = () => ({ bottom: 400 } as DOMRect);
+		panel.getBoundingClientRect = () => ({ top: 760 } as DOMRect);
+
+		details.open = true;
+		details.dispatchEvent(new Event('toggle'));
+		expect(panel.parentElement).toBe(details);
+
+		viewportQuery.matches = true;
+		viewportListener?.({ matches: true } as MediaQueryListEvent);
+		expect(panel.parentElement).toBe(root);
+		expect(activeSegment.scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+
+		viewportQuery.matches = false;
+		viewportListener?.({ matches: false } as MediaQueryListEvent);
+		expect(panel.parentElement).toBe(details);
 	});
 
 	test('removes the previous study controls when the transcript is wired again', () => {
@@ -127,8 +279,63 @@ describe('Transcript layout integration', () => {
 		};
 
 		wireTranscript(document, article, settings, scroll);
+		const oldCompactButton = article.querySelector('.player-compact-toggle') as HTMLButtonElement;
+		const oldPlayer = article.querySelector('.player-container') as HTMLElement;
 		wireTranscript(document, article, settings, scroll);
+		oldCompactButton.click();
 
+		expect(article.querySelectorAll('.transcript-study-layout')).toHaveLength(1);
+		expect(article.querySelectorAll('.player-primary-actions')).toHaveLength(1);
+		expect(article.querySelectorAll('.player-controls-more')).toHaveLength(1);
+		expect(article.querySelectorAll('.player-current-pos')).toHaveLength(1);
+		expect(article.querySelectorAll('.transcript-scrub-track')).toHaveLength(1);
 		expect(article.querySelectorAll('.player-study')).toHaveLength(1);
+		expect(article.querySelectorAll('.transcript-segment-text')).toHaveLength(1);
+		expect(article.querySelector('.transcript-segment-text .transcript-segment-text')).toBeNull();
+		expect(oldPlayer.classList.contains('is-compact')).toBe(false);
+	});
+
+	test('cancels a pending transcript seek when the Reader is wired again', () => {
+		vi.useFakeTimers();
+		vi.stubGlobal('CSS', {});
+		document.body.innerHTML = `
+			<article>
+				<div class="reader-video-wrapper"><video class="reader-video-player"></video></div>
+				<div class="youtube transcript">
+					<div class="transcript-segment">
+						<strong><span class="timestamp" data-timestamp="0">0:00</span></strong>
+						Hello world.
+					</div>
+				</div>
+			</article>
+		`;
+		const article = document.querySelector('article') as HTMLElement;
+		const video = article.querySelector('video') as HTMLVideoElement;
+		const settings = {
+			pinPlayer: true,
+			autoScroll: true,
+			highlightActiveLine: true,
+			transcriptLayout: 'reading' as const
+		};
+		const scroll = {
+			getStickyOffset: () => 0,
+			scrollTo: vi.fn(),
+			programmaticScroll: () => false
+		};
+
+		wireTranscript(document, article, settings, scroll);
+		const segment = article.querySelector('.transcript-segment') as HTMLElement;
+		segment.getBoundingClientRect = () => ({ top: 0, height: 100 } as DOMRect);
+		segment.dispatchEvent(new MouseEvent('click', {
+			bubbles: true,
+			clientX: 10,
+			clientY: 50,
+			detail: 1
+		}));
+
+		wireTranscript(document, article, settings, scroll);
+		vi.advanceTimersByTime(350);
+
+		expect(video.currentTime).toBe(0);
 	});
 });

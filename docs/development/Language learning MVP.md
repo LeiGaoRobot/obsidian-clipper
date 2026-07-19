@@ -137,8 +137,10 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 
 ## Reader interaction details
 
-- The Reader exposes **Reading**, **Notebook**, and **Split view** layouts. The selected mode is stored in `readerSettings.transcriptLayout`; switching modes moves the existing controls without recreating transcript, translation, reading, or explanation state and never sends a provider request.
-- Notebook and Split view use wider Reader content widths on desktop and fall back to the single-column reading flow below the responsive breakpoint.
+- The Reader exposes **Reading**, **Study tools**, and **Split view** layouts. The selected mode is stored in `readerSettings.transcriptLayout`; the internal `notebook` value remains stable for stored-setting compatibility. Switching modes moves the existing controls without recreating transcript, translation, reading, or explanation state and never sends a provider request.
+- Study tools and Split view use wider Reader content widths on desktop and fall back to the single-column reading flow below the responsive breakpoint.
+- Reading exposes a session-local compact-player toggle. It changes only layout visibility, so the existing media element and playback position remain intact.
+- Primary transcript actions stay visible while pinning, scrolling, highlighting, range, vocabulary, and playback-study controls live under a closed-by-default **More** disclosure. At 768 pixels and below, that disclosure becomes a closable bottom drawer; opening it adds transcript clearance and centers the active line.
 - Original segment text is captured before translations are appended.
 - Japanese readings are rendered as ruby elements only after the explicit **Japanese readings** action; the original text remains selectable and can be toggled back to its unannotated form.
 - **Edit translations** and **Edit readings** put generated output into labeled content-editable controls. Corrections do not create a provider request and are written to the session checkpoint.
@@ -209,7 +211,7 @@ npm run test:transcript-preview
 git diff --check
 ```
 
-`npm run preview:transcript` builds and serves the deterministic transcript layout at `http://127.0.0.1:4173/`. The automated preview gate executes and verifies the page's runtime-ready marker in headless Chrome, then writes a dimension-checked screenshot under the system temporary directory.
+`npm run preview:transcript` builds and serves the deterministic transcript layout at `http://127.0.0.1:4173/`. The automated preview gate verifies runtime-ready, selected-layout, and responsive-control markers in headless Chrome, then writes dimension-checked screenshots for Reading, Study tools, and Split view at 1440×1000 plus closed and open-control Split view states at 768×900 under the system temporary directory. The open mobile state is produced by opening, closing, and reopening **More**; the gate waits for two painted frames and rejects the capture unless the drawer is inside the viewport and the active segment remains between the sticky controls and drawer.
 
 Reader language-learning code and Settings Interpreter management are lazy chunks. Generated chunks are web-accessible for Reader content-script execution, while `background.js` remains a synchronous MV3 service-worker entry with no runtime-loaded network chunk. Background or provider changes also require an unpacked Chromium smoke test that sends a request to a local mock provider. Confirm that `background.js` starts without DOM globals or runtime chunk loading and that the parsed response reaches the extension page.
 

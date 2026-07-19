@@ -897,6 +897,18 @@
 	"readerJapaneseReadings": {
 		"message": "Japanese readings"
 	},
+	"readerCompactPlayer": {
+		"message": "Compact player"
+	},
+	"readerShowPlayer": {
+		"message": "Show player"
+	},
+	"readerMoreControls": {
+		"message": "More"
+	},
+	"readerMoreControlsDescription": {
+		"message": "Open transcript and study controls"
+	},
 	"readerTranscriptLayout": {
 		"message": "Transcript layout"
 	},
@@ -904,7 +916,7 @@
 		"message": "Reading"
 	},
 	"readerTranscriptLayoutNotebook": {
-		"message": "Notebook"
+		"message": "Study tools"
 	},
 	"readerTranscriptLayoutFocus": {
 		"message": "Split view"

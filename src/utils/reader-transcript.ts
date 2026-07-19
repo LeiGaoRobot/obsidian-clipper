@@ -8,7 +8,9 @@ import type { TranscriptLayoutMode } from '../types/types';
 import {
 	clearTranscriptLayoutMode,
 	createTranscriptLayoutSwitcher,
-	normalizeTranscriptLayoutMode
+	normalizeTranscriptLayoutMode,
+	syncTranscriptControlsPanel,
+	updateTranscriptPlayerHeight
 } from './transcript-layout';
 import { TranscriptStudyController, wireTranscriptStudy } from './transcript-study';
 
@@ -20,6 +22,27 @@ const CJK_PUNCT = /[。！？、，]/;
 const CJK_CHAR = /[\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/;
 const transcriptLayoutResizeObservers = new WeakMap<Document, ResizeObserver>();
 const transcriptStudyControllers = new WeakMap<Document, TranscriptStudyController>();
+const transcriptEventControllers = new WeakMap<Document, AbortController>();
+
+function removePreviousTranscriptLayout(article: HTMLElement): void {
+	const root = article.querySelector<HTMLElement>('.transcript-study-layout');
+	if (!root || !root.parentNode) return;
+	const parent = root.parentNode;
+	const player = Array.from(root.children)
+		.find(child => child.classList.contains('player-container')) as HTMLElement | undefined;
+	const playerElement = player && Array.from(player.children).find(child => child.matches(
+		'.reader-video-wrapper, iframe[src*="youtube.com/embed/"], a[href*="youtube.com/watch"]'
+	));
+	const transcript = Array.from(root.children)
+		.find(child => child.matches('.youtube.transcript')) as HTMLElement | undefined;
+	if (playerElement) parent.insertBefore(playerElement, root);
+	if (transcript) {
+		transcript.querySelectorAll('.player-current-pos, .transcript-scrub-track')
+			.forEach(element => element.remove());
+		parent.insertBefore(transcript, root);
+	}
+	root.remove();
+}
 
 export interface TranscriptClickGuard {
 	schedule: (action: () => boolean | void, rollback?: () => void) => void;
@@ -107,12 +130,15 @@ export function wireTranscript(
 	onSettingChange?: TranscriptSettingChange,
 	languageLearning?: TranscriptLanguageLearning
 ): void {
+	transcriptEventControllers.get(doc)?.abort();
+	transcriptEventControllers.delete(doc);
 	cleanupTranscriptLanguageLearning(doc);
 	transcriptStudyControllers.get(doc)?.cleanup();
 	transcriptStudyControllers.delete(doc);
 	clearTranscriptLayoutMode(doc);
 	transcriptLayoutResizeObservers.get(doc)?.disconnect();
 	transcriptLayoutResizeObservers.delete(doc);
+	removePreviousTranscriptLayout(article);
 	const transcript = article.querySelector('.youtube.transcript') as HTMLElement | null;
 	if (!transcript) return;
 
@@ -125,6 +151,10 @@ export function wireTranscript(
 
 	const playerParent = playerEl.parentNode;
 	if (!playerParent) return;
+	const EventAbortController = doc.defaultView?.AbortController || AbortController;
+	const eventController = new EventAbortController();
+	const listenerOptions = { signal: eventController.signal };
+	transcriptEventControllers.set(doc, eventController);
 
 	// Keep the player, controls, and transcript in one layout surface so the
 	// same live transcript can move between reading, notebook, and split views.
@@ -147,6 +177,7 @@ export function wireTranscript(
 	let autoScrollEnabled = autoScrollDefault;
 	let highlightEnabled = highlightDefault;
 	const transcriptClickGuard = createTranscriptClickGuard();
+	eventController.signal.addEventListener('abort', transcriptClickGuard.cancel, { once: true });
 
 	const toggleBar = doc.createElement('div');
 	toggleBar.className = 'player-toggles';
@@ -180,12 +211,12 @@ export function wireTranscript(
 		wrapper.addEventListener('click', (e) => {
 			e.preventDefault();
 			toggleValue();
-		});
+		}, listenerOptions);
 		wrapper.addEventListener('keydown', event => {
 			if (event.key !== 'Enter' && event.key !== ' ') return;
 			event.preventDefault();
 			toggleValue();
-		});
+		}, listenerOptions);
 
 		return wrapper;
 	};
@@ -226,6 +257,64 @@ export function wireTranscript(
 	toggleGroup.appendChild(autoScrollToggle);
 	toggleGroup.appendChild(highlightToggle);
 
+	const primaryActions = doc.createElement('div');
+	primaryActions.className = 'player-primary-actions';
+	const compactPlayerButton = doc.createElement('button');
+	compactPlayerButton.type = 'button';
+	compactPlayerButton.className = 'player-learning-action player-compact-toggle';
+	compactPlayerButton.setAttribute('aria-pressed', 'false');
+	const updateCompactPlayer = () => {
+		const compact = playerContainer.classList.contains('is-compact');
+		compactPlayerButton.setAttribute('aria-pressed', String(compact));
+		compactPlayerButton.classList.toggle('is-enabled', compact);
+		compactPlayerButton.textContent = getMessage(compact ? 'readerShowPlayer' : 'readerCompactPlayer');
+	};
+	compactPlayerButton.addEventListener('click', () => {
+		playerContainer.classList.toggle('is-compact');
+		updateCompactPlayer();
+		updatePlayerHeight();
+	}, listenerOptions);
+	primaryActions.appendChild(compactPlayerButton);
+	updateCompactPlayer();
+
+	const moreControls = doc.createElement('details');
+	moreControls.className = 'player-controls-more';
+	const moreSummary = doc.createElement('summary');
+	moreSummary.textContent = getMessage('readerMoreControls');
+	moreSummary.setAttribute('aria-label', getMessage('readerMoreControlsDescription'));
+	moreSummary.setAttribute('aria-expanded', 'false');
+	const morePanel = doc.createElement('div');
+	morePanel.className = 'player-controls-panel';
+	const morePanelHeader = doc.createElement('div');
+	morePanelHeader.className = 'player-controls-panel-header';
+	const morePanelTitle = doc.createElement('strong');
+	morePanelTitle.textContent = getMessage('readerMoreControls');
+	const closeMoreButton = doc.createElement('button');
+	closeMoreButton.type = 'button';
+	closeMoreButton.className = 'player-controls-close';
+	closeMoreButton.textContent = getMessage('done');
+	morePanelHeader.append(morePanelTitle, closeMoreButton);
+	morePanel.append(morePanelHeader, toggleGroup);
+	moreControls.append(moreSummary, morePanel);
+	const controlsViewport = doc.defaultView?.matchMedia?.('(max-width: 768px)');
+	const syncMoreControls = () => {
+		syncTranscriptControlsPanel({
+			doc,
+			root: layoutRoot,
+			details: moreControls,
+			panel: morePanel,
+			controls: toggleBar,
+			isMobile: controlsViewport?.matches === true
+		});
+	};
+	const closeMoreControls = () => {
+		moreControls.open = false;
+		syncMoreControls();
+	};
+	closeMoreButton.addEventListener('click', closeMoreControls, listenerOptions);
+	moreControls.addEventListener('toggle', syncMoreControls, listenerOptions);
+	controlsViewport?.addEventListener?.('change', syncMoreControls, listenerOptions);
+
 	const placeToggleBar = (mode: TranscriptLayoutMode) => {
 		if (mode === 'reading') {
 			playerContainer.appendChild(toggleBar);
@@ -244,18 +333,18 @@ export function wireTranscript(
 			focus: getMessage('readerTranscriptLayoutFocus')
 		},
 		onChange: mode => {
+			closeMoreControls();
 			placeToggleBar(mode);
 			onSettingChange?.('transcriptLayout', mode);
 			window.dispatchEvent(new CustomEvent('reader-show-nav'));
 		}
 	});
 	toggleBar.appendChild(layoutSwitcher.element);
-	toggleBar.appendChild(toggleGroup);
+	toggleBar.appendChild(primaryActions);
+	toggleBar.appendChild(moreControls);
 	placeToggleBar(initialLayout);
 
-	const updatePlayerHeight = () => {
-		layoutRoot.style.setProperty('--transcript-player-height', `${Math.ceil(playerContainer.getBoundingClientRect().height)}px`);
-	};
+	const updatePlayerHeight = () => updateTranscriptPlayerHeight(layoutRoot, playerContainer);
 	updatePlayerHeight();
 	if (typeof ResizeObserver !== 'undefined') {
 		const resizeObserver = new ResizeObserver(updatePlayerHeight);
@@ -277,7 +366,7 @@ export function wireTranscript(
 					event: 'listening'
 				}), '*');
 			}
-		});
+		}, listenerOptions);
 	}
 
 	// Build a sorted list of segments with their start times
@@ -287,6 +376,7 @@ export function wireTranscript(
 		// and wrap remaining text in a span
 		const strong = seg.querySelector('strong');
 		if (!strong) return;
+		if (Array.from(seg.children).some(child => child.classList.contains('transcript-segment-text'))) return;
 
 		if (strong.nextSibling?.nodeType === Node.TEXT_NODE) {
 			strong.nextSibling.textContent = strong.nextSibling.textContent!.replace(/^\s*·\s*/, '');
@@ -310,8 +400,12 @@ export function wireTranscript(
 				controls: toggleGroup,
 				tools: languageLearning,
 				responseLanguage: settings.learningResponseLanguage,
-				cancelPendingSeek: transcriptClickGuard.cancel
+			cancelPendingSeek: transcriptClickGuard.cancel
 		});
+		for (const selector of ['.player-learning-bilingual', '.player-learning-readings']) {
+			const primaryAction = toggleGroup.querySelector(selector);
+			if (primaryAction) primaryActions.appendChild(primaryAction);
+		}
 	}
 	// Set timestamp column width to the widest timestamp
 	let maxWidth = 0;
@@ -359,7 +453,7 @@ export function wireTranscript(
 				+ rect.top - stickyOffset - 20;
 			scroll.scrollTo(targetY);
 		}
-	});
+	}, listenerOptions);
 	let activeIndex = -1;
 	let studyController: TranscriptStudyController | undefined;
 	let suppressScroll = false;
@@ -371,7 +465,7 @@ export function wireTranscript(
 	window.addEventListener('scroll', () => {
 		if (scroll.programmaticScroll() || scrubbing) return;
 		lastUserScroll = Date.now();
-	}, { passive: true });
+	}, { passive: true, signal: eventController.signal });
 
 	const updateActiveSegment = (currentTime: number) => {
 		if (Math.abs(currentTime - lastCurrentTime) < 0.05) return;
@@ -523,13 +617,13 @@ export function wireTranscript(
 		};
 		videoEl.addEventListener('timeupdate', () => {
 			updateActiveSegment(videoEl.currentTime);
-		});
+		}, listenerOptions);
 		// Prevent native video controls from handling seek shortcuts
 		videoEl.addEventListener('keydown', (e) => {
 			if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'KeyJ' || e.code === 'KeyL') {
 				e.preventDefault();
 			}
-		});
+		}, listenerOptions);
 	} else if (iframe) {
 		// Iframe embed: use postMessage API
 		seekTo = (seconds: number) => {
@@ -553,7 +647,7 @@ export function wireTranscript(
 				}
 			} catch {} // Ignore non-YouTube postMessage events
 		};
-		window.addEventListener('message', onMessage);
+		window.addEventListener('message', onMessage, listenerOptions);
 
 		const poll = setInterval(() => {
 			if (!iframe.contentWindow || !doc.contains(iframe)) {
@@ -567,6 +661,7 @@ export function wireTranscript(
 				args: []
 			}), '*');
 		}, 500);
+		eventController.signal.addEventListener('abort', () => clearInterval(poll), { once: true });
 	} else {
 		seekTo = () => {};
 	}
@@ -684,7 +779,7 @@ export function wireTranscript(
 				seekRelative(10);
 				break;
 		}
-	}, { capture: true });
+	}, { capture: true, signal: eventController.signal });
 
 	// YouTube handles Space on keyup — block that too
 	doc.addEventListener('keyup', (e: KeyboardEvent) => {
@@ -694,7 +789,7 @@ export function wireTranscript(
 			e.preventDefault();
 			e.stopImmediatePropagation();
 		}
-	}, { capture: true });
+	}, { capture: true, signal: eventController.signal });
 
 	// Add a scrub track behind the timestamps
 	const scrubTrack = doc.createElement('div');
@@ -786,11 +881,11 @@ export function wireTranscript(
 		const rect = scrubTrack.getBoundingClientRect();
 		scrubHover.style.top = (e.clientY - rect.top) + 'px';
 		updateHoverHighlight(e);
-	});
+	}, listenerOptions);
 	transcript.addEventListener('mouseleave', () => {
 		scrubHover.style.top = '';
 		if (hoverHighlight) hoverHighlight.clear();
-	});
+	}, listenerOptions);
 	// Position from first segment to bottom
 	const positionTrack = () => {
 		const transcriptRect = transcript.getBoundingClientRect();
@@ -818,7 +913,7 @@ export function wireTranscript(
 		suppressScroll = true;
 		seekTo(getTimeFromY(e.clientY));
 		e.preventDefault();
-	});
+	}, listenerOptions);
 
 	window.addEventListener('mousemove', (e) => {
 		if (!scrubbing) return;
@@ -826,11 +921,11 @@ export function wireTranscript(
 		if (now - lastScrub < 100) return;
 		lastScrub = now;
 		seekTo(getTimeFromY(e.clientY));
-	});
+	}, listenerOptions);
 
 	window.addEventListener('mouseup', () => {
 		scrubbing = false;
-	});
+	}, listenerOptions);
 
 	const seekFromTranscriptClick = (target: HTMLElement, clientX: number, clientY: number): boolean => {
 		if (doc.body.classList.contains('obsidian-highlighter-active')) return false;
@@ -885,5 +980,5 @@ export function wireTranscript(
 			() => seekFromTranscriptClick(target, clientX, clientY),
 			originalTime === undefined ? undefined : () => seekTo(originalTime)
 		);
-	});
+	}, listenerOptions);
 }

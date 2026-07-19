@@ -45,7 +45,9 @@ The preview stores a snapshot of the clipping. If the clipping changes before yo
 
 Open Reader on a YouTube page that has an available transcript, then select **Bilingual subtitles** in the transcript controls.
 
-Use the transcript layout switcher to choose **Reading**, **Notebook**, or **Split view**. Reading keeps the video above a centered transcript, Notebook moves the learning controls into a left study rail, and Split view keeps the player beside the transcript on wider screens. Web Clipper remembers the selected layout. Changing layouts only rearranges the existing player, controls, transcript, and explanation state; it does not start an AI request. On narrower screens, Notebook and Split view fall back to a single-column layout.
+Use the transcript layout switcher to choose **Reading**, **Study tools**, or **Split view**. Reading keeps the video above a centered transcript; select **Compact player** to hide the media without recreating it or losing the playback position. Study tools moves the learning controls into a left study rail, and Split view keeps the player beside the transcript on wider screens. Web Clipper remembers the selected layout. Changing layouts only rearranges the existing player, controls, transcript, and explanation state; it does not start an AI request. On narrower screens, Study tools and Split view fall back to a single-column layout.
+
+The most common transcript actions stay in the main control row. Open **More** for player pinning, auto-scroll, active-line highlighting, AI range, saved vocabulary, and local playback study controls. On screens up to 768 pixels wide, **More** opens as a closable bottom drawer and keeps the active transcript line above the drawer.
 
 Before starting, use **AI range** to choose the current segment, the next five minutes, or the entire transcript. The task bar shows the selected engine, segment count, estimated batch count, elapsed time, and completed batches. A smaller range is useful when testing a local CLI or studying only the current part of a long video.
 

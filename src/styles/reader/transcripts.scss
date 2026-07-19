@@ -135,6 +135,73 @@
 	gap: 4px 6px;
 	min-width: 0;
 }
+.player-primary-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 4px 6px;
+	min-width: 0;
+}
+.player-controls-more {
+	position: relative;
+	font-family: var(--font-ui);
+	font-size: var(--font-ui-small);
+	line-height: 1.2;
+	summary {
+		display: inline-flex;
+		align-items: center;
+		min-height: 28px;
+		padding: 4px 8px;
+		color: var(--text-muted);
+		border: 1px solid transparent;
+		border-radius: var(--radius-s);
+		cursor: pointer;
+		list-style: none;
+		&::-webkit-details-marker { display: none; }
+		&::after {
+			content: '⌄';
+			margin-inline-start: 5px;
+			font-size: 0.85em;
+		}
+		&:hover,
+		&:focus-visible {
+			color: var(--text-normal);
+			background: var(--background-primary-alt);
+			outline: none;
+		}
+	}
+	&[open] {
+		flex: 1 0 100%;
+		> summary {
+			color: var(--text-accent-hover);
+			background: var(--text-selection);
+			border-color: var(--text-selection);
+		}
+	}
+}
+.player-controls-panel {
+	display: block;
+	box-sizing: border-box;
+	width: 100%;
+	margin-top: 8px;
+	padding: 10px;
+	color: var(--text-normal);
+	background: var(--background-primary-alt);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	.player-toggle-group { width: 100%; }
+	.player-study-panel {
+		position: static;
+		inset: auto;
+		width: 100%;
+		margin-top: 6px;
+		box-shadow: none;
+	}
+}
+.player-controls-panel-header,
+.player-controls-close {
+	display: none;
+}
 .player-learning-action {
 	font-family: var(--font-ui);
 	font-size: var(--font-ui-small);
@@ -722,11 +789,23 @@ html.transcript-layout-focus .obsidian-reader-content {
 	> .player-container {
 		max-width: 960px;
 		margin: 0 auto;
+		&.is-compact {
+			> .reader-video-wrapper,
+			> iframe,
+			> a[href*="youtube.com/watch"] {
+				display: none;
+			}
+		}
 	}
 	> .youtube.transcript {
 		max-width: 760px;
 		margin: 8px auto 0;
 	}
+}
+
+.transcript-layout-notebook,
+.transcript-layout-focus {
+	.player-compact-toggle { display: none; }
 }
 
 .transcript-layout-notebook {
@@ -765,7 +844,9 @@ html.transcript-layout-focus .obsidian-reader-content {
 		padding-top: 18px;
 	}
 	.transcript-layout-switcher,
-	.player-toggle-group {
+	.player-toggle-group,
+	.player-primary-actions,
+	.player-controls-more {
 		width: 100%;
 		flex-direction: column;
 		align-items: stretch;
@@ -900,7 +981,8 @@ html.transcript-layout-focus .language-learning-card {
 			padding-top: 14px;
 		}
 		.transcript-layout-switcher,
-		.player-toggle-group {
+		.player-toggle-group,
+		.player-primary-actions {
 			width: auto;
 			flex-direction: row;
 			align-items: center;
@@ -935,6 +1017,69 @@ html.transcript-layout-focus .language-learning-card {
 	.player-toggle-group {
 		width: 100%;
 	}
+	.player-primary-actions {
+		flex: 1 1 auto;
+		width: auto;
+		> .player-compact-toggle,
+		> .player-learning-readings {
+			display: none;
+		}
+		> .player-learning-bilingual {
+			width: 100%;
+			min-height: 44px;
+		}
+	}
+	.player-controls-more {
+		flex: 0 0 auto;
+		> summary { min-height: 44px; }
+		&[open] { flex-basis: auto; }
+	}
+	.player-controls-panel {
+		position: fixed;
+		inset: auto 0 0;
+		z-index: calc(var(--layer-menu) + 2);
+		max-height: min(70vh, 520px);
+		margin: 0;
+		padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+		overflow: auto;
+		background: var(--background-primary);
+		border-width: 1px 0 0;
+		border-radius: var(--radius-l) var(--radius-l) 0 0;
+		box-shadow: var(--shadow-l);
+		.player-study-panel {
+			position: static;
+			inset: auto;
+			width: 100%;
+		}
+	}
+	.player-controls-panel-header {
+		position: sticky;
+		top: -12px;
+		z-index: 1;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin: -12px -12px 10px;
+		padding: 10px 12px;
+		background: var(--background-primary);
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+	.player-controls-close {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		padding-inline: 12px;
+		font: inherit;
+		color: var(--text-accent-hover);
+		background: transparent;
+		border: 0;
+		border-radius: var(--radius-s);
+		cursor: pointer;
+	}
+	.transcript-study-layout.is-controls-open > .youtube.transcript {
+		padding-bottom: min(70vh, 520px);
+	}
 	.player-learning-action,
 	.player-learning-range,
 	.language-learning-card-action,
@@ -953,9 +1098,7 @@ html.transcript-layout-focus .language-learning-card {
 			width: 100%;
 		}
 	}
-	.player-toggle {
-		display: none;
-	}
+	.player-toggle { min-height: 44px; }
 	.transcript-segment {
 		gap: 0.75rem;
 		padding: 13px 4px;

@@ -1,6 +1,6 @@
 import type { TranscriptLayoutMode } from '../types/types';
 
-const TRANSCRIPT_LAYOUT_MODES: TranscriptLayoutMode[] = ['reading', 'notebook', 'focus'];
+export const TRANSCRIPT_LAYOUT_MODES: readonly TranscriptLayoutMode[] = ['reading', 'notebook', 'focus'];
 const TRANSCRIPT_LAYOUT_CLASSES = TRANSCRIPT_LAYOUT_MODES.map(mode => `transcript-layout-${mode}`);
 
 export function clearTranscriptLayoutMode(doc: Document): void {
@@ -11,6 +11,56 @@ export function normalizeTranscriptLayoutMode(value: unknown): TranscriptLayoutM
 	return typeof value === 'string' && TRANSCRIPT_LAYOUT_MODES.includes(value as TranscriptLayoutMode)
 		? value as TranscriptLayoutMode
 		: 'reading';
+}
+
+export function updateTranscriptPlayerHeight(root: HTMLElement, player: HTMLElement): void {
+	root.style.setProperty(
+		'--transcript-player-height',
+		`${Math.ceil(player.getBoundingClientRect().height)}px`
+	);
+}
+
+interface TranscriptControlsPanelOptions {
+	doc: Document;
+	root: HTMLElement;
+	details: HTMLDetailsElement;
+	panel: HTMLElement;
+	controls: HTMLElement;
+	isMobile: boolean;
+}
+
+export function syncTranscriptControlsPanel({
+	doc,
+	root,
+	details,
+	panel,
+	controls,
+	isMobile
+}: TranscriptControlsPanelOptions): void {
+	if (details.open && isMobile) root.appendChild(panel);
+	else details.appendChild(panel);
+	root.classList.toggle('is-controls-open', details.open);
+	details.querySelector('summary')?.setAttribute('aria-expanded', String(details.open));
+	if (!details.open || !isMobile) return;
+
+	const activeSegment = root.querySelector<HTMLElement>('.transcript-segment.is-active');
+	if (!activeSegment) return;
+
+	activeSegment.scrollIntoView({ block: 'center' });
+	const view = doc.defaultView;
+	if (!view) return;
+
+	const activeRect = activeSegment.getBoundingClientRect();
+	const visibleTop = controls.getBoundingClientRect().bottom + 12;
+	const visibleBottom = panel.getBoundingClientRect().top - 12;
+	const adjustment = activeRect.top < visibleTop
+		? activeRect.top - visibleTop
+		: activeRect.bottom > visibleBottom
+			? activeRect.bottom - visibleBottom
+			: 0;
+	if (adjustment !== 0) {
+		view.scrollBy({ behavior: 'auto', top: Math.round(adjustment) });
+	}
 }
 
 interface TranscriptLayoutSwitcherOptions {
