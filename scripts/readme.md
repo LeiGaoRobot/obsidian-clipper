@@ -46,7 +46,7 @@ npm run add-locale fr
 - Reads the version from `package.json`
 - Commits starting with `feat` are grouped under **New**
 - Commits starting with `fix` are grouped under **Fixes**
-- Version bump and documentation commits are excluded
+- Release-preparation, version bump, and documentation commits are excluded
 
 ### Native Messaging Host package
 

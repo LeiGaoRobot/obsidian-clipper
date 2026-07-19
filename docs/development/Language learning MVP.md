@@ -178,6 +178,7 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 - Model output is inserted with `textContent`, not interpreted as HTML.
 - The feature does not add telemetry or send requests to an Obsidian-owned intermediary.
 - Provider terms, retention, privacy, and pricing still apply to every request.
+- Firefox declares `websiteContent` as required transmitted data because an explicit language-learning action can send clipping or transcript content to the configured provider. Granting the permission does not start a request. The disclosure requires Firefox 140 or newer on desktop and Firefox for Android 142 or newer.
 
 ## Verification
 
@@ -200,6 +201,7 @@ Focused coverage lives in:
 - `src/utils/storage-utils.test.ts`
 - `src/utils/focus-trap.test.ts`
 - `src/previews/png-visual-diff.test.ts`
+- `src/manifest.test.ts`
 - `src/webpack-config.test.ts`
 - `native-host/obsidian-clipper-host.test.ts`
 
