@@ -23,6 +23,7 @@ function removeDSStore(dir) {
 module.exports = (env, argv) => {
 	const isFirefox = env.BROWSER === 'firefox';
 	const isSafari = env.BROWSER === 'safari';
+	const isChrome = !isFirefox && !isSafari;
 	const isProduction = argv.mode === 'production';
 
 	const getOutputDir = () => {
@@ -47,6 +48,11 @@ module.exports = (env, argv) => {
 		{ from: "src/highlights.html", to: "highlights.html" },
 		{ from: "src/reader.html", to: "reader.html" },
 		{ from: "src/icons", to: "icons" },
+		...(isChrome ? [
+			{ from: "src/brands/pagepick/icons/pagepick16.png", to: "icons/pagepick16.png" },
+			{ from: "src/brands/pagepick/icons/pagepick48.png", to: "icons/pagepick48.png" },
+			{ from: "src/brands/pagepick/icons/pagepick128.png", to: "icons/pagepick128.png" }
+		] : []),
 		{ from: "node_modules/webextension-polyfill/dist/browser-polyfill.min.js", to: "browser-polyfill.min.js" },
 		{ from: "src/flatten-shadow-dom.js", to: "flatten-shadow-dom.js" },
 		{ from: 'src/_locales', to: '_locales' },
@@ -185,7 +191,7 @@ module.exports = (env, argv) => {
 			...(isProduction ? [
 				new ZipPlugin({
 					path: path.resolve(__dirname, 'builds'),
-					filename: `obsidian-web-clipper-${package.version}-${browserName}.zip`,
+					filename: `${isChrome ? 'pagepick-for-obsidian' : 'obsidian-web-clipper'}-${package.version}-${browserName}.zip`,
 				})
 			] : [])
 		]

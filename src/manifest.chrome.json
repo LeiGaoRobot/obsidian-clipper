@@ -1,10 +1,10 @@
 {
 	"manifest_version": 3,
 	"default_locale": "en",
-	"name": "Obsidian Web Clipper",
-	"homepage_url": "https://obsidian.md/",
-	"version": "1.8.0",
-	"description": "Save and highlight web pages in a private and durable format that you can access offline. The official extension for Obsidian.",
+	"name": "PagePick for Obsidian",
+	"homepage_url": "https://github.com/LeiGaoRobot/obsidian-clipper",
+	"version": "1.8.1",
+	"description": "Save web content privately for offline use. An independent community extension for Obsidian.",
 	"permissions": [
 		"activeTab",
 		"clipboardWrite",
@@ -32,9 +32,9 @@
 		"open_in_tab": true
 	},
 	"icons": {
-		"16": "icons/icon16.png",
-		"48": "icons/icon48.png",
-		"128": "icons/icon128.png"
+		"16": "icons/pagepick16.png",
+		"48": "icons/pagepick48.png",
+		"128": "icons/pagepick128.png"
 	},
 	"background": {
 		"service_worker": "background.js"
@@ -61,7 +61,7 @@
 				"default": "Ctrl+Shift+O",
 				"mac": "Command+Shift+O"
 			},
-			"description": "__MSG_commandOpenClipper__"
+			"description": "Open PagePick"
 		},
 		"quick_clip": {
 			"suggested_key": {

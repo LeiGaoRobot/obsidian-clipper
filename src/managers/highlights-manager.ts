@@ -3,6 +3,7 @@ import { detectBrowser } from '../utils/browser-detection';
 import { AnyHighlightData, collapseGroupsForExport } from '../utils/highlighter';
 import dayjs from 'dayjs';
 import { getMessage } from '../utils/i18n';
+import { getExtensionBranding } from '../utils/extension-branding';
 
 export async function exportHighlights(): Promise<void> {
 	try {
@@ -20,15 +21,16 @@ export async function exportHighlights(): Promise<void> {
 
 		const browserType = await detectBrowser();
 		const timestamp = dayjs().format('YYYYMMDDHHmm');
-		const fileName = `obsidian-web-clipper-highlights-${timestamp}.json`;
+		const branding = getExtensionBranding();
+		const fileName = `${branding.exportFilePrefix}-highlights-${timestamp}.json`;
 
 		if (browserType === 'safari' || browserType === 'mobile-safari') {
 			if (navigator.share) {
 				try {
 					await navigator.share({
 						files: [new File([blob], fileName, { type: 'application/json' })],
-						title: 'Exported Obsidian Web Clipper Highlights',
-						text: 'Here are your exported highlights from Obsidian Web Clipper.'
+						title: `Exported ${branding.name} Highlights`,
+						text: `Here are your exported highlights from ${branding.name}.`
 					});
 				} catch (error) {
 					console.error('Error sharing:', error);

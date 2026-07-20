@@ -11,6 +11,7 @@ import { saveFile } from './file-utils';
 import { copyToClipboard } from './clipboard-utils';
 import { compressToUTF16, decompressFromUTF16 } from 'lz-string';
 import { getMessage } from './i18n';
+import { getExtensionBranding } from './extension-branding';
 
 const SCHEMA_VERSION = '0.1.0';
 
@@ -353,7 +354,7 @@ export async function exportAllSettings(): Promise<void> {
 		const content = JSON.stringify(exportData, null, 2);
 		console.log('Data stringified, length:', content.length);
 
-		const fileName = 'obsidian-web-clipper-settings.json';
+		const fileName = `${getExtensionBranding().exportFilePrefix}-settings.json`;
 
 		await saveFile({
 			content,

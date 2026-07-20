@@ -9,6 +9,7 @@ import { setPageUrl, setPageTitle, updatePageDomainSettings, getHighlights, repo
 import { throttle } from '../utils/throttle';
 import { loadSettings } from '../utils/storage-utils';
 import Defuddle from 'defuddle';
+import { applyPagePickBranding } from '../utils/pagepick-branding';
 
 type MessageListener = (request: any, sender: any, sendResponse: (response?: any) => void) => true | undefined;
 let readerPageMessageListener: MessageListener | null = null;
@@ -16,6 +17,7 @@ let readerPageMessageListener: MessageListener | null = null;
 document.addEventListener('DOMContentLoaded', async () => {
 	await applyReaderTheme();
 	await initializeI18n();
+	applyPagePickBranding();
 
 	const params = new URLSearchParams(window.location.search);
 	let url = params.get('url');

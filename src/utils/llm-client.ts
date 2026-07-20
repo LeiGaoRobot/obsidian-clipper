@@ -2,6 +2,7 @@ import { ModelConfig, PromptVariable } from '../types/types';
 import { debugLog } from './debug';
 import { RequestCancelledError, throwIfRequestAborted } from './request-cancellation';
 import { generalSettings } from './storage-utils';
+import { getExtensionBranding } from './extension-branding';
 
 const RATE_LIMIT_RESET_TIME = 60000; // 1 minute in milliseconds
 export const DEFAULT_LLM_REQUEST_TIMEOUT_MS = 60000;
@@ -65,6 +66,7 @@ export async function sendToLLM(
 
 		let requestUrl: string;
 		let requestBody: any;
+		const branding = getExtensionBranding();
 		let headers: HeadersInit = {
 			'Content-Type': 'application/json',
 		};
@@ -135,8 +137,8 @@ export async function sendToLLM(
 			};
 			headers = {
 				...headers,
-				'HTTP-Referer': 'https://obsidian.md/',
-				'X-Title': 'Obsidian Web Clipper',
+				'HTTP-Referer': branding.homepageUrl,
+				'X-Title': branding.name,
 				'Authorization': `Bearer ${provider.apiKey}`
 			};
 		} else if (provider.name.toLowerCase().includes('ollama')) {
@@ -167,8 +169,8 @@ export async function sendToLLM(
 			if (options.maxTokens) requestBody.max_tokens = maxTokens;
 			headers = {
 				...headers,
-				'HTTP-Referer': 'https://obsidian.md/',
-				'X-Title': 'Obsidian Web Clipper',
+				'HTTP-Referer': branding.homepageUrl,
+				'X-Title': branding.name,
 				'Authorization': `Bearer ${provider.apiKey}`
 			};
 		}

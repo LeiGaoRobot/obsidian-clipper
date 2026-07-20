@@ -1,8 +1,15 @@
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const fetchMock = vi.fn();
 
+const mocks = vi.hoisted(() => ({
+	getExtensionBranding: vi.fn()
+}));
+
 vi.mock('./debug', () => ({ debugLog: vi.fn() }));
+vi.mock('./extension-branding', () => ({
+	getExtensionBranding: mocks.getExtensionBranding
+}));
 vi.mock('./storage-utils', () => ({
 	generalSettings: {
 		providers: [{
@@ -18,6 +25,14 @@ vi.mock('./storage-utils', () => ({
 import { sendToLLM } from './llm-client';
 
 describe('LLM client', () => {
+	beforeEach(() => {
+		mocks.getExtensionBranding.mockReset().mockReturnValue({
+			name: 'PagePick for Obsidian',
+			homepageUrl: 'https://github.com/LeiGaoRobot/obsidian-clipper',
+			exportFilePrefix: 'pagepick-for-obsidian'
+		});
+	});
+
 	afterEach(() => {
 		vi.useRealTimers();
 		vi.unstubAllGlobals();
@@ -54,6 +69,10 @@ describe('LLM client', () => {
 		expect(JSON.parse(request.body as string)).toMatchObject({
 			model: 'test-model',
 			max_tokens: 3200
+		});
+		expect(request.headers).toMatchObject({
+			'HTTP-Referer': 'https://github.com/LeiGaoRobot/obsidian-clipper',
+			'X-Title': 'PagePick for Obsidian'
 		});
 		expect(result.promptResponses).toEqual([{
 			key: 'prompt_1',

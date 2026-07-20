@@ -1,31 +1,26 @@
-Obsidian Web Clipper helps you highlight and capture the web in your favorite browser. Anything you save is stored as durable Markdown files that you can read offline, and preserve for the long term.
+PagePick for Obsidian is an independently published community fork for highlighting and capturing the web in your favorite browser. Anything you save is stored as durable Markdown files that you can read offline and preserve for the long term. It is not affiliated with or endorsed by Obsidian.
 
-- **[Download Web Clipper](https://obsidian.md/clipper)**
-- **[Documentation](https://help.obsidian.md/web-clipper)**
-- **[Troubleshooting](https://help.obsidian.md/web-clipper/troubleshoot)**
+- **[PagePick source](https://github.com/LeiGaoRobot/obsidian-clipper)**
+- **[Upstream documentation](https://help.obsidian.md/web-clipper)**
+- **[Upstream troubleshooting](https://help.obsidian.md/web-clipper/troubleshoot)**
 
 ## Get started
 
-Install the extension by downloading it from the official directory for your browser:
-
-- **[Chrome Web Store](https://chromewebstore.google.com/detail/obsidian-web-clipper/cnjifjpddelmedmihgijeibhnjfabmlf)** for Chrome, Brave, Arc, Orion, and other Chromium-based browsers.
-- **[Firefox Add-Ons](https://addons.mozilla.org/en-US/firefox/addon/web-clipper-obsidian/)** for Firefox and Firefox Mobile.
-- **[Safari Extensions](https://apps.apple.com/us/app/obsidian-web-clipper/id6720708363)** for macOS, iOS, and iPadOS.
-- **[Edge Add-Ons](https://microsoftedge.microsoft.com/addons/detail/obsidian-web-clipper/eigdjhmgnaaeaonimdklocfekkaanfme)** for Microsoft Edge.
+PagePick for Obsidian is the independently branded Chrome build in this repository. Follow the [local-install instructions](#install-the-extension-locally) to load its `dist` directory until its separate Chrome Web Store listing is available. It is not the official Obsidian Web Clipper listing.
 
 ## Use the extension
 
-Documentation is available on the [Obsidian Help site](https://help.obsidian.md/web-clipper), which covers how to use [highlighting](https://help.obsidian.md/web-clipper/highlight), [templates](https://help.obsidian.md/web-clipper/templates), [variables](https://help.obsidian.md/web-clipper/variables), [filters](https://help.obsidian.md/web-clipper/filters), and more.
+The [upstream Obsidian Help site](https://help.obsidian.md/web-clipper) covers [highlighting](https://help.obsidian.md/web-clipper/highlight), [templates](https://help.obsidian.md/web-clipper/templates), [variables](https://help.obsidian.md/web-clipper/variables), [filters](https://help.obsidian.md/web-clipper/filters), and more. It may not describe PagePick-specific changes.
 
 ## Contribute
 
 ### Translations
 
-You can help translate Web Clipper into your language. Submit your translation via pull request using the format found in the [/_locales](/src/_locales) folder.
+You can help translate PagePick into your language. Submit your translation via pull request using the format found in the [/_locales](/src/_locales) folder.
 
 ### Features and bug fixes
 
-See the [help wanted](https://github.com/obsidianmd/obsidian-clipper/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) tag for issues where contributions are welcome.
+See the [PagePick issues](https://github.com/LeiGaoRobot/obsidian-clipper/issues) for contributions and bug reports.
 
 ## Roadmap
 
@@ -138,4 +133,4 @@ npm run test:watch
 
 ## License
 
-Obsidian Web Clipper source code is open source under the MIT License. All trademarks, icons, marketing copy, and other marketing assets are excluded from that license.
+The upstream Obsidian Web Clipper source code is open source under the MIT License. Upstream trademarks, icons, marketing copy, and other marketing assets are excluded from that license. PagePick for Obsidian uses its own icon and release copy.

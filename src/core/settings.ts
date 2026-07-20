@@ -23,6 +23,7 @@ import { addBrowserClassToHtml } from '../utils/browser-detection';
 import { initializeMenu } from '../managers/menu';
 import { addMenuItemListener } from '../managers/menu';
 import { translatePage, getCurrentLanguage, setLanguage, getAvailableLanguages, getMessage, setupLanguageAndDirection } from '../utils/i18n';
+import { applyPagePickBranding } from '../utils/pagepick-branding';
 
 declare global {
 	interface Window {
@@ -71,6 +72,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 	async function initializeSettings(): Promise<void> {
 		try {
 			await translatePage();
+			applyPagePickBranding();
 
 			await initializeGeneralSettings();
 			await initializeReaderSettings();
@@ -141,6 +143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 		try {
 			await setupLanguageAndDirection();
 			await translatePage();
+			applyPagePickBranding();
 			
 			// Populate language options
 			const languages = getAvailableLanguages();

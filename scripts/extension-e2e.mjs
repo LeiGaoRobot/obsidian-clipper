@@ -235,6 +235,57 @@ try {
 	if (settingsEnvironment.chromeStorage !== 'object') {
 		throw new Error(`The unpacked extension settings page did not expose Chrome storage APIs: ${JSON.stringify(settingsEnvironment)}`);
 	}
+	const pagePickManifest = await evaluate(settings, `(async () => {
+		const manifest = chrome.runtime.getManifest();
+		const iconPath = manifest.icons?.['48'];
+		const iconResponse = iconPath ? await fetch(chrome.runtime.getURL(iconPath)) : null;
+		return {
+			name: manifest.name,
+			description: manifest.description,
+			homepage: manifest.homepage_url,
+			iconPath,
+			iconStatus: iconResponse?.status
+		};
+	})()`);
+	if (
+		pagePickManifest.name !== 'PagePick for Obsidian'
+		|| !pagePickManifest.description?.includes('independent')
+		|| pagePickManifest.homepage !== 'https://github.com/LeiGaoRobot/obsidian-clipper'
+		|| pagePickManifest.iconPath !== 'icons/pagepick48.png'
+		|| pagePickManifest.iconStatus !== 200
+	) {
+		throw new Error(`The unpacked extension did not expose the PagePick Chrome identity: ${JSON.stringify(pagePickManifest)}`);
+	}
+	const settingsBranding = await waitForValue(async () => {
+		const branding = await evaluate(settings, `(() => {
+			const logo = document.querySelector('#settings-sidebar-title img.logo');
+			return {
+				title: document.title,
+				navbarTitle: document.querySelector('#navbar-title > span')?.textContent?.trim(),
+				logoSource: logo?.getAttribute('src'),
+				logoWidth: logo instanceof HTMLImageElement ? logo.naturalWidth : 0,
+				logoHeight: logo instanceof HTMLImageElement ? logo.naturalHeight : 0,
+				logoDisplayWidth: logo?.getBoundingClientRect().width ?? 0,
+				logoDisplayHeight: logo?.getBoundingClientRect().height ?? 0,
+				remainingSvgLogos: document.querySelectorAll('svg.logo').length,
+				changelog: document.querySelector('#changelog-link')?.getAttribute('href')
+			};
+		})()`);
+		return (
+			branding.title === 'PagePick for Obsidian'
+			&& branding.navbarTitle === 'PagePick for Obsidian'
+			&& branding.logoSource?.endsWith('/icons/pagepick48.png')
+			&& branding.logoWidth === 48
+			&& branding.logoHeight === 48
+			&& branding.logoDisplayWidth === 20
+			&& branding.logoDisplayHeight === 20
+			&& branding.remainingSvgLogos === 0
+			&& branding.changelog === 'https://github.com/LeiGaoRobot/obsidian-clipper/releases'
+		) ? branding : undefined;
+	}, 'The settings page did not apply the PagePick Chrome branding.');
+	if (!settingsBranding) {
+		throw new Error('The settings page did not expose PagePick Chrome branding.');
+	}
 	await evaluate(settings, `Promise.all([
 		new Promise((resolve, reject) => chrome.storage.local.set({ language: 'zh_CN' }, () => {
 			if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));

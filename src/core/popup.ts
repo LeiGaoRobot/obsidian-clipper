@@ -23,6 +23,8 @@ import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
+import { applyPagePickBranding } from '../utils/pagepick-branding';
+import { getExtensionBranding } from '../utils/extension-branding';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -159,6 +161,7 @@ async function initializeExtension(tabId: number) {
 	try {
 		// Initialize translations
 		await translatePage();
+		applyPagePickBranding();
 		
 		// Setup language and RTL support
 		await setupLanguageAndDirection();
@@ -509,7 +512,7 @@ function setupEventListeners(tabId: number) {
 						
 						const shareData = {
 							files: [file],
-							text: 'Shared from Obsidian Web Clipper'
+							text: `Shared from ${getExtensionBranding().name}`
 						};
 
 						if (navigator.canShare(shareData)) {

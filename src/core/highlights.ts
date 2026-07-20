@@ -12,6 +12,8 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { createIcons } from 'lucide';
 import { icons } from '../icons/icons';
 import { initializeMenu } from '../managers/menu';
+import { applyPagePickBranding } from '../utils/pagepick-branding';
+import { getExtensionBranding } from '../utils/extension-branding';
 
 dayjs.extend(relativeTime);
 
@@ -62,6 +64,7 @@ let observer: IntersectionObserver | null = null;
 document.addEventListener('DOMContentLoaded', async () => {
 	await setupLanguageAndDirection();
 	await translatePage();
+	applyPagePickBranding();
 	addBrowserClassToHtml();
 	await applyReaderTheme();
 
@@ -974,14 +977,15 @@ async function exportCurrentContext() {
 
 	const browserType = await detectBrowser();
 	const timestamp = dayjs().format('YYYYMMDDHHmm');
-	const fileName = `obsidian-web-clipper-highlights-${timestamp}.json`;
+	const branding = getExtensionBranding();
+	const fileName = `${branding.exportFilePrefix}-highlights-${timestamp}.json`;
 
 	if (browserType === 'safari' || browserType === 'mobile-safari') {
 		if (navigator.share) {
 			try {
 				await navigator.share({
 					files: [new File([blob], fileName, { type: 'application/json' })],
-					title: 'Exported Obsidian Web Clipper Highlights',
+					title: `Exported ${branding.name} Highlights`,
 				});
 			} catch {
 				window.open(blobUrl);

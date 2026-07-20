@@ -31,6 +31,7 @@ import { cloneBodyIfSafe } from './reader-dom-cleanup';
 import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from './language-learning-defaults';
 import { createBilibiliTranscriptElement } from './bilibili-reader';
 import type { BilibiliTranscript } from './bilibili-transcript';
+import { getExtensionBranding, PAGEPICK_NAME } from './extension-branding';
 
 // Mobile viewport settings
 const VIEWPORT = 'width=device-width, initial-scale=1, maximum-scale=1';
@@ -2718,8 +2719,9 @@ export class Reader {
 		// Footer
 		const footer = doc.querySelector('.obsidian-reader-footer') as HTMLElement | null;
 		if (footer) {
+			const branding = getExtensionBranding();
 			const footerItems = [
-				'Obsidian Reader',
+				branding.name === PAGEPICK_NAME ? branding.name : 'Obsidian Reader',
 				content.wordCount ? new Intl.NumberFormat().format(content.wordCount) + ' words' : '',
 				content.parseTime ? 'parsed in ' + new Intl.NumberFormat().format(content.parseTime) + ' ms' : '',
 			].filter(Boolean);
