@@ -6,8 +6,8 @@ This document describes the implemented language-learning MVP and the interfaces
 ## Goals
 
 - Let users revise selected or complete clipped Markdown through a preview-and-apply workflow.
-- Add manually triggered, segment-aligned bilingual YouTube transcripts.
-- Add manually triggered hiragana readings for Japanese kanji in YouTube transcripts.
+- Add manually triggered, segment-aligned bilingual YouTube transcripts and Chromium/Firefox in-page Bilibili transcripts.
+- Add manually triggered hiragana readings for Japanese kanji in YouTube and Bilibili transcripts.
 - Let users correct generated Japanese readings directly in the Reader.
 - Let users correct generated translations and persist both correction types for the browser session.
 - Explain a double-clicked word or a selected phrase or sentence in transcript context.
@@ -41,13 +41,19 @@ This document describes the implemented language-learning MVP and the interfaces
 | `src/utils/transcript-checkpoint-storage.ts` | Bounded, validated transcript checkpoints backed by extension session storage with an in-memory fallback |
 | `src/utils/transcript-layout.ts` | Pure Reader transcript-layout switching, selected-state semantics, and layout class management |
 | `src/utils/reader-transcript.ts` | Player integration and single-click versus double-click seek coordination |
+| `src/utils/bilibili-transcript.ts` | DOM-free validation, track selection, and timed-segment parsing for Bilibili player subtitle responses |
+| `src/utils/bilibili-page-fetch.ts` | Serializable, deadline-bounded Bilibili subtitle document fetcher |
+| `src/utils/bilibili-player-page.ts` | Serializable current-player polling that ignores expired Bilibili request URLs |
+| `src/utils/bilibili-reader.ts` | Safe timed Bilibili transcript DOM construction for Reader |
 | `src/utils/transcript-study.ts` | Local sentence repeat, A–B loop, auto-pause, speed, and shortcut controller |
 | `src/utils/focus-trap.ts` | Shared dialog focus containment, Escape handling, focus return, and cleanup |
 | `src/utils/language-learning-service.ts` | Background validation, stored-model resolution, and local CLI dispatch |
 | `src/utils/llm-client.ts` | DOM-free provider adapter and response parser shared with Interpreter |
 | `src/utils/native-cli-service.ts` | Background Native Messaging bridge for local Grok/Codex execution |
 | `src/utils/native-cli-health.ts` | Settings-page client for explicit Host and CLI diagnostics |
-| `src/background.ts` | `languageLearningRequest` execution seam and prefix-restricted transcript checkpoint bridge for content scripts |
+| `src/background.ts` | `languageLearningRequest` execution seam, Bilibili subtitle bridge, and prefix-restricted transcript checkpoint bridge for content scripts |
+
+Bilibili transcript capture is limited to the in-page Reader on Chromium and Firefox. Before Reader removes the live page, the background runs in the page's MAIN world, verifies the current BVID, AID, and CID, waits briefly for the matching player response, and fetches the selected subtitle in that same page context. Expired request URLs are ignored while the polling window remains open. This path does not use Interpreter credentials or create a provider request.
 
 The request path is:
 
@@ -85,7 +91,7 @@ Remote work starts only after a user invokes an explicit action:
 - Double-clicking a transcript word.
 - Selecting **Explain with AI** for a transcript selection.
 
-Selection changes, transcript loading, page loading, applying, cancelling, undoing, and show/hide toggles must not create provider requests. Reader controls that run in the page DOM reject synthetic cost-incurring events with `event.isTrusted`. The popup controls run in an extension-owned document that host-page scripts cannot access; their click listener does not separately inspect `event.isTrusted`.
+Selection changes, YouTube or Bilibili transcript loading, page loading, applying, cancelling, undoing, and show/hide toggles must not create provider requests. Bilibili subtitle retrieval runs through the extension background and uses no Interpreter credentials. Reader controls that run in the page DOM reject synthetic cost-incurring events with `event.isTrusted`. The popup controls run in an extension-owned document that host-page scripts cannot access; their click listener does not separately inspect `event.isTrusted`.
 
 Changing the transcript task range, editing a generated result, revealing a ruby reading, opening saved vocabulary, copying, favoriting, and saving an existing explanation do not create provider requests. Switching execution mode from an error card retries only after a trusted user action.
 
@@ -194,6 +200,10 @@ Focused coverage lives in:
 - `src/utils/language-learning-popup.test.ts`
 - `src/utils/transcript-language-learning.test.ts`
 - `src/utils/reader-transcript.test.ts`
+- `src/utils/bilibili-transcript.test.ts`
+- `src/utils/bilibili-page-fetch.test.ts`
+- `src/utils/bilibili-player-page.test.ts`
+- `src/utils/bilibili-reader.test.ts`
 - `src/utils/transcript-study.test.ts`
 - `src/utils/transcript-layout.test.ts`
 - `src/utils/llm-client.test.ts`

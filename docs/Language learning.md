@@ -2,9 +2,9 @@
 permalink: web-clipper/language-learning
 aliases:
   - Language learning with Web Clipper
-description: Use AI to revise clipped text, translate YouTube transcripts, and explain words or sentences.
+description: Use AI to revise clipped text, translate YouTube and Bilibili transcripts, and explain words or sentences.
 ---
-The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clipper]] use your configured [[Interpret web pages|Interpreter]] model to revise clipped content, display bilingual YouTube transcripts, and explain selected language in context.
+The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clipper]] use your configured [[Interpret web pages|Interpreter]] model to revise clipped content, display bilingual YouTube and Bilibili transcripts, and explain selected language in context.
 
 > [!warning] Model usage and privacy
 > Each AI action sends the relevant clipped text or transcript context to the model provider you configured. The provider may charge for the request. Web Clipper does not run these actions automatically.
@@ -43,9 +43,9 @@ The AI editing controls appear in the extension popup and side panel when Interp
 
 The preview stores a snapshot of the clipping. If the clipping changes before you select **Apply**, Web Clipper rejects the stale preview and asks you to generate it again.
 
-## Read YouTube transcripts bilingually
+## Read YouTube and Bilibili transcripts bilingually
 
-Open Reader on a YouTube page that has an available transcript, then select **Bilingual subtitles** in the transcript controls.
+Open Reader on a YouTube page that has an available transcript or open the in-page Reader on a public Bilibili video with an available timed subtitle track in Chromium or Firefox, then select **Bilingual subtitles** in the transcript controls. For Bilibili, Web Clipper prefers an available Chinese track, including Bilibili-generated AI subtitles, and otherwise uses another unlocked track. Loading a Bilibili subtitle is separate from Interpreter and does not create a model request.
 
 Use the transcript layout switcher to choose **Reading**, **Study tools**, or **Split view**. Reading keeps the video above a centered transcript; select **Compact player** to hide the media without recreating it or losing the playback position. Study tools moves the learning controls into a left study rail, and Split view keeps the player beside the transcript on wider screens. Web Clipper remembers the selected layout, compact-player state, and whether bilingual subtitles or Japanese readings were visible. On reload, it restores only a complete result already saved in the local session checkpoint. If no saved result exists, it leaves the action available and does not start an AI request. Changing layouts only rearranges the existing player, controls, transcript, and explanation state; it does not start an AI request. On narrower screens, Study tools and Split view fall back to a single-column layout.
 
@@ -61,7 +61,7 @@ Open **Study** for local playback tools that do not use AI: repeat the active se
 
 Select **Edit translations** to correct a generated line in place. Corrections are saved to the same session checkpoint and do not make a model request.
 
-For Japanese transcripts, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. Select or press Enter on an individual ruby annotation to hide it for recall practice, then activate it again to reveal the answer. The control is hidden when the transcript does not appear to contain Japanese kanji.
+For Japanese transcripts from either source, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. Select or press Enter on an individual ruby annotation to hide it for recall practice, then activate it again to reveal the answer. The control is hidden when the transcript does not appear to contain Japanese kanji.
 
 Long transcripts are processed in sequential batches, with smaller batches in local CLI modes so progress updates more often and individual requests are less likely to time out. Progress counts completed subtitle segments rather than model batches. If a later batch fails or is cancelled, completed segments remain checkpointed; selecting **Continue remaining** or **Japanese readings** again sends only missing segments. After a CLI timeout, the next explicit retry also uses a smaller batch size. Web Clipper never starts a paid retry automatically.
 
@@ -72,7 +72,7 @@ After readings load—even for **Current segment** or **Next 5 minutes**—selec
 
 ## Explain a word
 
-Double-click a word in a YouTube transcript. Web Clipper opens an explanation card containing:
+Double-click a word in a supported Reader transcript. Web Clipper opens an explanation card containing:
 
 - The lemma and pronunciation.
 - The meaning in the current transcript context.
@@ -118,9 +118,9 @@ Confirm that Interpreter is enabled. In API mode, at least one Interpreter model
 
 For CLI mode, open **Settings** → **Interpreter** and select **Check connection**. A protocol mismatch means the extension was rebuilt without reinstalling the Host. A configuration error means the selected executable was not detected at install time or no longer exists.
 
-### YouTube language controls are missing
+### Transcript language controls are missing
 
-The controls are available only when Reader detects both a supported YouTube player and a transcript. Some videos do not provide a transcript.
+The controls are available only when Reader detects a supported YouTube or Bilibili player and a timed transcript. Bilibili transcript loading currently requires Chromium or Firefox. Some videos do not provide a transcript. On Bilibili, subtitle availability is determined by the player and can change.
 
 ### A translation is incomplete or stops partway
 
@@ -137,6 +137,7 @@ Check the provider URL, API key, enabled model, quota, local-model server, or Na
 ## Current limitations
 
 - Transcript checkpoints are session-scoped rather than permanent study history. Saved vocabulary is persistent local extension data.
+- Bilibili integration requires Chromium or Firefox, a public video with a Bilibili-provided timed subtitle track, and the in-page Reader; the standalone `reader.html` view does not have the live player session needed to load Bilibili subtitles.
 - AI output quality and language accuracy depend on the selected model.
 - Japanese names and context-dependent kanji readings may need manual correction.
 - The Learning Center does not implement spaced repetition or flashcard scheduling.

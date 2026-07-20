@@ -103,6 +103,46 @@ describe('Transcript layout integration', () => {
 		expect(onSettingChange).toHaveBeenLastCalledWith('transcriptLayout', 'reading');
 	});
 
+	test('wires a Bilibili native player without starting a language-model request', () => {
+		vi.stubGlobal('CSS', {});
+		document.body.innerHTML = `
+			<article>
+				<div class="reader-video-wrapper"><video class="reader-video-player"></video></div>
+				<div class="bilibili transcript" data-transcript-platform="bilibili">
+					<div class="transcript-segment">
+						<strong><span class="timestamp" data-timestamp="0">0:00</span></strong>
+						第一句。
+					</div>
+				</div>
+			</article>
+		`;
+		const article = document.querySelector('article') as HTMLElement;
+		const translateTranscript = vi.fn();
+		const annotateJapaneseTranscript = vi.fn();
+		const explainSelection = vi.fn();
+
+		wireTranscript(document, article, {
+			pinPlayer: true,
+			autoScroll: true,
+			highlightActiveLine: true,
+			transcriptLayout: 'reading'
+		}, {
+			getStickyOffset: () => 0,
+			scrollTo: vi.fn(),
+			programmaticScroll: () => false
+		}, undefined, {
+			translateTranscript,
+			annotateJapaneseTranscript,
+			explainSelection
+		});
+
+		expect(article.querySelector('.transcript-study-layout')).toBeTruthy();
+		expect(article.querySelector('.bilibili.transcript .transcript-segment-text')?.textContent).toContain('第一句。');
+		expect(translateTranscript).not.toHaveBeenCalled();
+		expect(annotateJapaneseTranscript).not.toHaveBeenCalled();
+		expect(explainSelection).not.toHaveBeenCalled();
+	});
+
 	test('keeps one primary control row and collapses secondary controls by default', () => {
 		vi.stubGlobal('CSS', {});
 		vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));

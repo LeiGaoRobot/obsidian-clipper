@@ -24,6 +24,7 @@ const CJK_CHAR = /[\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\u
 const transcriptLayoutResizeObservers = new WeakMap<Document, ResizeObserver>();
 const transcriptStudyControllers = new WeakMap<Document, TranscriptStudyController>();
 const transcriptEventControllers = new WeakMap<Document, AbortController>();
+const supportedTranscriptSelector = '.youtube.transcript, .bilibili.transcript';
 
 function removePreviousTranscriptLayout(article: HTMLElement): void {
 	const root = article.querySelector<HTMLElement>('.transcript-study-layout');
@@ -35,7 +36,7 @@ function removePreviousTranscriptLayout(article: HTMLElement): void {
 		'.reader-video-wrapper, iframe[src*="youtube.com/embed/"], a[href*="youtube.com/watch"]'
 	));
 	const transcript = Array.from(root.children)
-		.find(child => child.matches('.youtube.transcript')) as HTMLElement | undefined;
+		.find(child => child.matches(supportedTranscriptSelector)) as HTMLElement | undefined;
 	if (playerElement) parent.insertBefore(playerElement, root);
 	if (transcript) {
 		transcript.querySelectorAll('.player-current-pos, .transcript-scrub-track')
@@ -143,7 +144,7 @@ export function wireTranscript(
 	transcriptLayoutResizeObservers.get(doc)?.disconnect();
 	transcriptLayoutResizeObservers.delete(doc);
 	removePreviousTranscriptLayout(article);
-	const transcript = article.querySelector('.youtube.transcript') as HTMLElement | null;
+	const transcript = article.querySelector(supportedTranscriptSelector) as HTMLElement | null;
 	if (!transcript) return;
 
 	const iframe = article.querySelector('iframe[src*="youtube.com/embed/"]') as HTMLIFrameElement | null;

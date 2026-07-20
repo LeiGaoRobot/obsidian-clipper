@@ -29,6 +29,8 @@ import { updateSidebarWidth, addResizeHandle, cleanupResizeHandlers } from './if
 import { setElementHTML, setSVGChildren, serializeChildren } from './dom-utils';
 import { cloneBodyIfSafe } from './reader-dom-cleanup';
 import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from './language-learning-defaults';
+import { createBilibiliTranscriptElement } from './bilibili-reader';
+import type { BilibiliTranscript } from './bilibili-transcript';
 
 // Mobile viewport settings
 const VIEWPORT = 'width=device-width, initial-scale=1, maximum-scale=1';
@@ -44,6 +46,11 @@ interface ReaderContent {
 	wordCount?: number;
 	parseTime?: number;
 	extractorType?: string;
+}
+
+interface BilibiliTranscriptResponse {
+	success?: boolean;
+	transcript?: BilibiliTranscript;
 }
 
 export class Reader {
@@ -186,7 +193,7 @@ export class Reader {
 	}
 
 	private static async wireTranscript(doc: Document, article: HTMLElement): Promise<void> {
-		if (!article.querySelector('.youtube.transcript')) return;
+		if (!article.querySelector('.youtube.transcript, .bilibili.transcript')) return;
 		const [transcriptModule, languageLearningModule] = await Promise.all([
 			import(/* webpackChunkName: 'reader-language-learning' */ './reader-transcript'),
 			import(/* webpackChunkName: 'reader-language-learning' */ './language-learning-runtime')
@@ -199,6 +206,25 @@ export class Reader {
 			(this.settings as any)[key] = value;
 			this.saveSettings();
 		}, languageLearningModule.configuredLanguageLearning);
+	}
+
+	private static attachBilibiliVideo(
+		doc: Document,
+		article: HTMLElement,
+		video: HTMLVideoElement,
+		videoTimestamp: number,
+		videoWasPlaying: boolean
+	): HTMLElement {
+		video.className = 'reader-video-player';
+		video.removeAttribute('style');
+		video.setAttribute('controls', '');
+		const videoWrapper = doc.createElement('div');
+		videoWrapper.className = 'reader-video-wrapper';
+		videoWrapper.appendChild(video);
+		article.prepend(videoWrapper);
+		video.currentTime = videoTimestamp;
+		if (videoWasPlaying) void video.play().catch(() => {});
+		return videoWrapper;
 	}
 
 	private static injectSettingsBar(doc: Document) {
@@ -2030,13 +2056,21 @@ export class Reader {
 			// Load saved settings
 			await this.loadSettings();
 
-			// Capture YouTube video state before cleanup destroys the player
+			// Capture video state before cleanup destroys the player.
 			let videoTimestamp = 0;
 			let videoWasPlaying = false;
 			let youtubeVideoElement: HTMLVideoElement | null = null;
+			let bilibiliVideoElement: HTMLVideoElement | null = null;
+			let bilibiliTranscriptPromise: Promise<BilibiliTranscriptResponse | null> = Promise.resolve(null);
+			let bilibiliTranscriptResponse: BilibiliTranscriptResponse | null = null;
 			const host = doc.URL ? new URL(doc.URL).hostname : '';
 			const isYouTube = host.includes('youtube.com') || host.includes('youtu.be');
 			const browserType = await detectBrowser();
+			const supportsBilibiliTranscript = ['chrome', 'brave', 'edge', 'firefox', 'firefox-mobile'].includes(browserType);
+			const bilibiliBvid = supportsBilibiliTranscript
+				&& (host === 'bilibili.com' || host.endsWith('.bilibili.com'))
+				? new URL(doc.URL).pathname.match(/\/video\/(BV[0-9A-Za-z]+)/i)?.[1] ?? null
+				: null;
 			// Safari/Firefox block canvas font metrics, so the font-availability
 			// probe must fall back to the Font Loading API on those browsers.
 			this.fontProbeBlocked = ['safari', 'mobile-safari', 'ipad-os', 'orion', 'firefox', 'firefox-mobile'].includes(browserType);
@@ -2052,6 +2086,15 @@ export class Reader {
 						youtubeVideoElement = videoElement;
 						videoElement.remove();
 					}
+				}
+			} else if (bilibiliBvid) {
+				const videoElement = doc.querySelector('video');
+				if (videoElement) {
+					bilibiliVideoElement = videoElement;
+					bilibiliTranscriptPromise = browser.runtime.sendMessage({
+						action: 'bilibiliTranscriptRequest',
+						bvid: bilibiliBvid
+					}).catch(() => null) as Promise<BilibiliTranscriptResponse | null>;
 				}
 			}
 
@@ -2085,6 +2128,13 @@ export class Reader {
 						resolve();
 					}
 				});
+			}
+
+			if (bilibiliVideoElement) {
+				bilibiliTranscriptResponse = await bilibiliTranscriptPromise;
+				videoTimestamp = Math.floor(bilibiliVideoElement.currentTime);
+				videoWasPlaying = !bilibiliVideoElement.paused;
+				bilibiliVideoElement.remove();
 			}
 
 			// Remove page scripts and their effects
@@ -2375,6 +2425,19 @@ export class Reader {
 				}
 			}
 
+			if (bilibiliBvid && bilibiliVideoElement) {
+				const videoWrapper = this.attachBilibiliVideo(
+					doc,
+					article,
+					bilibiliVideoElement,
+					videoTimestamp,
+					videoWasPlaying
+				);
+				if (bilibiliTranscriptResponse?.success && bilibiliTranscriptResponse.transcript) {
+					videoWrapper.after(createBilibiliTranscriptElement(doc, bilibiliTranscriptResponse.transcript));
+				}
+			}
+
 			// Store original article HTML before wireTranscript modifies
 			// the DOM (moves timestamps, wraps text, adds scrub track).
 			this.storeOriginalHtml(article);
@@ -2456,7 +2519,7 @@ export class Reader {
 			const commonElement = commonNode.nodeType === Node.ELEMENT_NODE
 				? commonNode as Element
 				: commonNode.parentElement;
-			if (commonElement?.closest('.youtube.transcript')) return hide();
+			if (commonElement?.closest('.youtube.transcript, .bilibili.transcript')) return hide();
 			const article = doc.querySelector('.obsidian-reader-content article');
 			if (!article || !article.contains(range.commonAncestorContainer)) return hide();
 			const rects = range.getClientRects();

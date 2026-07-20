@@ -16,9 +16,13 @@ import {
 	sendNativeCliRequest
 } from './utils/native-cli-service';
 import { TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX } from './utils/transcript-checkpoint-storage';
+import { fetchBilibiliTranscript } from './utils/bilibili-transcript';
+import { fetchBilibiliPageJson } from './utils/bilibili-page-fetch';
+import { fetchCurrentBilibiliPlayerJson } from './utils/bilibili-player-page';
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
 const YOUTUBE_INNERTUBE_RULE_ID = 9002;
+const BILIBILI_TRANSCRIPT_REQUEST_TIMEOUT_MS = 3_000;
 const activeLanguageLearningRequests = new Map<string, AbortController>();
 
 type TranscriptCheckpointStorageRequest = {
@@ -34,6 +38,95 @@ function validTranscriptCheckpointKeys(keys: unknown, allowNull = false): keys i
 	return values.length > 0 && values.every(key => (
 		typeof key === 'string' && key.startsWith(TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX)
 	));
+}
+
+function getBilibiliVideoBvid(value: string | undefined): string | null {
+	if (!value) return null;
+	try {
+		const url = new URL(value);
+		if (url.hostname !== 'bilibili.com' && !url.hostname.endsWith('.bilibili.com')) return null;
+		return url.pathname.match(/^\/video\/(BV[0-9A-Za-z]+)/i)?.[1] ?? null;
+	} catch {
+		return null;
+	}
+}
+
+async function waitForBilibiliPageResult<T>(operation: Promise<T>, deadline: number): Promise<T | null> {
+	const timeoutMs = deadline - Date.now();
+	if (timeoutMs <= 0) return null;
+	let timeout: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			operation,
+			new Promise<null>(resolve => {
+				timeout = setTimeout(() => resolve(null), timeoutMs);
+			})
+		]);
+	} finally {
+		if (timeout) clearTimeout(timeout);
+	}
+}
+
+async function fetchBilibiliJsonFromPage(
+	tabId: number,
+	url: string,
+	deadline: number
+): Promise<{ ok: boolean; json: () => Promise<unknown> }> {
+	if (deadline <= Date.now()) return { ok: false, json: async () => null };
+	const results = await waitForBilibiliPageResult(browser.scripting.executeScript({
+		target: { tabId },
+		world: 'MAIN' as any,
+		func: fetchBilibiliPageJson,
+		args: [url, deadline]
+	}), deadline);
+	const [result] = results ?? [];
+	const value = result?.result;
+	if (!value || typeof value !== 'object') {
+		return { ok: false, json: async () => null };
+	}
+	const response = value as { ok?: unknown; text?: unknown };
+	return {
+		ok: response.ok === true,
+		json: async () => {
+			if (typeof response.text !== 'string') return null;
+			try {
+				return JSON.parse(response.text);
+			} catch {
+				return null;
+			}
+		}
+	};
+}
+
+async function fetchBilibiliPlayerJsonFromPage(
+	tabId: number,
+	bvid: string,
+	deadline: number
+): Promise<unknown | null> {
+	if (deadline <= Date.now()) return null;
+	const results = await waitForBilibiliPageResult(browser.scripting.executeScript({
+		target: { tabId },
+		world: 'MAIN' as any,
+		func: fetchCurrentBilibiliPlayerJson,
+		args: [bvid, deadline]
+	}), deadline);
+	const [result] = results ?? [];
+	const value = result?.result as { ok?: unknown; text?: unknown } | undefined;
+	if (value?.ok !== true || typeof value.text !== 'string') return null;
+	try {
+		return JSON.parse(value.text);
+	} catch {
+		return null;
+	}
+}
+
+async function fetchBilibiliTranscriptForTab(tabId: number, bvid: string) {
+	const deadline = Date.now() + BILIBILI_TRANSCRIPT_REQUEST_TIMEOUT_MS;
+	const playerResponse = await fetchBilibiliPlayerJsonFromPage(tabId, bvid, deadline);
+	if (playerResponse === null || deadline <= Date.now()) return null;
+	return fetchBilibiliTranscript(bvid, playerResponse, {
+		fetcher: url => fetchBilibiliJsonFromPage(tabId, url, deadline)
+	});
 }
 
 // Chrome: declarativeNetRequest to rewrite Referer on YouTube embeds.
@@ -356,6 +449,22 @@ browser.runtime.onMessage.addListener((request: unknown) => {
 			}
 			return { ok: false, status: 0, text: '', error: 'CORS_PERMISSION_NEEDED' };
 		});
+});
+
+browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime.MessageSender) => {
+	if (typeof request !== 'object' || request === null) return;
+	const message = request as { action?: string; bvid?: unknown };
+	const bvid = message.bvid;
+	const tabId = sender.tab?.id;
+	const pageBvid = getBilibiliVideoBvid(sender.tab?.url);
+	if (message.action !== 'bilibiliTranscriptRequest'
+		|| typeof bvid !== 'string'
+		|| typeof tabId !== 'number'
+		|| !pageBvid
+		|| pageBvid.toLowerCase() !== bvid.toLowerCase()) return;
+	return fetchBilibiliTranscriptForTab(tabId, bvid)
+		.then(transcript => ({ success: transcript !== null, transcript: transcript ?? undefined }))
+		.catch(() => ({ success: false }));
 });
 
 browser.runtime.onMessage.addListener((request: unknown) => {
