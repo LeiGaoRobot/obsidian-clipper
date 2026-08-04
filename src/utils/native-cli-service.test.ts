@@ -15,7 +15,11 @@ vi.mock('./browser-polyfill', () => ({
 }));
 
 import { RequestCancelledError } from './request-cancellation';
-import { checkNativeCliHealth, sendNativeCliRequest } from './native-cli-service';
+import {
+	checkNativeCliHealth,
+	executeNativeCliForPrompts,
+	sendNativeCliRequest
+} from './native-cli-service';
 import { buildNativeCliRequest, NATIVE_CLI_PROTOCOL_VERSION } from './native-cli-contract';
 
 function createPort() {
@@ -76,6 +80,72 @@ describe('Native CLI service', () => {
 				type: 'cancelCli',
 				protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
 				requestId: 'request-1'
+			}
+		]);
+	});
+
+	test('forwards a canonical Codex model on the Native Messaging request', async () => {
+		const port = createPort();
+		mocks.connectNative.mockReturnValue(port);
+		const response = executeNativeCliForPrompts(
+			'codex',
+			'Context',
+			[{ key: 'prompt_1', prompt: 'Summarize' }],
+			{ model: '  gpt-5.6-sol  ' }
+		);
+		const request = port.posted[0] as { requestId: string; mode: string; model?: string };
+
+		expect(request).toMatchObject({ mode: 'codex', model: 'gpt-5.6-sol' });
+		port.emitMessage({
+			requestId: request.requestId,
+			ok: true,
+			stdout: '{"prompt_1":"Done"}'
+		});
+		await expect(response).resolves.toEqual({ prompt_1: 'Done' });
+	});
+
+	test('does not put a model property on Grok Native Messaging requests', async () => {
+		const port = createPort();
+		mocks.connectNative.mockReturnValue(port);
+		const response = executeNativeCliForPrompts(
+			'grok',
+			'Context',
+			[{ key: 'prompt_1', prompt: 'Summarize' }]
+		);
+		const grokRequest = port.posted[0] as { requestId: string };
+
+		expect((Object as ObjectConstructor & {
+			hasOwn(object: object, property: PropertyKey): boolean;
+		}).hasOwn(grokRequest, 'model')).toBe(false);
+		port.emitMessage({
+			requestId: grokRequest.requestId,
+			ok: true,
+			stdout: '{"prompt_1":"Done"}'
+		});
+		await expect(response).resolves.toEqual({ prompt_1: 'Done' });
+	});
+
+	test('forwards cancellation from prompt execution over the same Native Messaging port', async () => {
+		const port = createPort();
+		mocks.connectNative.mockReturnValue(port);
+		const controller = new AbortController();
+		const response = executeNativeCliForPrompts(
+			'codex',
+			'Context',
+			[{ key: 'prompt_1', prompt: 'Summarize' }],
+			{ signal: controller.signal }
+		);
+		const request = port.posted[0] as { requestId: string };
+
+		controller.abort();
+
+		await expect(response).rejects.toBeInstanceOf(RequestCancelledError);
+		expect(port.posted).toEqual([
+			request,
+			{
+				type: 'cancelCli',
+				protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+				requestId: request.requestId
 			}
 		]);
 	});
