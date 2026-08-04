@@ -13,7 +13,7 @@ The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clippe
 
 1. Open Web Clipper **Settings**.
 2. In **Interpreter**, open the language-learning setup assistant. Enable Interpreter and either configure at least one enabled provider and model, or choose a local **Grok CLI**/**Codex CLI** execution mode. In Codex CLI mode, the optional **Codex model** override applies to every Interpreter and language-learning action; leave it empty to use the CLI default. An unavailable override is shown as a retryable CLI failure, with no fallback to another model. For Native Messaging setup, see [[Interpret web pages#Local Grok and Codex CLI modes|Local Grok and Codex CLI modes]].
-3. Run the readiness check. For a local CLI, it verifies the Native Messaging Host and selected executable without sending page content. A successful check shows that language learning is ready.
+3. Run the readiness check. For a local CLI, it verifies the Native Messaging Host and selected executable without sending page content. A successful check confirms that connectivity, but does not validate the selected Codex model override; the model is validated only when you run an explicit action.
 4. In **Reader** → **Transcripts**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`. You can also set the default compact-player, bilingual-subtitle, and Japanese-reading visibility, and choose the Obsidian vault and folder used for learning notes.
 
 If the response-language field is empty, Web Clipper uses your browser language. The setting controls transcript translations, word and sentence explanations, and presets that use a response language.
@@ -108,7 +108,7 @@ The following actions can create model-provider usage:
 
 Applying, cancelling, undoing, hiding, or showing an existing result does not make another model request.
 
-Cancelling a Reader request stops the extension from waiting for or applying that result. In API mode it aborts the provider fetch. In local CLI mode, protocol version 2 sends cancellation over the same Native Messaging port; the Host terminates the selected CLI process and force-kills it if it does not exit promptly.
+Cancelling a Reader request stops the extension from waiting for or applying that result. In API mode it aborts the provider fetch. In local CLI mode, protocol version 3 sends cancellation over the same Native Messaging port; the Host terminates the selected CLI process and force-kills it if it does not exit promptly.
 
 ## Troubleshoot language learning
 
