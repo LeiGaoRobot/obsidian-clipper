@@ -53,6 +53,14 @@ export interface Rating {
 export type SaveBehavior = 'addToObsidian' | 'saveFile' | 'copyToClipboard';
 
 export type InterpreterExecutionMode = 'api' | 'grok' | 'codex';
+export type CodexReasoningEffort =
+	| 'minimal'
+	| 'low'
+	| 'medium'
+	| 'high'
+	| 'xhigh'
+	| 'max'
+	| 'ultra';
 export type TranscriptLayoutMode = 'reading' | 'notebook' | 'focus';
 
 export interface ReaderSettings {
@@ -97,6 +105,7 @@ export interface Settings {
 	interpreterAutoRun: boolean;
 	interpreterExecutionMode?: InterpreterExecutionMode;
 	interpreterCodexModel?: string;
+	interpreterCodexReasoningEffort?: CodexReasoningEffort;
 	defaultPromptContext: string;
 	propertyTypes: PropertyType[];
 	readerSettings: ReaderSettings;
