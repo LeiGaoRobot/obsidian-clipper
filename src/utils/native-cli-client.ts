@@ -1,5 +1,5 @@
 import browser from './browser-polyfill';
-import type { PromptVariable } from '../types/types';
+import type { CodexReasoningEffort, PromptVariable } from '../types/types';
 import { getMessage } from './i18n';
 import { buildNativeCliRequest, type NativeCliErrorCode } from './native-cli-contract';
 import { parsePromptResponses } from './cli-execution-contract';
@@ -14,6 +14,7 @@ interface NativeCliBackgroundResponse {
 
 export interface NativeCliClientOptions {
 	model?: string;
+	effort?: CodexReasoningEffort;
 }
 
 export async function executeNativeCli(
@@ -24,7 +25,10 @@ export async function executeNativeCli(
 ): Promise<Record<string, unknown>> {
 	const response = await browser.runtime.sendMessage({
 		action: 'nativeCliRequest',
-		request: buildNativeCliRequest(mode, context, promptVariables, { model: options.model })
+		request: buildNativeCliRequest(mode, context, promptVariables, {
+			model: options.model,
+			effort: options.effort
+		})
 	}) as NativeCliBackgroundResponse;
 
 	if (!response?.success) {

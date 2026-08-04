@@ -18,19 +18,20 @@ describe('Native CLI client', () => {
 		});
 	});
 
-	test('sends a request-scoped Codex model to the background', async () => {
+	test('sends request-scoped Codex model and effort to the background', async () => {
 		await executeNativeCli(
 			'codex',
 			'Context',
 			[{ key: 'prompt_1', prompt: 'Summarize', filters: '' }],
-			{ model: 'gpt-5.6-sol' }
+			{ model: 'gpt-5.6-sol', effort: 'max' }
 		);
 
 		expect(mocks.sendMessage).toHaveBeenCalledWith({
 			action: 'nativeCliRequest',
 			request: expect.objectContaining({
 				mode: 'codex',
-				model: 'gpt-5.6-sol'
+				model: 'gpt-5.6-sol',
+				effort: 'max'
 			})
 		});
 	});

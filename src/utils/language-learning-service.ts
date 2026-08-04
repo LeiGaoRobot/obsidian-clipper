@@ -27,6 +27,9 @@ export async function runLanguageLearningRequest(
 				...(executionMode === 'codex' && settings.interpreterCodexModel
 					? { model: settings.interpreterCodexModel }
 					: {}),
+				...(executionMode === 'codex' && settings.interpreterCodexReasoningEffort
+					? { effort: settings.interpreterCodexReasoningEffort }
+					: {}),
 				signal
 			}
 		);

@@ -1,5 +1,5 @@
 import browser from './browser-polyfill';
-import type { PromptVariable } from '../types/types';
+import type { CodexReasoningEffort, PromptVariable } from '../types/types';
 import {
 	NATIVE_CLI_HOST_NAME,
 	NATIVE_CLI_PROTOCOL_VERSION,
@@ -232,6 +232,7 @@ export async function checkNativeCliHealth(mode: 'grok' | 'codex'): Promise<Nati
 
 export interface NativeCliExecutionOptions {
 	model?: string;
+	effort?: CodexReasoningEffort;
 	signal?: AbortSignal;
 }
 
@@ -242,7 +243,10 @@ export async function executeNativeCliForPrompts(
 	options: NativeCliExecutionOptions = {}
 ): Promise<Record<string, unknown>> {
 	const response = await sendNativeCliRequest(
-		buildNativeCliRequest(mode, context, promptVariables, { model: options.model }),
+		buildNativeCliRequest(mode, context, promptVariables, {
+			model: options.model,
+			effort: options.effort
+		}),
 		options.signal
 	);
 	return parsePromptResponses(response.stdout || '', promptVariables);
