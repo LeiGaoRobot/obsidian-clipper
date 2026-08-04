@@ -55,4 +55,33 @@ describe('Reader preference storage', () => {
 			})
 		}));
 	});
+
+	test('loads a trimmed Codex model and saves it in Interpreter settings', async () => {
+		mocks.state.interpreter_settings = {
+			interpreterExecutionMode: 'codex',
+			interpreterCodexModel: '  gpt-5.6-terra  '
+		};
+
+		const settings = await loadSettings();
+		expect(settings.interpreterCodexModel).toBe('gpt-5.6-terra');
+
+		await saveSettings(settings);
+		expect(mocks.set).toHaveBeenLastCalledWith(expect.objectContaining({
+			interpreter_settings: expect.objectContaining({
+				interpreterCodexModel: 'gpt-5.6-terra'
+			})
+		}));
+	});
+
+	test('omits a blank or oversized Codex model from saved settings', async () => {
+		await loadSettings();
+		await saveSettings({ interpreterCodexModel: '   ' });
+
+		const savedBlank = mocks.set.mock.calls[mocks.set.mock.calls.length - 1]?.[0].interpreter_settings;
+		expect(savedBlank).not.toHaveProperty('interpreterCodexModel');
+
+		await saveSettings({ interpreterCodexModel: 'x'.repeat(201) });
+		const savedOversized = mocks.set.mock.calls[mocks.set.mock.calls.length - 1]?.[0].interpreter_settings;
+		expect(savedOversized).not.toHaveProperty('interpreterCodexModel');
+	});
 });

@@ -96,6 +96,7 @@ export interface Settings {
 	interpreterEnabled: boolean;
 	interpreterAutoRun: boolean;
 	interpreterExecutionMode?: InterpreterExecutionMode;
+	interpreterCodexModel?: string;
 	defaultPromptContext: string;
 	propertyTypes: PropertyType[];
 	readerSettings: ReaderSettings;

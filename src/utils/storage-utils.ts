@@ -2,6 +2,7 @@ import browser from './browser-polyfill';
 import { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating, InterpreterExecutionMode, TranscriptLayoutMode } from '../types/types';
 import { debugLog } from './debug';
 import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from './language-learning-defaults';
+import { normalizeCodexModel } from './codex-model';
 
 export type { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating };
 
@@ -112,6 +113,7 @@ interface StorageData {
 		interpreterEnabled?: boolean;
 		interpreterAutoRun?: boolean;
 		interpreterExecutionMode?: InterpreterExecutionMode;
+		interpreterCodexModel?: string;
 		defaultPromptContext?: string;
 	};
 	property_types?: PropertyType[];
@@ -222,6 +224,7 @@ export async function loadSettings(): Promise<Settings> {
 		interpreterExecutionMode: storedExecutionMode === 'grok' || storedExecutionMode === 'codex'
 			? storedExecutionMode
 			: defaultSettings.interpreterExecutionMode,
+		interpreterCodexModel: normalizeCodexModel(data.interpreter_settings?.interpreterCodexModel),
 		defaultPromptContext: data.interpreter_settings?.defaultPromptContext || defaultSettings.defaultPromptContext,
 		propertyTypes: data.property_types || defaultSettings.propertyTypes,
 		readerSettings: {
@@ -265,6 +268,7 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 	if (settings) {
 		generalSettings = { ...generalSettings, ...settings };
 	}
+	generalSettings.interpreterCodexModel = normalizeCodexModel(generalSettings.interpreterCodexModel);
 
 	await browser.storage.sync.set({
 		vaults: generalSettings.vaults,
@@ -288,6 +292,9 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 			interpreterEnabled: generalSettings.interpreterEnabled,
 			interpreterAutoRun: generalSettings.interpreterAutoRun,
 			interpreterExecutionMode: generalSettings.interpreterExecutionMode ?? 'api',
+			...(generalSettings.interpreterCodexModel
+				? { interpreterCodexModel: generalSettings.interpreterCodexModel }
+				: {}),
 			defaultPromptContext: generalSettings.defaultPromptContext
 		},
 		property_types: generalSettings.propertyTypes,
