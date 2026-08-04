@@ -614,6 +614,20 @@
 											</select>
 										</div>
 									</div>
+									<div class="setting-item mod-horizontal" id="interpreter-codex-model-item" hidden>
+										<div class="setting-item-info">
+											<label for="interpreter-codex-model" data-i18n="interpreterCodexModel">Codex model</label>
+											<div class="setting-item-description" data-i18n="interpreterCodexModelDescription">Override the model for every Codex CLI action. Leave empty to use the Codex CLI default.</div>
+										</div>
+										<div class="setting-item-control">
+											<input type="text" id="interpreter-codex-model" list="interpreter-codex-model-options" maxlength="200" autocomplete="off" data-i18n="interpreterCodexModelPlaceholder" />
+											<datalist id="interpreter-codex-model-options">
+												<option value="gpt-5.6-sol"></option>
+												<option value="gpt-5.6-terra"></option>
+												<option value="gpt-5.6-luna"></option>
+											</datalist>
+										</div>
+									</div>
 									<div class="setting-item mod-horizontal" id="native-cli-health-item" hidden>
 										<div class="setting-item-info">
 											<label for="native-cli-health-button" data-i18n="nativeCliHealth">Local CLI connection</label>

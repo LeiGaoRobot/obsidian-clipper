@@ -494,6 +494,15 @@
 	"interpreter": {
 		"message": "Interpreter"
 	},
+	"interpreterCodexModel": {
+		"message": "Codex model"
+	},
+	"interpreterCodexModelDescription": {
+		"message": "Override the model for every Codex CLI action. Leave empty to use the Codex CLI default."
+	},
+	"interpreterCodexModelPlaceholder": {
+		"message": "Use Codex CLI default"
+	},
 	"interpreterExecutionMode": {
 		"message": "Execution mode"
 	},

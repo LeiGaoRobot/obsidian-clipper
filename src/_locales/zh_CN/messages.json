@@ -494,6 +494,15 @@
 	"interpreter": {
 		"message": "解释器"
 	},
+	"interpreterCodexModel": {
+		"message": "Codex 模型"
+	},
+	"interpreterCodexModelDescription": {
+		"message": "覆盖所有 Codex CLI 操作使用的模型。留空则使用 Codex CLI 默认模型。"
+	},
+	"interpreterCodexModelPlaceholder": {
+		"message": "使用 Codex CLI 默认模型"
+	},
 	"interpreterExecutionMode": {
 		"message": "执行模式"
 	},

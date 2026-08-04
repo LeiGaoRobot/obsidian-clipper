@@ -7,6 +7,7 @@ import { getMessage, translatePage } from '../utils/i18n';
 import { debugLog } from '../utils/debug';
 import { NativeCliHealthError, requestNativeCliHealth } from '../utils/native-cli-health';
 import { wireLanguageLearningReadiness } from '../utils/language-learning-readiness';
+import { normalizeCodexModel } from '../utils/codex-model';
 
 export interface PresetProvider {
 	id: string;
@@ -202,6 +203,10 @@ export async function initializeInterpreterSettings(): Promise<void> {
 			console.warn('Invalid providers data, resetting to empty array');
 			generalSettings.providers = [];
 		}
+		const codexModelInput = document.getElementById('interpreter-codex-model') as HTMLInputElement | null;
+		if (codexModelInput) {
+			codexModelInput.value = generalSettings.interpreterCodexModel ?? '';
+		}
 
 		cachedPresetProviders = await getPresetProviders();
 		debugLog('Interpreter', 'Fetched preset providers:', cachedPresetProviders);
@@ -233,8 +238,10 @@ export async function initializeInterpreterSettings(): Promise<void> {
 			executionModeSelect.value = generalSettings.interpreterExecutionMode ?? 'api';
 			executionModeSelect.addEventListener('change', () => {
 				saveInterpreterSettingsFromForm();
+				updateCodexModelVisibility();
 				updateNativeCliHealthVisibility();
 			});
+			updateCodexModelVisibility();
 		}
 		initializeNativeCliHealth();
 		const readiness = wireLanguageLearningReadiness({
@@ -275,6 +282,13 @@ function updateNativeCliHealthVisibility(): void {
 	if (!executionModeSelect || !healthItem) return;
 	healthItem.hidden = executionModeSelect.value === 'api';
 	if (healthStatus) healthStatus.textContent = '';
+}
+
+export function updateCodexModelVisibility(doc: Document = document): void {
+	const executionModeSelect = doc.getElementById('interpreter-execution-mode') as HTMLSelectElement | null;
+	const codexModelItem = doc.getElementById('interpreter-codex-model-item');
+	if (!executionModeSelect || !codexModelItem) return;
+	codexModelItem.hidden = executionModeSelect.value !== 'codex';
 }
 
 function initializeNativeCliHealth(): void {
@@ -1155,6 +1169,7 @@ function saveInterpreterSettingsFromForm(): void {
 	const interpreterAutoRunToggle = document.getElementById('interpreter-auto-run-toggle') as HTMLInputElement;
 	const executionModeSelect = document.getElementById('interpreter-execution-mode') as HTMLSelectElement;
 	const defaultPromptContextInput = document.getElementById('default-prompt-context') as HTMLTextAreaElement;
+	const codexModelInput = document.getElementById('interpreter-codex-model') as HTMLInputElement | null;
 
 	const updatedSettings: Partial<typeof generalSettings> = {}; 
 	if (interpreterToggle) {
@@ -1168,6 +1183,9 @@ function saveInterpreterSettingsFromForm(): void {
 	}
 	if (defaultPromptContextInput) {
 		updatedSettings.defaultPromptContext = defaultPromptContextInput.value;
+	}
+	if (codexModelInput) {
+		updatedSettings.interpreterCodexModel = normalizeCodexModel(codexModelInput.value);
 	}
 
 	if (Object.keys(updatedSettings).length > 0) {
