@@ -52,6 +52,8 @@ The installer records the executable paths it finds for `grok` and `codex`. Reru
 > [!note] Firefox data disclosure
 > Firefox lists website content as required transmitted data because Interpreter can send the current page context to the provider or local CLI you choose. Granting the permission does not start a request. Manual Interpreter and language-learning actions send content only after you activate them; **Automatically run** sends content only when you have explicitly enabled that setting. This disclosure requires Firefox 140 or newer on desktop and Firefox for Android 142 or newer.
 
+When you select **Codex CLI**, an optional editable **Codex model** field appears. It applies to every Codex CLI Interpreter and language-learning action; leave it empty to use the Codex CLI default. A named model is available only when your Codex authentication and account permit it, and requests can consume usage or create costs under your Codex setup. Changing the field does not run a request. **Check connection** verifies the Host and executable, not model availability.
+
 ## How it works
 
 When Interpreter is enabled *and* your template contains [[Variables#Prompt variables|prompt variables]], a new Interpreter section is displayed in the extension window, above the **Add to Obsidian** button. This section lets you select a model and run Interpreter for the current page.

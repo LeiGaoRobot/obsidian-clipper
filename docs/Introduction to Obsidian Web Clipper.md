@@ -33,7 +33,7 @@ Get the Obsidian Web Clipper extension from the official directory for your brow
 	- Highlight important passages and select elements you want to save.
 - [[Interpret web pages|Interpreter]]
 	- Use natural language prompts to capture and modify data on a page.
-	- Use an API provider or a local Grok/Codex CLI through Chrome Native Messaging.
+	- Use an API provider or a local Grok/Codex CLI through Chrome Native Messaging, with an optional per-request Codex model override.
 - [[Language learning]]
 	- Revise clipped text, translate selected YouTube and Chromium/Firefox Bilibili transcript ranges, use sentence playback controls, switch Reader layouts, add reusable Japanese readings, explain words or sentences, and manage saved learning items before sending them to Obsidian.
 	- Use Reading, Study tools, or Split view with remembered player and subtitle preferences, a compact player, and responsive transcript controls.
