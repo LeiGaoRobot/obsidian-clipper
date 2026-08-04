@@ -12,14 +12,19 @@ interface NativeCliBackgroundResponse {
 	errorDetails?: Record<string, unknown>;
 }
 
+export interface NativeCliClientOptions {
+	model?: string;
+}
+
 export async function executeNativeCli(
 	mode: 'grok' | 'codex',
 	context: string,
-	promptVariables: PromptVariable[]
+	promptVariables: PromptVariable[],
+	options: NativeCliClientOptions = {}
 ): Promise<Record<string, unknown>> {
 	const response = await browser.runtime.sendMessage({
 		action: 'nativeCliRequest',
-		request: buildNativeCliRequest(mode, context, promptVariables)
+		request: buildNativeCliRequest(mode, context, promptVariables, { model: options.model })
 	}) as NativeCliBackgroundResponse;
 
 	if (!response?.success) {

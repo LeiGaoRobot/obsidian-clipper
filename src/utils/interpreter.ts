@@ -242,7 +242,14 @@ export async function handleInterpreterUI(
 		if (executionMode === 'api') {
 			promptResponses = (await sendToLLM(contextToUse, contentToProcess, promptVariables, modelConfig as ModelConfig)).promptResponses;
 		} else {
-			const responses = await executeNativeCli(executionMode, contextToUse, promptVariables);
+			const responses = await executeNativeCli(
+				executionMode,
+				contextToUse,
+				promptVariables,
+				executionMode === 'codex' && generalSettings.interpreterCodexModel
+					? { model: generalSettings.interpreterCodexModel }
+					: {}
+			);
 			promptResponses = promptVariables.map(variable => ({
 				key: variable.key,
 				prompt: variable.prompt,

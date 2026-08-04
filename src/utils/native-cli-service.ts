@@ -230,15 +230,20 @@ export async function checkNativeCliHealth(mode: 'grok' | 'codex'): Promise<Nati
 	return response.health;
 }
 
+export interface NativeCliExecutionOptions {
+	model?: string;
+	signal?: AbortSignal;
+}
+
 export async function executeNativeCliForPrompts(
 	mode: 'grok' | 'codex',
 	context: string,
 	promptVariables: PromptVariable[],
-	signal?: AbortSignal
+	options: NativeCliExecutionOptions = {}
 ): Promise<Record<string, unknown>> {
 	const response = await sendNativeCliRequest(
-		buildNativeCliRequest(mode, context, promptVariables),
-		signal
+		buildNativeCliRequest(mode, context, promptVariables, { model: options.model }),
+		options.signal
 	);
 	return parsePromptResponses(response.stdout || '', promptVariables);
 }

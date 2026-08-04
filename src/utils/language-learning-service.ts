@@ -19,7 +19,17 @@ export async function runLanguageLearningRequest(
 
 	const executionMode = settings.interpreterExecutionMode ?? 'api';
 	if (executionMode !== 'api') {
-		const responses = await executeNativeCliForPrompts(executionMode, request.context, request.prompts, signal);
+		const responses = await executeNativeCliForPrompts(
+			executionMode,
+			request.context,
+			request.prompts,
+			{
+				...(executionMode === 'codex' && settings.interpreterCodexModel
+					? { model: settings.interpreterCodexModel }
+					: {}),
+				signal
+			}
+		);
 		throwIfRequestAborted(signal);
 		return request.prompts.map(prompt => ({
 			key: prompt.key,
