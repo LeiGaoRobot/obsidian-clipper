@@ -64,7 +64,7 @@ describe('Native CLI service', () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
 		const controller = new AbortController();
-		const request = buildNativeCliRequest('grok', 'Context', [], 'request-1');
+		const request = buildNativeCliRequest('grok', 'Context', [], { requestId: 'request-1' });
 
 		const response = sendNativeCliRequest(request, controller.signal);
 		controller.abort();
@@ -84,7 +84,7 @@ describe('Native CLI service', () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
 		const response = sendNativeCliRequest(
-			buildNativeCliRequest('grok', 'Context', [], 'request-2')
+			buildNativeCliRequest('grok', 'Context', [], { requestId: 'request-2' })
 		);
 		port.emitMessage({
 			requestId: 'request-2',

@@ -43,6 +43,43 @@ describe('Obsidian Web Clipper native host', () => {
 		expect(nativeInvocation.args).toEqual(sharedInvocation.args);
 	});
 
+	test('passes the selected model to Codex as one argument', () => {
+		const invocation = createCliInvocation(
+			{ mode: 'codex', prompt: 'prompt', model: 'gpt-5.6-sol' },
+			{ grokPath: '/usr/local/bin/grok', codexPath: '/usr/local/bin/codex' }
+		);
+
+		expect(invocation.args).toEqual([
+			'exec',
+			'--model',
+			'gpt-5.6-sol',
+			'--ephemeral',
+			'--color',
+			'never',
+			'--sandbox',
+			'read-only',
+			'--skip-git-repo-check',
+			'-'
+		]);
+		expect(invocation.input).toBe('prompt');
+	});
+
+	test('keeps the previous Codex arguments when no model is selected', () => {
+		expect(createCliInvocation(
+			{ mode: 'codex', prompt: 'prompt' },
+			{ grokPath: '/usr/local/bin/grok', codexPath: '/usr/local/bin/codex' }
+		).args).toEqual([
+			'exec',
+			'--ephemeral',
+			'--color',
+			'never',
+			'--sandbox',
+			'read-only',
+			'--skip-git-repo-check',
+			'-'
+		]);
+	});
+
 	test('accepts execute, cancel, and health messages on the current protocol', () => {
 		expect(validateRequest({
 			type: 'executeCli',
@@ -62,6 +99,42 @@ describe('Obsidian Web Clipper native host', () => {
 			requestId: 'health-1',
 			mode: 'grok'
 		})).toBeNull();
+	});
+
+	test.each([
+		{
+			name: 'canonical Codex model',
+			request: { mode: 'codex', model: 'gpt-5.6-sol' },
+			expected: null
+		},
+		{
+			name: 'Grok model override',
+			request: { mode: 'grok', model: 'gpt-5.6-sol' },
+			expected: 'Codex model overrides require Codex execution mode.'
+		},
+		{
+			name: 'blank Codex model',
+			request: { mode: 'codex', model: '' },
+			expected: 'Codex model must be a non-empty string of at most 200 characters.'
+		},
+		{
+			name: 'padded Codex model',
+			request: { mode: 'codex', model: ' gpt-5.6-sol ' },
+			expected: 'Codex model must not include leading or trailing whitespace.'
+		},
+		{
+			name: 'oversized Codex model',
+			request: { mode: 'codex', model: 'x'.repeat(201) },
+			expected: 'Codex model must be a non-empty string of at most 200 characters.'
+		}
+	])('validates $name at the Native Host boundary', ({ request, expected }) => {
+		expect(validateRequest({
+			type: 'executeCli',
+			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+			requestId: 'request-model',
+			prompt: 'prompt',
+			...request
+		})).toBe(expected);
 	});
 
 	test('rejects an incompatible Native Host protocol version', () => {

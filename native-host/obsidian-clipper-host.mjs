@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 
-export const NATIVE_CLI_PROTOCOL_VERSION = 2;
+export const NATIVE_CLI_PROTOCOL_VERSION = 3;
+export const MAX_CODEX_MODEL_CHARS = 200;
 export const MAX_PROMPT_CHARS = 750_000;
 export const MAX_REQUEST_BYTES = 4_000_000;
 export const MAX_RESPONSE_BYTES = 900_000;
@@ -61,6 +62,17 @@ export function validateRequest(request) {
 	if (!isMode(request.mode)) return 'Unsupported CLI execution mode.';
 	if (typeof request.prompt !== 'string' || request.prompt.length === 0) return 'Prompt must be a non-empty string.';
 	if (request.prompt.length > MAX_PROMPT_CHARS) return 'Prompt is too large for Native Messaging.';
+	if (request.model !== undefined) {
+		if (request.mode !== 'codex') return 'Codex model overrides require Codex execution mode.';
+		if (typeof request.model !== 'string'
+			|| request.model.length === 0
+			|| request.model.length > MAX_CODEX_MODEL_CHARS) {
+			return 'Codex model must be a non-empty string of at most 200 characters.';
+		}
+		if (request.model !== request.model.trim()) {
+			return 'Codex model must not include leading or trailing whitespace.';
+		}
+	}
 	return null;
 }
 
@@ -100,6 +112,7 @@ export function createCliInvocation(request, config) {
 		command,
 		args: [
 			'exec',
+			...(request.model ? ['--model', request.model] : []),
 			'--ephemeral',
 			'--color',
 			'never',
