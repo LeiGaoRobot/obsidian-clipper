@@ -52,7 +52,7 @@ The installer records the executable paths it finds for `grok` and `codex`. Reru
 > [!note] Firefox data disclosure
 > Firefox lists website content as required transmitted data because Interpreter can send the current page context to the provider or local CLI you choose. Granting the permission does not start a request. Manual Interpreter and language-learning actions send content only after you activate them; **Automatically run** sends content only when you have explicitly enabled that setting. This disclosure requires Firefox 140 or newer on desktop and Firefox for Android 142 or newer.
 
-When you select **Codex CLI**, an optional editable **Codex model** field appears. It applies to every Codex CLI Interpreter and language-learning action; leave it empty to use the Codex CLI default. A named model is available only when your Codex authentication and account permit it, and requests can consume usage or create costs under your Codex setup. Changing the field does not run a request. **Check connection** verifies the Host and executable, not model availability.
+When you select **Codex CLI**, optional **Codex model** and **Codex reasoning effort** controls appear. Both apply to every Codex CLI Interpreter and language-learning action, and either can be left at its default independently. Reasoning effort choices are `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`; availability depends on the selected model. Higher effort can take longer and use more tokens. Unsupported model and effort combinations are shown as retryable CLI failures without automatic fallback. Changing either setting does not run a request, and **Check connection** verifies only the Host and executable.
 
 ## How it works
 
