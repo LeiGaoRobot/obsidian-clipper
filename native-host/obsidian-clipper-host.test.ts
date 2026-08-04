@@ -64,6 +64,48 @@ describe('Obsidian Web Clipper native host', () => {
 		expect(invocation.input).toBe('prompt');
 	});
 
+	test('passes model and reasoning effort to Codex as separate arguments', () => {
+		const invocation = createCliInvocation(
+			{ mode: 'codex', prompt: 'prompt', model: 'gpt-5.6-sol', effort: 'max' },
+			{ grokPath: '/usr/local/bin/grok', codexPath: '/usr/local/bin/codex' }
+		);
+
+		expect(invocation.args).toEqual([
+			'exec',
+			'--model',
+			'gpt-5.6-sol',
+			'-c',
+			'model_reasoning_effort="max"',
+			'--ephemeral',
+			'--color',
+			'never',
+			'--sandbox',
+			'read-only',
+			'--skip-git-repo-check',
+			'-'
+		]);
+	});
+
+	test('supports an effort override without a model override', () => {
+		const invocation = createCliInvocation(
+			{ mode: 'codex', prompt: 'prompt', effort: 'high' },
+			{ grokPath: '/usr/local/bin/grok', codexPath: '/usr/local/bin/codex' }
+		);
+
+		expect(invocation.args).toEqual([
+			'exec',
+			'-c',
+			'model_reasoning_effort="high"',
+			'--ephemeral',
+			'--color',
+			'never',
+			'--sandbox',
+			'read-only',
+			'--skip-git-repo-check',
+			'-'
+		]);
+	});
+
 	test('keeps the previous Codex arguments when no model is selected', () => {
 		expect(createCliInvocation(
 			{ mode: 'codex', prompt: 'prompt' },
@@ -132,6 +174,39 @@ describe('Obsidian Web Clipper native host', () => {
 			type: 'executeCli',
 			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
 			requestId: 'request-model',
+			prompt: 'prompt',
+			...request
+		})).toBe(expected);
+	});
+
+	test.each(['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+		('accepts %s effort at the Native Host boundary', effort => {
+			expect(validateRequest({
+				type: 'executeCli',
+				protocolVersion: 4,
+				requestId: `request-${effort}`,
+				mode: 'codex',
+				prompt: 'prompt',
+				effort
+			})).toBeNull();
+		});
+
+	test.each([
+		{
+			name: 'unknown Codex effort',
+			request: { mode: 'codex', effort: 'extreme' },
+			expected: 'Codex reasoning effort must be a supported value.'
+		},
+		{
+			name: 'Grok effort override',
+			request: { mode: 'grok', effort: 'high' },
+			expected: 'Codex reasoning effort overrides require Codex execution mode.'
+		}
+	])('rejects $name at the Native Host boundary', ({ request, expected }) => {
+		expect(validateRequest({
+			type: 'executeCli',
+			protocolVersion: 4,
+			requestId: 'request-effort',
 			prompt: 'prompt',
 			...request
 		})).toBe(expected);

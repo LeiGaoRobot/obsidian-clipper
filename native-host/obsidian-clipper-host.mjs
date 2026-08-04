@@ -6,8 +6,17 @@ import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 
-export const NATIVE_CLI_PROTOCOL_VERSION = 3;
+export const NATIVE_CLI_PROTOCOL_VERSION = 4;
 export const MAX_CODEX_MODEL_CHARS = 200;
+export const CODEX_REASONING_EFFORTS = new Set([
+	'minimal',
+	'low',
+	'medium',
+	'high',
+	'xhigh',
+	'max',
+	'ultra'
+]);
 export const MAX_PROMPT_CHARS = 750_000;
 export const MAX_REQUEST_BYTES = 4_000_000;
 export const MAX_RESPONSE_BYTES = 900_000;
@@ -73,6 +82,14 @@ export function validateRequest(request) {
 			return 'Codex model must not include leading or trailing whitespace.';
 		}
 	}
+	if (request.effort !== undefined) {
+		if (request.mode !== 'codex') {
+			return 'Codex reasoning effort overrides require Codex execution mode.';
+		}
+		if (typeof request.effort !== 'string' || !CODEX_REASONING_EFFORTS.has(request.effort)) {
+			return 'Codex reasoning effort must be a supported value.';
+		}
+	}
 	return null;
 }
 
@@ -113,6 +130,9 @@ export function createCliInvocation(request, config) {
 		args: [
 			'exec',
 			...(request.model ? ['--model', request.model] : []),
+			...(request.effort
+				? ['-c', `model_reasoning_effort="${request.effort}"`]
+				: []),
 			'--ephemeral',
 			'--color',
 			'never',
