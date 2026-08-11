@@ -484,4 +484,45 @@ describe('Transcript layout integration', () => {
 
 		expect(video.currentTime).toBe(0);
 	});
+
+	test('does not seek when the Japanese learning line is clicked', () => {
+		vi.useFakeTimers();
+		vi.stubGlobal('CSS', {});
+		document.body.innerHTML = `
+			<article>
+				<div class="reader-video-wrapper"><video class="reader-video-player"></video></div>
+				<div class="youtube transcript">
+					<div class="transcript-segment">
+						<strong><span class="timestamp" data-timestamp="10">0:10</span></strong>
+						Hello world.
+						<div class="transcript-segment-japanese"><ruby>世界<rt>せかい</rt></ruby></div>
+					</div>
+				</div>
+			</article>
+		`;
+		const article = document.querySelector('article') as HTMLElement;
+		const video = article.querySelector('video') as HTMLVideoElement;
+		wireTranscript(document, article, {
+			pinPlayer: true,
+			autoScroll: true,
+			highlightActiveLine: true,
+			transcriptLayout: 'reading'
+		}, {
+			getStickyOffset: () => 0,
+			scrollTo: vi.fn(),
+			programmaticScroll: () => false
+		});
+		const segment = article.querySelector('.transcript-segment') as HTMLElement;
+		segment.getBoundingClientRect = () => ({ top: 0, height: 100 } as DOMRect);
+		const japanese = article.querySelector('.transcript-segment-japanese') as HTMLElement;
+		japanese.dispatchEvent(new MouseEvent('click', {
+			bubbles: true,
+			clientX: 10,
+			clientY: 50,
+			detail: 1
+		}));
+		vi.advanceTimersByTime(350);
+
+		expect(video.currentTime).toBe(0);
+	});
 });

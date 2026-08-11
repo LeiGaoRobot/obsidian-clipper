@@ -61,11 +61,15 @@ Open **Study** for local playback tools that do not use AI: repeat the active se
 
 Select **Edit translations** to correct a generated line in place. Corrections are saved to the same session checkpoint and do not make a model request.
 
-For Japanese transcripts from either source, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. Select or press Enter on an individual ruby annotation to hide it for recall practice, then activate it again to reveal the answer. The control is hidden when the transcript does not appear to contain Japanese kanji.
+For Japanese transcripts from either source, select **Japanese readings** to add hiragana readings above kanji in the original transcript. Select it again to hide or show the readings without another model request. Select or press Enter on an individual ruby annotation to hide it for recall practice, then activate it again to reveal the answer. For a transcript identified as Japanese, the control is hidden when there is no kanji to annotate.
+
+For a non-Japanese transcript, **Japanese readings** first translates the selected range into Japanese and then generates readings for the Japanese text. Each stage can create multiple sequential provider or local CLI requests for a long range. Both stages start only from the explicit action; reload and retry restoration never start a paid request automatically.
+
+The original subtitle remains visible. If **Bilingual subtitles** is also enabled, its ordinary translation remains a separate line, followed by the Japanese translation with readings. Turning off **Japanese readings** hides the entire Japanese learning line. **Regenerate readings** regenerates only hiragana readings; it does not retranslate the Japanese text or clear personal reading overrides.
 
 Long transcripts are processed in sequential batches, with smaller batches in local CLI modes so progress updates more often and individual requests are less likely to time out. Progress counts completed subtitle segments rather than model batches. If a later batch fails or is cancelled, completed segments remain checkpointed; selecting **Continue remaining** or **Japanese readings** again sends only missing segments. After a CLI timeout, the next explicit retry also uses a smaller batch size. Web Clipper never starts a paid retry automatically.
 
-After readings load—even for **Current segment** or **Next 5 minutes**—select **Edit readings**, edit a reading directly above its kanji, then select **Done editing**. Select **Regenerate readings** when the model chose the wrong reading; this explicitly starts a fresh request for the selected range while preserving readings outside that range. Corrections are stored with the transcript checkpoint and in your persistent personal reading dictionary. Known words are reused in later transcripts, and a segment whose kanji are all covered by the dictionary is annotated locally without an AI request.
+After readings load—even for **Current segment** or **Next 5 minutes**—select **Edit readings**, edit a reading directly above its kanji, then select **Done editing**. Select **Regenerate readings** when the model chose the wrong reading; this explicitly reruns reading generation for the selected range while preserving readings outside that range. Corrections are stored with the transcript checkpoint and in your persistent personal reading dictionary. Known words are reused in later transcripts, and a segment whose kanji are all covered by the dictionary is annotated locally without an AI request.
 
 > [!note] Session checkpoints
 > Transcript translations, Japanese readings, and manual corrections are stored in extension session storage, not in the webpage. Reader accesses that storage through the extension background, so the host page cannot read the checkpoints. They survive Reader and service-worker reloads in supported Chromium and Firefox versions but can be cleared when the browser session ends. Browsers without extension session storage use an in-memory fallback. These results are not automatically added to the clipping.
@@ -103,7 +107,7 @@ The following actions can create model-provider usage:
 
 - Generating an AI-edit preview.
 - Translating a transcript. A long transcript can create multiple sequential requests.
-- Generating Japanese readings for a transcript. A long transcript can create multiple sequential requests.
+- Generating Japanese readings for a transcript. For non-Japanese source subtitles, the preceding Japanese translation and the reading stage can each create multiple sequential requests.
 - Explaining a new word, phrase, or sentence that is not already cached for the session.
 
 Applying, cancelling, undoing, hiding, or showing an existing result does not make another model request.
@@ -140,6 +144,7 @@ Check the provider URL, API key, enabled model, quota, local-model server, or Na
 - Bilibili integration requires Chromium or Firefox, a public video with a Bilibili-provided timed subtitle track, and the in-page Reader; the standalone `reader.html` view does not have the live player session needed to load Bilibili subtitles.
 - AI output quality and language accuracy depend on the selected model.
 - Japanese names and context-dependent kanji readings may need manual correction.
+- The separate Japanese translation created for non-Japanese subtitles cannot currently be edited or regenerated; **Regenerate readings** changes only the hiragana readings.
 - The Learning Center does not implement spaced repetition or flashcard scheduling.
 
 ## Developer reference

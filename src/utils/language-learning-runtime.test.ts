@@ -186,6 +186,77 @@ describe('Configured language learning runtime', () => {
 		expect(mocks.sendMessage).not.toHaveBeenCalled();
 	});
 
+	test('translates transcript to fixed Japanese without colliding with the configured response language', async () => {
+		mocks.sendMessage.mockResolvedValue({
+			success: true,
+			promptResponses: [{
+				key: 'prompt_1',
+				prompt: 'translate',
+				user_response: '0|||こんにちは、世界。'
+			}]
+		});
+
+		await expect(configuredLanguageLearning.translateTranscriptToJapanese(['Hello world.']))
+			.resolves.toEqual(['こんにちは、世界。']);
+
+		expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+			action: 'languageLearningRequest',
+			request: expect.objectContaining({
+				prompts: [expect.objectContaining({
+					prompt: expect.stringContaining('Translate each transcript segment into Japanese.')
+				})]
+			})
+		}));
+		expect(await configuredLanguageLearning.loadJapaneseTranscriptTranslations(['Hello world.']))
+			.toEqual(['こんにちは、世界。']);
+		expect(await configuredLanguageLearning.loadTranscriptTranslations(['Hello world.']))
+			.toBeUndefined();
+	});
+
+	test('keeps fixed Japanese translation separate when the configured response language is Japanese', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			readerSettings: {
+				...settings.readerSettings,
+				learningResponseLanguage: 'Japanese'
+			}
+		});
+		await configuredLanguageLearning.saveTranscriptTranslations(['Hello world.'], ['手動の普通訳。']);
+		mocks.sendMessage.mockResolvedValue({
+			success: true,
+			promptResponses: [{
+				key: 'prompt_1',
+				prompt: 'translate',
+				user_response: '0|||固定の日本語訳。'
+			}]
+		});
+		mocks.sendMessage.mockClear();
+
+		await expect(configuredLanguageLearning.translateTranscriptToJapanese(['Hello world.']))
+			.resolves.toEqual(['固定の日本語訳。']);
+		expect(mocks.sendMessage).toHaveBeenCalledOnce();
+		await expect(configuredLanguageLearning.loadTranscriptTranslations(['Hello world.']))
+			.resolves.toEqual(['手動の普通訳。']);
+	});
+
+	test('loads saved Japanese transcript translation without an enabled Interpreter', async () => {
+		mocks.sendMessage.mockResolvedValue({
+			success: true,
+			promptResponses: [{
+				key: 'prompt_1',
+				prompt: 'translate',
+				user_response: '0|||日本語です。'
+			}]
+		});
+		await configuredLanguageLearning.translateTranscriptToJapanese(['This is Japanese.']);
+		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterEnabled: false });
+		mocks.sendMessage.mockClear();
+
+		await expect(configuredLanguageLearning.loadJapaneseTranscriptTranslations(['This is Japanese.']))
+			.resolves.toEqual(['日本語です。']);
+		expect(mocks.sendMessage).not.toHaveBeenCalled();
+	});
+
 	test('clears a saved Japanese reading before explicit regeneration', async () => {
 		const segments = ['日本語'];
 		await configuredLanguageLearning.saveJapaneseReadings(segments, [[

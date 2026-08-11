@@ -30,6 +30,7 @@ const GROK_JAPANESE_READING_PROMPT_CHAR_LIMIT = 1600;
 const CODEX_JAPANESE_READING_PROMPT_CHAR_LIMIT = 2500;
 const MIN_CLI_JAPANESE_READING_PROMPT_CHAR_LIMIT = 600;
 const MAX_READING_SESSION_ENTRIES = 20;
+const JAPANESE_TRANSLATION_CHECKPOINT_SCOPE = 'japanese-readings:Japanese';
 const japaneseReadingPromptLimits = new Map<string, number>();
 
 export class LanguageLearningRequestError extends Error {
@@ -97,7 +98,17 @@ function createLanguageLearningRequestId(): string {
 	return `language-learning-${Date.now()}-${languageLearningRequestSequence}`;
 }
 
-async function loadConfiguredAssistant(japaneseReadingSegments?: string[]) {
+interface ConfiguredAssistantOptions {
+	japaneseReadingSegments?: string[];
+	transcriptTargetLanguage?: string;
+	transcriptCheckpointScope?: string;
+}
+
+async function loadConfiguredAssistant({
+	japaneseReadingSegments,
+	transcriptTargetLanguage,
+	transcriptCheckpointScope
+}: ConfiguredAssistantOptions = {}) {
 	const settings = await loadSettings();
 	if (!settings.interpreterEnabled) {
 		throw new Error(getMessage('aiLanguageToolsRequireInterpreter'));
@@ -117,6 +128,9 @@ async function loadConfiguredAssistant(japaneseReadingSegments?: string[]) {
 	const responseLanguage = settings.readerSettings.learningResponseLanguage.trim()
 		|| navigator.language
 		|| 'English';
+	const resolvedTranscriptTargetLanguage = transcriptTargetLanguage?.trim() || responseLanguage;
+	const resolvedTranscriptCheckpointScope = transcriptCheckpointScope?.trim()
+		|| `shared:${resolvedTranscriptTargetLanguage}`;
 	const japaneseReadingSessionKey = executionMode === 'api' || !japaneseReadingSegments
 		? undefined
 		: getJapaneseReadingSessionKey(executionScope, japaneseReadingSegments);
@@ -131,7 +145,7 @@ async function loadConfiguredAssistant(japaneseReadingSegments?: string[]) {
 			: initialJapaneseReadingPromptCharLimit;
 	const japaneseReadingCheckpoints = createJapaneseReadingCheckpointStore('shared');
 	const transcriptTranslationCheckpoints = createTranslationCheckpointStore(
-		`shared:${responseLanguage}`
+		resolvedTranscriptCheckpointScope
 	);
 	const assistant = createLanguageLearningAssistant(async (request, signal) => {
 		throwIfRequestAborted(signal);
@@ -229,6 +243,16 @@ export const configuredLanguageLearning = {
 			: undefined;
 	},
 
+	async loadJapaneseTranscriptTranslations(segments: string[]): Promise<string[] | undefined> {
+		const translations = await createTranslationCheckpointStore(
+			JAPANESE_TRANSLATION_CHECKPOINT_SCOPE
+		).load(segments);
+		return translations?.length === segments.length
+			&& translations.every(translation => translation.trim())
+			? [...translations]
+			: undefined;
+	},
+
 	async loadJapaneseReadings(segments: string[]): Promise<TranscriptReadingSegments | undefined> {
 		const readings = await createJapaneseReadingCheckpointStore('shared').load(segments);
 		return readings && isCompleteTranscriptReadings(readings, segments)
@@ -244,12 +268,16 @@ export const configuredLanguageLearning = {
 
 	async saveJapaneseReadings(segments: string[], readings: TranscriptReadingSegments): Promise<void> {
 		if (readings.length !== segments.length) return;
-		const { japaneseReadingCheckpoints } = await loadConfiguredAssistant(segments);
+		const { japaneseReadingCheckpoints } = await loadConfiguredAssistant({
+			japaneseReadingSegments: segments
+		});
 		await japaneseReadingCheckpoints.save(segments, cloneTranscriptReadings(readings));
 	},
 
 	async clearJapaneseReadings(segments: string[]): Promise<void> {
-		const { japaneseReadingCheckpoints } = await loadConfiguredAssistant(segments);
+		const { japaneseReadingCheckpoints } = await loadConfiguredAssistant({
+			japaneseReadingSegments: segments
+		});
 		await japaneseReadingCheckpoints.clear(segments);
 	},
 
@@ -286,7 +314,7 @@ export const configuredLanguageLearning = {
 			assistant,
 			japaneseReadingSessionKey,
 			japaneseReadingPromptCharLimit
-		} = await loadConfiguredAssistant(unresolvedSegments);
+		} = await loadConfiguredAssistant({ japaneseReadingSegments: unresolvedSegments });
 		const mergeReadings = (generated: TranscriptReadingSegments): TranscriptReadingSegments => {
 			const withOverrides = applyJapaneseReadingDictionary(generated, dictionary);
 			const merged = cloneTranscriptReadings(local.readings);
@@ -338,5 +366,17 @@ export const configuredLanguageLearning = {
 	): Promise<string[]> {
 		const { assistant, responseLanguage } = await loadConfiguredAssistant();
 		return assistant.translateTranscript(segments, responseLanguage, onProgress, signal);
+	},
+
+	async translateTranscriptToJapanese(
+		segments: string[],
+		onProgress?: TranscriptTranslationProgressHandler,
+		signal?: AbortSignal
+	): Promise<string[]> {
+		const { assistant } = await loadConfiguredAssistant({
+			transcriptTargetLanguage: 'Japanese',
+			transcriptCheckpointScope: JAPANESE_TRANSLATION_CHECKPOINT_SCOPE
+		});
+		return assistant.translateTranscript(segments, 'Japanese', onProgress, signal);
 	}
 };
