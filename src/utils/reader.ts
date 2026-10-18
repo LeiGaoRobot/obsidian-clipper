@@ -32,6 +32,7 @@ import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from './language-learning-defaults';
 import { createBilibiliTranscriptElement } from './bilibili-reader';
 import type { BilibiliTranscript } from './bilibili-transcript';
 import { getExtensionBranding, PAGEPICK_NAME } from './extension-branding';
+import { buildOutlineRootMargin } from './reader-outline';
 
 // Mobile viewport settings
 const VIEWPORT = 'width=device-width, initial-scale=1, maximum-scale=1';
@@ -1091,12 +1092,8 @@ export class Reader {
 
 		const createOutlineObserver = () => {
 			const stickyOffset = this.getStickyOffset();
-			const topPercent = stickyOffset > 0
-				? Math.round(stickyOffset / window.innerHeight * 100 + 2)
-				: 5;
-			const bottomPercent = 100 - topPercent - 15;
 			return new IntersectionObserver(observerCallback, {
-				rootMargin: `-${topPercent}% 0px -${bottomPercent}% 0px`,
+				rootMargin: buildOutlineRootMargin(stickyOffset, window.innerHeight),
 				threshold: 0
 			});
 		};

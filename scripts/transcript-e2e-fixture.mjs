@@ -47,6 +47,7 @@ export function createYouTubeTranscriptFixtureHtml(title, code) {
 	}).replaceAll('<', '\\u003c');
 	return `<!doctype html>
 <html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+<style>.obsidian-reader-active .pin-player { height: 200vh !important; }</style>
 <script type="application/ld+json">${metadata}</script></head>
 <body>
 <video></video>
