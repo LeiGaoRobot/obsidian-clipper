@@ -21,11 +21,12 @@ describe('Language learning service', () => {
 		mocks.sendToLLM.mockReset();
 	});
 
-	test('forwards the stored model to Codex requests', async () => {
+	test('forwards stored Codex model and effort to requests', async () => {
 		mocks.loadSettings.mockResolvedValue({
 			interpreterEnabled: true,
 			interpreterExecutionMode: 'codex',
-			interpreterCodexModel: 'gpt-5.6-terra'
+			interpreterCodexModel: 'gpt-5.6-terra',
+			interpreterCodexReasoningEffort: 'max'
 		});
 		const controller = new AbortController();
 
@@ -38,15 +39,16 @@ describe('Language learning service', () => {
 			'codex',
 			'Context',
 			[{ key: 'prompt_1', prompt: 'Translate' }],
-			{ model: 'gpt-5.6-terra', signal: controller.signal }
+			{ model: 'gpt-5.6-terra', effort: 'max', signal: controller.signal }
 		);
 	});
 
-	test('does not forward the stored Codex model to Grok requests', async () => {
+	test('does not forward stored Codex model or effort to Grok requests', async () => {
 		mocks.loadSettings.mockResolvedValue({
 			interpreterEnabled: true,
 			interpreterExecutionMode: 'grok',
-			interpreterCodexModel: 'gpt-5.6-terra'
+			interpreterCodexModel: 'gpt-5.6-terra',
+			interpreterCodexReasoningEffort: 'max'
 		});
 		const controller = new AbortController();
 

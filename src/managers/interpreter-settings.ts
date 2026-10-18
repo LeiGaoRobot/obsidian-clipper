@@ -15,6 +15,7 @@ import {
 	type PresetProvider,
 	type ProviderPresets
 } from '../utils/provider-presets';
+import { normalizeCodexReasoningEffort } from '../utils/codex-reasoning-effort';
 
 const PROVIDERS_URL = 'https://raw.githubusercontent.com/obsidianmd/obsidian-clipper/refs/heads/main/providers.json';
 const PRESET_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -180,6 +181,10 @@ export async function initializeInterpreterSettings(): Promise<void> {
 		if (codexModelInput) {
 			codexModelInput.value = generalSettings.interpreterCodexModel ?? '';
 		}
+		const codexEffortSelect = document.getElementById('interpreter-codex-reasoning-effort') as HTMLSelectElement | null;
+		if (codexEffortSelect) {
+			codexEffortSelect.value = generalSettings.interpreterCodexReasoningEffort ?? '';
+		}
 		await initializeNativeCliInstallGuide();
 
 		cachedPresetProviders = await getPresetProviders();
@@ -212,10 +217,10 @@ export async function initializeInterpreterSettings(): Promise<void> {
 			executionModeSelect.value = generalSettings.interpreterExecutionMode ?? 'api';
 			executionModeSelect.addEventListener('change', () => {
 				saveInterpreterSettingsFromForm();
-				updateCodexModelVisibility();
+				updateCodexSettingsVisibility();
 				updateNativeCliHealthVisibility();
 			});
-			updateCodexModelVisibility();
+			updateCodexSettingsVisibility();
 		}
 		initializeNativeCliHealth();
 		const readiness = wireLanguageLearningReadiness({
@@ -290,11 +295,14 @@ function updateNativeCliHealthVisibility(): void {
 	if (healthStatus) healthStatus.textContent = '';
 }
 
-export function updateCodexModelVisibility(doc: Document = document): void {
+export function updateCodexSettingsVisibility(doc: Document = document): void {
 	const executionModeSelect = doc.getElementById('interpreter-execution-mode') as HTMLSelectElement | null;
 	const codexModelItem = doc.getElementById('interpreter-codex-model-item');
-	if (!executionModeSelect || !codexModelItem) return;
-	codexModelItem.hidden = executionModeSelect.value !== 'codex';
+	const codexEffortItem = doc.getElementById('interpreter-codex-reasoning-effort-item');
+	if (!executionModeSelect || !codexModelItem || !codexEffortItem) return;
+	const hidden = executionModeSelect.value !== 'codex';
+	codexModelItem.hidden = hidden;
+	codexEffortItem.hidden = hidden;
 }
 
 function initializeNativeCliHealth(): void {
@@ -1170,12 +1178,13 @@ function initializeAutoSave(): void {
 	}
 }
 
-function saveInterpreterSettingsFromForm(): void {
+export function saveInterpreterSettingsFromForm(): void {
 	const interpreterToggle = document.getElementById('interpreter-toggle') as HTMLInputElement;
 	const interpreterAutoRunToggle = document.getElementById('interpreter-auto-run-toggle') as HTMLInputElement;
 	const executionModeSelect = document.getElementById('interpreter-execution-mode') as HTMLSelectElement;
 	const defaultPromptContextInput = document.getElementById('default-prompt-context') as HTMLTextAreaElement;
 	const codexModelInput = document.getElementById('interpreter-codex-model') as HTMLInputElement | null;
+	const codexEffortSelect = document.getElementById('interpreter-codex-reasoning-effort') as HTMLSelectElement | null;
 
 	const updatedSettings: Partial<typeof generalSettings> = {}; 
 	if (interpreterToggle) {
@@ -1192,6 +1201,9 @@ function saveInterpreterSettingsFromForm(): void {
 	}
 	if (codexModelInput) {
 		updatedSettings.interpreterCodexModel = normalizeCodexModel(codexModelInput.value);
+	}
+	if (codexEffortSelect) {
+		updatedSettings.interpreterCodexReasoningEffort = normalizeCodexReasoningEffort(codexEffortSelect.value);
 	}
 
 	if (Object.keys(updatedSettings).length > 0) {

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 	generalSettings: {
 		interpreterExecutionMode: 'codex',
 		interpreterCodexModel: 'gpt-5.6-luna',
+		interpreterCodexReasoningEffort: 'high',
 		providers: []
 	}
 }));
@@ -35,7 +36,7 @@ describe('Interpreter', () => {
 		mocks.executeNativeCli.mockReset().mockResolvedValue({ prompt_1: 'Done' });
 	});
 
-	test('forwards the stored model to Codex requests', async () => {
+	test('forwards stored Codex model and effort to requests', async () => {
 		await handleInterpreterUI({
 			id: 'template-1',
 			name: 'Template',
@@ -50,7 +51,7 @@ describe('Interpreter', () => {
 			'codex',
 			'Page context',
 			[{ key: 'prompt_1', prompt: 'Summarize', filters: '' }],
-			{ model: 'gpt-5.6-luna' }
+			{ model: 'gpt-5.6-luna', effort: 'high' }
 		);
 	});
 });

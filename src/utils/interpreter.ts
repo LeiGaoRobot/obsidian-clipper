@@ -246,8 +246,15 @@ export async function handleInterpreterUI(
 				executionMode,
 				contextToUse,
 				promptVariables,
-				executionMode === 'codex' && generalSettings.interpreterCodexModel
-					? { model: generalSettings.interpreterCodexModel }
+				executionMode === 'codex'
+					? {
+						...(generalSettings.interpreterCodexModel
+							? { model: generalSettings.interpreterCodexModel }
+							: {}),
+						...(generalSettings.interpreterCodexReasoningEffort
+							? { effort: generalSettings.interpreterCodexReasoningEffort }
+							: {})
+					}
 					: {}
 			);
 			promptResponses = promptVariables.map(variable => ({

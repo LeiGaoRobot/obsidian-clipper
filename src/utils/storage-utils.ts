@@ -1,8 +1,9 @@
 import browser from './browser-polyfill';
-import { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating, InterpreterExecutionMode, TranscriptLayoutMode } from '../types/types';
+import { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating, InterpreterExecutionMode, CodexReasoningEffort, TranscriptLayoutMode } from '../types/types';
 import { debugLog } from './debug';
 import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from './language-learning-defaults';
 import { normalizeCodexModel } from './codex-model';
+import { normalizeCodexReasoningEffort } from './codex-reasoning-effort';
 
 export type { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating };
 
@@ -114,6 +115,7 @@ interface StorageData {
 		interpreterAutoRun?: boolean;
 		interpreterExecutionMode?: InterpreterExecutionMode;
 		interpreterCodexModel?: string;
+		interpreterCodexReasoningEffort?: CodexReasoningEffort;
 		defaultPromptContext?: string;
 	};
 	property_types?: PropertyType[];
@@ -225,6 +227,9 @@ export async function loadSettings(): Promise<Settings> {
 			? storedExecutionMode
 			: defaultSettings.interpreterExecutionMode,
 		interpreterCodexModel: normalizeCodexModel(data.interpreter_settings?.interpreterCodexModel),
+		interpreterCodexReasoningEffort: normalizeCodexReasoningEffort(
+			data.interpreter_settings?.interpreterCodexReasoningEffort
+		),
 		defaultPromptContext: data.interpreter_settings?.defaultPromptContext || defaultSettings.defaultPromptContext,
 		propertyTypes: data.property_types || defaultSettings.propertyTypes,
 		readerSettings: {
@@ -269,6 +274,9 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 		generalSettings = { ...generalSettings, ...settings };
 	}
 	generalSettings.interpreterCodexModel = normalizeCodexModel(generalSettings.interpreterCodexModel);
+	generalSettings.interpreterCodexReasoningEffort = normalizeCodexReasoningEffort(
+		generalSettings.interpreterCodexReasoningEffort
+	);
 
 	await browser.storage.sync.set({
 		vaults: generalSettings.vaults,
@@ -294,6 +302,9 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 			interpreterExecutionMode: generalSettings.interpreterExecutionMode ?? 'api',
 			...(generalSettings.interpreterCodexModel
 				? { interpreterCodexModel: generalSettings.interpreterCodexModel }
+				: {}),
+			...(generalSettings.interpreterCodexReasoningEffort
+				? { interpreterCodexReasoningEffort: generalSettings.interpreterCodexReasoningEffort }
 				: {}),
 			defaultPromptContext: generalSettings.defaultPromptContext
 		},

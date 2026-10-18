@@ -84,4 +84,35 @@ describe('Reader preference storage', () => {
 		const savedOversized = mocks.set.mock.calls[mocks.set.mock.calls.length - 1]?.[0].interpreter_settings;
 		expect(savedOversized).not.toHaveProperty('interpreterCodexModel');
 	});
+
+	test('loads and saves a supported Codex reasoning effort', async () => {
+		mocks.state.interpreter_settings = {
+			interpreterExecutionMode: 'codex',
+			interpreterCodexReasoningEffort: 'max'
+		};
+
+		const settings = await loadSettings();
+		expect(settings.interpreterCodexReasoningEffort).toBe('max');
+
+		await saveSettings(settings);
+		expect(mocks.set).toHaveBeenLastCalledWith(expect.objectContaining({
+			interpreter_settings: expect.objectContaining({
+				interpreterCodexReasoningEffort: 'max'
+			})
+		}));
+	});
+
+	test('normalizes unknown or default Codex reasoning effort to an omitted value', async () => {
+		mocks.state.interpreter_settings = {
+			interpreterExecutionMode: 'codex',
+			interpreterCodexReasoningEffort: 'extreme'
+		};
+
+		const settings = await loadSettings();
+		expect(settings.interpreterCodexReasoningEffort).toBeUndefined();
+
+		await saveSettings({ interpreterCodexReasoningEffort: undefined });
+		const saved = mocks.set.mock.calls[mocks.set.mock.calls.length - 1]?.[0].interpreter_settings;
+		expect(saved).not.toHaveProperty('interpreterCodexReasoningEffort');
+	});
 });

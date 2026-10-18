@@ -497,6 +497,15 @@
 	"interpreterCodexModel": {
 		"message": "Codex 模型"
 	},
+	"interpreterCodexReasoningEffort": {
+		"message": "Codex 推理强度"
+	},
+	"interpreterCodexReasoningEffortDefault": {
+		"message": "使用 Codex CLI 默认值"
+	},
+	"interpreterCodexReasoningEffortDescription": {
+		"message": "覆盖所有 Codex CLI 操作使用的推理强度。更高的强度可能耗时更长并使用更多 token；模型不支持所选强度时会直接失败，不会自动降级。"
+	},
 	"interpreterCodexModelDescription": {
 		"message": "覆盖所有 Codex CLI 操作使用的模型。留空则使用 Codex CLI 默认模型。"
 	},

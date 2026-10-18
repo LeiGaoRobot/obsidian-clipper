@@ -497,6 +497,15 @@
 	"interpreterCodexModel": {
 		"message": "Codex model"
 	},
+	"interpreterCodexReasoningEffort": {
+		"message": "Codex reasoning effort"
+	},
+	"interpreterCodexReasoningEffortDefault": {
+		"message": "Use Codex CLI default"
+	},
+	"interpreterCodexReasoningEffortDescription": {
+		"message": "Override reasoning effort for every Codex CLI action. Higher effort can take longer and use more tokens. Unsupported model and effort combinations fail without fallback."
+	},
 	"interpreterCodexModelDescription": {
 		"message": "Override the model for every Codex CLI action. Leave empty to use the Codex CLI default."
 	},

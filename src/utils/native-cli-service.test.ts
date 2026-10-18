@@ -92,18 +92,23 @@ describe('Native CLI service', () => {
 		]);
 	});
 
-	test('forwards a canonical Codex model on the Native Messaging request', async () => {
+	test('forwards canonical Codex model and effort on the Native Messaging request', async () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
 		const response = executeNativeCliForPrompts(
 			'codex',
 			'Context',
 			[{ key: 'prompt_1', prompt: 'Summarize' }],
-			{ model: '  gpt-5.6-sol  ' }
+			{ model: '  gpt-5.6-sol  ', effort: 'ultra' }
 		);
-		const request = port.posted[0] as { requestId: string; mode: string; model?: string };
+		const request = port.posted[0] as {
+			requestId: string;
+			mode: string;
+			model?: string;
+			effort?: string;
+		};
 
-		expect(request).toMatchObject({ mode: 'codex', model: 'gpt-5.6-sol' });
+		expect(request).toMatchObject({ mode: 'codex', model: 'gpt-5.6-sol', effort: 'ultra' });
 		port.emitMessage({
 			requestId: request.requestId,
 			ok: true,
@@ -112,7 +117,7 @@ describe('Native CLI service', () => {
 		await expect(response).resolves.toEqual({ prompt_1: 'Done' });
 	});
 
-	test('does not put a model property on Grok Native Messaging requests', async () => {
+	test('does not put Codex model or effort properties on Grok Native Messaging requests', async () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
 		const response = executeNativeCliForPrompts(
@@ -125,6 +130,9 @@ describe('Native CLI service', () => {
 		expect((Object as ObjectConstructor & {
 			hasOwn(object: object, property: PropertyKey): boolean;
 		}).hasOwn(grokRequest, 'model')).toBe(false);
+		expect((Object as ObjectConstructor & {
+			hasOwn(object: object, property: PropertyKey): boolean;
+		}).hasOwn(grokRequest, 'effort')).toBe(false);
 		port.emitMessage({
 			requestId: grokRequest.requestId,
 			ok: true,

@@ -1,10 +1,12 @@
 import type { PromptVariable } from '../types/types';
+import type { CodexReasoningEffort } from '../types/types';
 import type { CliExecutionMode } from './cli-execution-contract';
 import { buildExecutionPrompt } from './cli-execution-contract';
 import { MAX_CODEX_MODEL_CHARS, normalizeCodexModel } from './codex-model';
+import { normalizeCodexReasoningEffort } from './codex-reasoning-effort';
 
 export const NATIVE_CLI_HOST_NAME = 'com.obsidian.web_clipper';
-export const NATIVE_CLI_PROTOCOL_VERSION = 3;
+export const NATIVE_CLI_PROTOCOL_VERSION = 4;
 
 let nativeCliRequestSequence = 0;
 
@@ -26,11 +28,13 @@ export interface NativeCliRequest {
 	mode: CliExecutionMode;
 	prompt: string;
 	model?: string;
+	effort?: CodexReasoningEffort;
 }
 
 export interface NativeCliRequestOptions {
 	requestId?: string;
 	model?: string;
+	effort?: CodexReasoningEffort;
 }
 
 export interface NativeCliCancelRequest {
@@ -84,6 +88,10 @@ export function isNativeCliRequest(value: unknown): value is NativeCliRequest {
 		&& request.model.length > 0
 		&& request.model.length <= MAX_CODEX_MODEL_CHARS
 	);
+	const validEffort = request.effort === undefined || (
+		request.mode === 'codex'
+		&& normalizeCodexReasoningEffort(request.effort) === request.effort
+	);
 	return request.type === 'executeCli'
 		&& request.protocolVersion === NATIVE_CLI_PROTOCOL_VERSION
 		&& typeof request.requestId === 'string'
@@ -91,7 +99,8 @@ export function isNativeCliRequest(value: unknown): value is NativeCliRequest {
 		&& isCliExecutionMode(request.mode)
 		&& typeof request.prompt === 'string'
 		&& request.prompt.length > 0
-		&& validModel;
+		&& validModel
+		&& validEffort;
 }
 
 export function buildNativeCliRequest(
@@ -107,13 +116,21 @@ export function buildNativeCliRequest(
 	if (model && mode !== 'codex') {
 		throw new TypeError('Codex model overrides require Codex execution mode.');
 	}
+	const effort = normalizeCodexReasoningEffort(options.effort);
+	if (options.effort !== undefined && !effort) {
+		throw new TypeError('Codex reasoning effort must be a supported value.');
+	}
+	if (effort && mode !== 'codex') {
+		throw new TypeError('Codex reasoning effort overrides require Codex execution mode.');
+	}
 	return {
 		type: 'executeCli',
 		protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
 		requestId: options.requestId ?? createNativeCliRequestId(),
 		mode,
 		prompt: buildExecutionPrompt(context, promptVariables),
-		...(model ? { model } : {})
+		...(model ? { model } : {}),
+		...(effort ? { effort } : {})
 	};
 }
 

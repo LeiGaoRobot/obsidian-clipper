@@ -28,11 +28,32 @@ describe('Native CLI contract', () => {
 			requestId: 'request-model',
 			model: '  gpt-5.6-sol  '
 		})).toMatchObject({
-			protocolVersion: 3,
+			protocolVersion: 4,
 			requestId: 'request-model',
 			mode: 'codex',
 			model: 'gpt-5.6-sol'
 		});
+	});
+
+	test('uses protocol v4 and adds canonical effort only to Codex requests', () => {
+		expect(NATIVE_CLI_PROTOCOL_VERSION).toBe(4);
+		expect(buildNativeCliRequest('codex', 'Context', [], {
+			requestId: 'request-effort',
+			effort: 'max'
+		})).toMatchObject({
+			protocolVersion: 4,
+			mode: 'codex',
+			effort: 'max'
+		});
+	});
+
+	test('rejects invalid or non-Codex effort overrides', () => {
+		expect(() => buildNativeCliRequest('codex', 'Context', [], {
+			effort: 'extreme' as never
+		})).toThrow('Codex reasoning effort must be a supported value.');
+		expect(() => buildNativeCliRequest('grok', 'Context', [], {
+			effort: 'high'
+		})).toThrow('Codex reasoning effort overrides require Codex execution mode.');
 	});
 
 	test('rejects invalid model overrides', () => {
@@ -92,9 +113,37 @@ describe('Native CLI contract', () => {
 			prompt: 'prompt',
 			model: 'x'.repeat(201)
 		})).toBe(false);
+		expect(isNativeCliRequest({
+			type: 'executeCli',
+			protocolVersion: 4,
+			requestId: 'request-effort',
+			mode: 'codex',
+			prompt: 'prompt',
+			effort: 'extreme'
+		})).toBe(false);
+		expect(isNativeCliRequest({
+			type: 'executeCli',
+			protocolVersion: 4,
+			requestId: 'request-effort',
+			mode: 'grok',
+			prompt: 'prompt',
+			effort: 'high'
+		})).toBe(false);
 		expect(isNativeCliRequest({ type: 'executeCli', mode: 'api', prompt: 'prompt' })).toBe(false);
 		expect(isNativeCliRequest({ type: 'executeCli', mode: 'codex', prompt: '' })).toBe(false);
 	});
+
+	test.each(['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+		('accepts %s at the extension boundary', effort => {
+			expect(isNativeCliRequest({
+				type: 'executeCli',
+				protocolVersion: 4,
+				requestId: `request-${effort}`,
+				mode: 'codex',
+				prompt: 'prompt',
+				effort
+			})).toBe(true);
+		});
 
 	test('builds cancellation and health requests on the versioned host protocol', () => {
 		expect(buildNativeCliCancelRequest('request-1')).toEqual({
