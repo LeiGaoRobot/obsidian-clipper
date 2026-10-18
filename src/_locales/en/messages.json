@@ -568,6 +568,24 @@
 	"nativeCliHealthReady": {
 		"message": "Connected to $1 (protocol $2)."
 	},
+	"nativeCliInstallCopied": {
+		"message": "Install command copied. Run it once in Terminal, reload the extension, then check the connection."
+	},
+	"nativeCliInstallCopy": {
+		"message": "Copy install command"
+	},
+	"nativeCliInstallCopyFailed": {
+		"message": "Could not copy automatically. Select and copy the command above."
+	},
+	"nativeCliInstallDescription": {
+		"message": "First-time setup: copy and run this command once in Terminal. It includes this extension's ID and source path, so it works from any directory."
+	},
+	"nativeCliInstallSourceUnavailable": {
+		"message": "This packaged build does not contain its local source path. Install the separate Native Messaging Host companion instead."
+	},
+	"nativeCliInstallUnsupported": {
+		"message": "The guided Native Messaging installer currently supports Google Chrome on macOS and Linux."
+	},
 	"nativeCliRunStatusCancelled": {
 		"message": "cancelled"
 	},

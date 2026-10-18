@@ -632,9 +632,15 @@
 										<div class="setting-item-info">
 											<label for="native-cli-health-button" data-i18n="nativeCliHealth">Local CLI connection</label>
 											<div class="setting-item-description" data-i18n="nativeCliHealthDescription">Check the Native Messaging Host and selected CLI without sending page content.</div>
+											<div class="native-cli-install-guide">
+												<div class="setting-item-description" id="native-cli-install-description"></div>
+												<code class="native-cli-install-command" id="native-cli-install-command"></code>
+												<div class="setting-item-description native-cli-install-status" id="native-cli-install-status" role="status" aria-live="polite"></div>
+											</div>
 											<div class="setting-item-description native-cli-health-status" id="native-cli-health-status" role="status" aria-live="polite"></div>
 										</div>
-										<div class="setting-item-control">
+										<div class="setting-item-control native-cli-health-actions">
+											<button type="button" id="native-cli-install-copy" data-i18n="nativeCliInstallCopy">Copy install command</button>
 											<button type="button" id="native-cli-health-button" data-i18n="nativeCliHealthCheck">Check connection</button>
 										</div>
 									</div>

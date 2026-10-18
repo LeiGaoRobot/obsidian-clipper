@@ -50,4 +50,18 @@ for (const outputDirectory of outputDirectories) {
 	}
 }
 
+const localInstallMetadata = JSON.parse(requireFile(path.join(root, 'dist', 'native-host-install.json')));
+if (
+	typeof localInstallMetadata.workspaceRoot !== 'string'
+	|| !path.isAbsolute(localInstallMetadata.workspaceRoot)
+	|| !existsSync(path.join(localInstallMetadata.workspaceRoot, 'package.json'))
+) {
+	throw new Error('dist/native-host-install.json does not identify the local source root.');
+}
+for (const outputDirectory of ['dist_firefox', 'dist_safari']) {
+	if (existsSync(path.join(root, outputDirectory, 'native-host-install.json'))) {
+		throw new Error(`${outputDirectory} must not contain Chrome local-install metadata.`);
+	}
+}
+
 console.log('Extension bundle boundaries passed for Chrome, Firefox, and Safari.');

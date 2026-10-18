@@ -568,6 +568,24 @@
 	"nativeCliHealthReady": {
 		"message": "已连接到 $1（协议版本 $2）。"
 	},
+	"nativeCliInstallCopied": {
+		"message": "安装命令已复制。请在终端运行一次，重新加载扩展，然后检查连接。"
+	},
+	"nativeCliInstallCopy": {
+		"message": "复制安装命令"
+	},
+	"nativeCliInstallCopyFailed": {
+		"message": "无法自动复制，请手动选择并复制上方命令。"
+	},
+	"nativeCliInstallDescription": {
+		"message": "首次设置：复制此命令并在终端运行一次。命令已包含当前扩展 ID 和源码路径，可在任意目录执行。"
+	},
+	"nativeCliInstallSourceUnavailable": {
+		"message": "此打包版本不包含本地源码路径，请改用单独发布的 Native Messaging Host 配套安装包。"
+	},
+	"nativeCliInstallUnsupported": {
+		"message": "Native Messaging 引导安装目前仅支持 macOS 和 Linux 上的 Google Chrome。"
+	},
 	"nativeCliRunStatusCancelled": {
 		"message": "已取消"
 	},

@@ -51,6 +51,7 @@ This document describes the implemented language-learning MVP and the interfaces
 | `src/utils/llm-client.ts` | DOM-free provider adapter and response parser shared with Interpreter |
 | `src/utils/native-cli-service.ts` | Background Native Messaging bridge for local Grok/Codex execution |
 | `src/utils/native-cli-health.ts` | Settings-page client for explicit Host and CLI diagnostics |
+| `src/utils/native-cli-install.ts` | Platform-aware Settings guide that builds and copies the one-time Host install command for the current extension ID |
 | `src/background.ts` | `languageLearningRequest` execution seam, Bilibili subtitle bridge, and prefix-restricted transcript checkpoint bridge for content scripts |
 
 Bilibili transcript capture is limited to the in-page Reader on Chromium and Firefox. Before Reader removes the live page, the background runs in the page's MAIN world, verifies the current BVID, AID, and CID, waits briefly for the matching player response, and fetches the selected subtitle in that same page context. Expired request URLs are ignored while the polling window remains open. This path does not use Interpreter credentials or create a provider request.
@@ -105,7 +106,7 @@ Credentials stay in the existing Interpreter settings. Language-learning message
 
 The same port carries cancellation. The Host maps request IDs to child processes, sends `SIGTERM`, and falls back to `SIGKILL` after two seconds. A separate explicit health request verifies the protocol and configured executable path without including page content; it intentionally does not make a model request. Host errors carry stable codes and optional details so Reader can localize recovery while keeping raw output inside collapsed technical details.
 
-The Settings readiness assistant combines local configuration checks with that explicit CLI health request. API mode is ready only when Interpreter is enabled and the enabled model has a configured provider, base URL, and any required API key. CLI mode is ready only after the selected Host/CLI connection passes its check.
+The Settings readiness assistant combines local configuration checks with that explicit CLI health request. API mode is ready only when Interpreter is enabled and the enabled model has a configured provider, base URL, and any required API key. CLI mode is ready only after the selected Host/CLI connection passes its check. On supported Chrome/macOS and Chrome/Linux source builds, Webpack emits local-only `native-host-install.json`; Settings uses it with `browser.runtime.id` to copy a cwd-independent one-time installer command. Release ZIPs exclude that source-path metadata, and the extension never attempts to write or execute a Native Messaging Host from its sandbox.
 
 ### MV3-safe network client
 

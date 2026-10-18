@@ -189,6 +189,21 @@ try {
 	clients.push(settings);
 	await settings.send('Page.enable');
 	await settings.send('Runtime.enable');
+	await settings.send('Page.addScriptToEvaluateOnNewDocument', {
+		source: `(() => {
+			const originalFetch = globalThis.fetch.bind(globalThis);
+			globalThis.fetch = (input, init) => {
+				const url = typeof input === 'string' ? input : input?.url;
+				if (url === 'https://raw.githubusercontent.com/obsidianmd/obsidian-clipper/refs/heads/main/providers.json') {
+					return Promise.resolve(new Response(JSON.stringify({ version: 'e2e' }), {
+						status: 200,
+						headers: { 'Content-Type': 'application/json' }
+					}));
+				}
+				return originalFetch(input, init);
+			};
+		})();`
+	});
 	const settingsErrors = [];
 	settings.on('Runtime.exceptionThrown', event => settingsErrors.push(event.exceptionDetails?.exception?.description || event.exceptionDetails?.text || 'Settings exception'));
 	settings.on('Runtime.consoleAPICalled', event => {
@@ -286,6 +301,24 @@ try {
 	if (!settingsBranding) {
 		throw new Error('The settings page did not expose PagePick Chrome branding.');
 	}
+	const interpreterSettingsUrl = `${settingsUrl}?section=interpreter`;
+	await settings.send('Page.navigate', { url: interpreterSettingsUrl });
+	const nativeCliInstallGuide = await waitForValue(async () => evaluate(settings, `(() => {
+		const command = document.querySelector('#native-cli-install-command');
+		const copyButton = document.querySelector('#native-cli-install-copy');
+		const interpreter = document.querySelector('#interpreter-section');
+		if (
+			location.search !== '?section=interpreter'
+			|| !interpreter?.classList.contains('active')
+			|| !command?.textContent?.includes(${JSON.stringify(extensionId)})
+			|| !command?.textContent?.startsWith('npm --prefix ')
+			|| copyButton?.hidden
+		) return null;
+		return {
+			command: command.textContent,
+			copyLabel: copyButton.textContent?.trim()
+		};
+	})()`), 'The Interpreter settings did not initialize the Native CLI install guide.');
 	await evaluate(settings, `Promise.all([
 		new Promise((resolve, reject) => chrome.storage.local.set({ language: 'zh_CN' }, () => {
 			if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
@@ -444,6 +477,7 @@ try {
 
 	console.log(`Chrome unpacked-extension E2E passed (${extensionId}).`);
 	console.log(`Settings: ${JSON.stringify(settingsState)}`);
+	console.log(`Native CLI install guide: ${JSON.stringify(nativeCliInstallGuide)}`);
 	console.log('Reader restored bilingual subtitles and Japanese readings without starting a model request.');
 	console.log(`Reader lazy chunks: ${loadedChunkUrls.join(', ')}`);
 } finally {

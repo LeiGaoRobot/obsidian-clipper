@@ -62,6 +62,29 @@ describe('Webpack extension entries', () => {
 		]);
 	});
 
+	test('keeps local Native Host source metadata out of packaged releases', () => {
+		const [chrome] = createWebpackConfig(
+			{ BROWSER: 'chrome' },
+			{ mode: 'production' }
+		);
+		const [firefox] = createWebpackConfig(
+			{ BROWSER: 'firefox' },
+			{ mode: 'production' }
+		);
+		const pluginName = (plugin: unknown) => (plugin as { constructor?: { name?: string } })
+			.constructor?.name;
+		const zipPlugin = chrome.plugins.find(plugin => pluginName(plugin) === 'ZipPlugin') as {
+			options?: { exclude?: RegExp[] };
+		};
+
+		expect(chrome.plugins.some(plugin => pluginName(plugin) === 'LocalNativeHostMetadataPlugin'))
+			.toBe(true);
+		expect(firefox.plugins.some(plugin => pluginName(plugin) === 'LocalNativeHostMetadataPlugin'))
+			.toBe(false);
+		expect(zipPlugin.options?.exclude?.some(pattern => pattern.test('native-host-install.json')))
+			.toBe(true);
+	});
+
 	test('allows generated chunks in each browser manifest', () => {
 		for (const manifestPath of [
 			'src/manifest.chrome.json',

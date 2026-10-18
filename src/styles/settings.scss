@@ -192,6 +192,41 @@ label {
 	}
 }
 
+.native-cli-install-guide {
+	margin-top: 0.75rem;
+}
+
+.native-cli-install-command {
+	display: block;
+	padding: 0.5rem 0.625rem;
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-smaller);
+	overflow-wrap: anywhere;
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+.native-cli-install-status {
+	margin-top: 0.5rem;
+	&:empty {
+		display: none;
+	}
+	&.is-success {
+		color: var(--text-success);
+	}
+	&.is-error {
+		color: var(--text-error);
+	}
+}
+
+.native-cli-health-actions {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 0.5rem;
+}
+
 .setting-item-description {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smallest);

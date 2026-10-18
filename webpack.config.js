@@ -20,6 +20,25 @@ function removeDSStore(dir) {
 	});
 }
 
+class LocalNativeHostMetadataPlugin {
+	apply(compiler) {
+		compiler.hooks.thisCompilation.tap('LocalNativeHostMetadata', compilation => {
+			compilation.hooks.processAssets.tap(
+				{
+					name: 'LocalNativeHostMetadata',
+					stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_ADDITIONAL
+				},
+				() => {
+					compilation.emitAsset(
+						'native-host-install.json',
+						new compiler.webpack.sources.RawSource(JSON.stringify({ workspaceRoot: __dirname }))
+					);
+				}
+			);
+		});
+	}
+}
+
 module.exports = (env, argv) => {
 	const isFirefox = env.BROWSER === 'firefox';
 	const isSafari = env.BROWSER === 'safari';
@@ -188,10 +207,12 @@ module.exports = (env, argv) => {
 				'process.env.NODE_ENV': JSON.stringify(argv.mode),
 				'DEBUG_MODE': JSON.stringify(!isProduction)
 			}),
+			...(isChrome ? [new LocalNativeHostMetadataPlugin()] : []),
 			...(isProduction ? [
 				new ZipPlugin({
 					path: path.resolve(__dirname, 'builds'),
 					filename: `${isChrome ? 'pagepick-for-obsidian' : 'obsidian-web-clipper'}-${package.version}-${browserName}.zip`,
+					exclude: [/^native-host-install\.json$/],
 				})
 			] : [])
 		]

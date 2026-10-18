@@ -7,6 +7,8 @@ import { getMessage, translatePage } from '../utils/i18n';
 import { debugLog } from '../utils/debug';
 import { NativeCliHealthError, requestNativeCliHealth } from '../utils/native-cli-health';
 import { wireLanguageLearningReadiness } from '../utils/language-learning-readiness';
+import { wireNativeCliInstallGuide } from '../utils/native-cli-install';
+import browser from '../utils/browser-polyfill';
 import { normalizeCodexModel } from '../utils/codex-model';
 import {
 	normalizeProviderPresets,
@@ -178,6 +180,7 @@ export async function initializeInterpreterSettings(): Promise<void> {
 		if (codexModelInput) {
 			codexModelInput.value = generalSettings.interpreterCodexModel ?? '';
 		}
+		await initializeNativeCliInstallGuide();
 
 		cachedPresetProviders = await getPresetProviders();
 		debugLog('Interpreter', 'Fetched preset providers:', cachedPresetProviders);
@@ -244,6 +247,38 @@ export async function initializeInterpreterSettings(): Promise<void> {
 		generalSettings.interpreterEnabled = false;
 		throw error;
 	}
+}
+
+async function initializeNativeCliInstallGuide(): Promise<void> {
+	let platform = '';
+	let workspaceRoot: string | undefined;
+	try {
+		platform = (await browser.runtime.getPlatformInfo()).os;
+	} catch {
+		// Keep the manual setup unavailable when the runtime platform cannot be verified.
+	}
+	try {
+		const response = await fetch(browser.runtime.getURL('native-host-install.json'));
+		if (response.ok) {
+			const metadata = await response.json() as { workspaceRoot?: unknown };
+			if (typeof metadata.workspaceRoot === 'string' && metadata.workspaceRoot.startsWith('/')) {
+				workspaceRoot = metadata.workspaceRoot;
+			}
+		}
+	} catch {
+		// Packaged builds intentionally exclude the local source path.
+	}
+	wireNativeCliInstallGuide({
+		doc: document,
+		extensionId: browser.runtime.id,
+		platform,
+		isChrome: document.documentElement.classList.contains('is-chrome'),
+		workspaceRoot,
+		copyText: async text => {
+			if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable.');
+			await navigator.clipboard.writeText(text);
+		}
+	});
 }
 
 function updateNativeCliHealthVisibility(): void {

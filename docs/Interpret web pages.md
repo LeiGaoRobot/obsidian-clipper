@@ -42,17 +42,17 @@ Interpreter works with almost any language model provider, including options tha
 On Chrome, Interpreter can send the page context to a locally installed and authenticated Grok or Codex CLI through Native Messaging. This is useful when you want to reuse a CLI login instead of configuring an API provider.
 
 1. Build and load the Chromium extension from this repository.
-2. Copy the extension ID from `chrome://extensions`.
-3. Run `npm run install:native-host -- --extension-id <your-chrome-extension-id>` from the repository root.
-4. In **Settings → Interpreter**, choose **Grok CLI** or **Codex CLI** under **Execution mode**.
+2. In **Settings → Interpreter**, choose **Grok CLI** or **Codex CLI** under **Execution mode**.
+3. Select **Copy install command**. A local unpacked build inserts the current extension ID and source path for you.
+4. Run the copied command once from any Terminal directory, then reload the extension.
 5. Select **Check connection** to verify the Host protocol and detected executable path without sending page content.
 
-The installer records the executable paths it finds for `grok` and `codex`. Rerun the installer after updating the repository so the installed Host protocol stays in sync. The CLI request runs in a read-only/ephemeral mode and returns one JSON response for all prompt variables. Grok runs as a single-turn transformation without built-in tools, web search, or cross-session memory. The Native Messaging installer currently supports macOS and Linux; install and authenticate the selected CLI before using it. This action sends the page context to the local CLI and may use that CLI's account or subscription.
+The installer records the executable paths it finds for `grok` and `codex`. Rerun the installer after updating the repository so the installed Host protocol stays in sync. Chrome does not allow an extension page to silently register a Native Messaging Host, so the copied command remains a one-time explicit system-installation step. The local source path is available to an unpacked development build but is excluded from packaged release ZIPs; packaged builds use the separately distributed Native Messaging Host companion. The CLI request runs in a read-only/ephemeral mode and returns one JSON response for all prompt variables. Grok runs as a single-turn transformation without built-in tools, web search, or cross-session memory. The guided Native Messaging installer currently supports Google Chrome on macOS and Linux; install and authenticate the selected CLI before using it. This action sends the page context to the local CLI and may use that CLI's account or subscription.
+
+When you select **Codex CLI**, an optional editable **Codex model** field appears. It applies to every Codex CLI Interpreter and language-learning action; leave it empty to use the Codex CLI default. A named model is available only when your Codex authentication and account permit it, and requests can consume usage or create costs under your Codex setup. Changing the field does not run a request. **Check connection** verifies the Host and executable, not model availability.
 
 > [!note] Firefox data disclosure
 > Firefox lists website content as required transmitted data because Interpreter can send the current page context to the provider or local CLI you choose. Granting the permission does not start a request. Manual Interpreter and language-learning actions send content only after you activate them; **Automatically run** sends content only when you have explicitly enabled that setting. This disclosure requires Firefox 140 or newer on desktop and Firefox for Android 142 or newer.
-
-When you select **Codex CLI**, an optional editable **Codex model** field appears. It applies to every Codex CLI Interpreter and language-learning action; leave it empty to use the Codex CLI default. A named model is available only when your Codex authentication and account permit it, and requests can consume usage or create costs under your Codex setup. Changing the field does not run a request. **Check connection** verifies the Host and executable, not model availability.
 
 ## How it works
 
