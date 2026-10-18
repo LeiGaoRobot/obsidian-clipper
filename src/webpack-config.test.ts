@@ -47,13 +47,13 @@ describe('Webpack extension entries', () => {
 		expect(config.output.clean).toBe(true);
 	});
 
-	test('sets the injected Reader chunk root from the extension runtime', () => {
+	test('uses relative chunk URLs until the injected Reader sets its runtime root', () => {
 		const [config] = createWebpackConfig(
 			{ BROWSER: 'chrome' },
 			{ mode: 'production' }
 		);
 
-		expect(config.output.publicPath).toBe('');
+		expect(config.output.publicPath).toBe('./');
 		expect(config.output.chunkFormat).toBe('module');
 		expect(config.output.chunkLoading).toBe('import');
 		expect(config.entry['reader-script']).toEqual([

@@ -100,7 +100,7 @@ module.exports = (env, argv) => {
 			chunkFilename: 'chunks/[name].js',
 			chunkFormat: 'module',
 			chunkLoading: 'import',
-			publicPath: '',
+			publicPath: './',
 			module: false,
 		},
 		devtool: isProduction ? false : 'source-map',
