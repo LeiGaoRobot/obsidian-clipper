@@ -171,6 +171,36 @@ describe('Obsidian Web Clipper native host', () => {
 		}
 	});
 
+	test('runs a Node-based CLI when the browser PATH does not contain Node', async () => {
+		const directory = mkdtempSync(path.join(os.tmpdir(), 'obsidian-clipper-host-'));
+		const executable = path.join(directory, 'node-cli');
+		writeFileSync(executable, [
+			'#!/usr/bin/env node',
+			'process.stdin.resume();',
+			'process.stdin.on("end", () => process.stdout.write("ok\\n"));',
+			''
+		].join('\n'));
+		chmodSync(executable, 0o755);
+		const previousPath = process.env.PATH;
+		process.env.PATH = '';
+		try {
+			await expect(runCli({
+				type: 'executeCli',
+				protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+				requestId: 'request-node-path',
+				mode: 'codex',
+				prompt: 'prompt'
+			}, {
+				grokPath: executable,
+				codexPath: executable
+			}, () => {})).resolves.toMatchObject({ stdout: 'ok\n' });
+		} finally {
+			if (previousPath === undefined) delete process.env.PATH;
+			else process.env.PATH = previousPath;
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
 	test('force kills a CLI that ignores termination after oversized output', async () => {
 		const directory = mkdtempSync(path.join(os.tmpdir(), 'obsidian-clipper-host-'));
 		const executable = path.join(directory, 'oversized-cli');

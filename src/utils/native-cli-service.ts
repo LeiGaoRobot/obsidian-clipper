@@ -107,15 +107,24 @@ function sendThroughNativePort(
 		let aborted = false;
 		let responseTimer: ReturnType<typeof setTimeout> | undefined;
 		let abortCleanupTimer: ReturnType<typeof setTimeout> | undefined;
+		const disconnectErrorMessage = () => (browser.runtime as typeof browser.runtime & {
+			lastError?: { message?: string };
+		}).lastError?.message;
+		const consumeDisconnectError = () => {
+			void disconnectErrorMessage();
+			port.onDisconnect.removeListener(consumeDisconnectError);
+		};
 		const cleanup = () => {
 			if (responseTimer) clearTimeout(responseTimer);
 			if (abortCleanupTimer) clearTimeout(abortCleanupTimer);
 			port.onMessage.removeListener(onMessage);
 			port.onDisconnect.removeListener(onDisconnect);
+			port.onDisconnect.addListener(consumeDisconnectError);
 			signal?.removeEventListener('abort', onAbort);
 			try {
 				port.disconnect();
 			} catch {
+				port.onDisconnect.removeListener(consumeDisconnectError);
 				// The browser may already have closed the native port.
 			}
 		};
@@ -148,11 +157,14 @@ function sendThroughNativePort(
 			});
 		};
 		const onDisconnect = () => {
+			const errorMessage = disconnectErrorMessage();
 			if (aborted) {
 				cleanup();
 				return;
 			}
-			settle(() => reject(new NativeCliUnavailableError('The Native Messaging Host disconnected.')));
+			settle(() => reject(new NativeCliUnavailableError(
+				errorMessage || 'The Native Messaging Host disconnected.'
+			)));
 		};
 		const onAbort = () => {
 			if (callerSettled) return;

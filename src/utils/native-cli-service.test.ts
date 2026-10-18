@@ -2,14 +2,20 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	connectNative: vi.fn(),
-	sendNativeMessage: vi.fn()
+	sendNativeMessage: vi.fn(),
+	lastError: undefined as { message: string } | undefined,
+	lastErrorReads: 0
 }));
 
 vi.mock('./browser-polyfill', () => ({
 	default: {
 		runtime: {
 			connectNative: mocks.connectNative,
-			sendNativeMessage: mocks.sendNativeMessage
+			sendNativeMessage: mocks.sendNativeMessage,
+			get lastError() {
+				mocks.lastErrorReads += 1;
+				return mocks.lastError;
+			}
 		}
 	}
 }));
@@ -62,6 +68,8 @@ describe('Native CLI service', () => {
 	beforeEach(() => {
 		mocks.connectNative.mockReset();
 		mocks.sendNativeMessage.mockReset();
+		mocks.lastError = undefined;
+		mocks.lastErrorReads = 0;
 	});
 
 	test('sends cancellation over the same Native Messaging port', async () => {
@@ -191,6 +199,40 @@ describe('Native CLI service', () => {
 			mode: 'codex',
 			command: '/usr/local/bin/codex'
 		});
+	});
+
+	test('consumes Chrome runtime.lastError when closing a completed native port', async () => {
+		const port = createPort();
+		mocks.connectNative.mockReturnValue(port);
+		const response = checkNativeCliHealth('codex');
+		const request = port.posted[0] as { requestId: string };
+		port.emitMessage({
+			requestId: request.requestId,
+			ok: true,
+			health: {
+				protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+				mode: 'codex',
+				command: '/usr/local/bin/codex'
+			}
+		});
+		await response;
+
+		mocks.lastError = { message: 'Native host has exited.' };
+		port.emitDisconnect();
+
+		expect(mocks.lastErrorReads).toBe(1);
+	});
+
+	test('reports Chrome runtime.lastError when the native host exits before responding', async () => {
+		const port = createPort();
+		mocks.connectNative.mockReturnValue(port);
+		mocks.lastError = { message: 'Native host has exited.' };
+		const response = checkNativeCliHealth('codex');
+
+		port.emitDisconnect();
+
+		await expect(response).rejects.toMatchObject({ message: 'Native host has exited.' });
+		expect(mocks.lastErrorReads).toBe(1);
 	});
 
 	test('reports an old host response without request IDs as a protocol mismatch', async () => {

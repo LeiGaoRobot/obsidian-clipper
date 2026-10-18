@@ -127,10 +127,15 @@ export function createCliInvocation(request, config) {
 
 export function runCli(request, config, onStart) {
 	const invocation = createCliInvocation(request, config);
+	const executablePath = [
+		path.dirname(process.execPath),
+		path.dirname(invocation.command),
+		process.env.PATH
+	].filter(Boolean).join(path.delimiter);
 	return new Promise((resolve, reject) => {
 		const child = spawn(invocation.command, invocation.args, {
 			cwd: os.homedir(),
-			env: { ...process.env, NO_COLOR: '1' },
+			env: { ...process.env, PATH: executablePath, NO_COLOR: '1' },
 			stdio: ['pipe', 'pipe', 'pipe']
 		});
 		let stdout = '';
