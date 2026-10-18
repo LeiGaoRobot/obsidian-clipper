@@ -975,6 +975,9 @@
 	"readerJapaneseReadingsTimeoutRetry": {
 		"message": "Completed segments were kept. Retry will continue with smaller batches."
 	},
+	"readerTranscriptTranslationBatchFailed": {
+		"message": "Some transcript batches could not be completed. Retry to continue."
+	},
 	"readerAiCancelled": {
 		"message": "AI request cancelled."
 	},

@@ -490,6 +490,78 @@ describe('Configured language learning runtime', () => {
 			.toContain('1|||');
 	});
 
+	test('automatically reduces Codex translation batches after a timeout', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			interpreterExecutionMode: 'codex'
+		});
+		const segments = ['A'.repeat(2500), 'B'.repeat(2500)];
+		const requestedPrompts: string[] = [];
+		let timedOut = false;
+		mocks.sendMessage.mockImplementation((message: {
+			action: string;
+			request?: { prompts: Array<{ prompt: string }> };
+		}) => {
+			if (message.action !== 'languageLearningRequest' || !message.request) {
+				return Promise.resolve({ success: true });
+			}
+			const prompt = message.request.prompts[0].prompt;
+			requestedPrompts.push(prompt);
+			if (!timedOut && prompt.includes('0|||') && prompt.includes('1|||')) {
+				timedOut = true;
+				return Promise.resolve({
+					success: false,
+					error: 'codex CLI timed out after 120 seconds.',
+					errorCode: 'timeout',
+					errorDetails: { mode: 'codex', timeoutSeconds: 120 }
+				});
+			}
+			const index = prompt.includes('0|||') ? 0 : 1;
+			return Promise.resolve({
+				success: true,
+				promptResponses: [{
+					key: 'prompt_1',
+					prompt,
+					user_response: `${index}|||${index === 0 ? '第一段' : '第二段'}`
+				}]
+			});
+		});
+
+		const translations = await configuredLanguageLearning.translateTranscript(segments);
+
+		expect(translations).toEqual(['第一段', '第二段']);
+		expect(requestedPrompts).toHaveLength(3);
+		expect(requestedPrompts[0]).toContain('0|||');
+		expect(requestedPrompts[0]).toContain('1|||');
+		expect(requestedPrompts[1]).toContain('0|||');
+		expect(requestedPrompts[1]).not.toContain('1|||');
+		expect(requestedPrompts[2]).toContain('1|||');
+		expect(requestedPrompts[2]).not.toContain('0|||');
+	});
+
+	test('hides an exhausted local translation timeout behind a retryable error', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			interpreterExecutionMode: 'codex'
+		});
+		mocks.sendMessage.mockResolvedValue({
+			success: false,
+			error: 'codex CLI timed out after 120 seconds.',
+			errorCode: 'timeout',
+			errorDetails: { mode: 'codex', timeoutSeconds: 120 }
+		});
+
+		await expect(configuredLanguageLearning.translateTranscript(['always fails']))
+			.rejects.toMatchObject({
+				code: 'failed',
+				message: 'readerTranscriptTranslationBatchFailed'
+			});
+		expect(mocks.sendMessage).toHaveBeenCalledTimes(4);
+		expect(mocks.sendMessage.mock.calls[3][0]).toEqual(expect.objectContaining({
+			action: 'languageLearningRequest'
+		}));
+	});
+
 	test('reduces Japanese reading batch size on explicit retry after a Grok timeout', async () => {
 		mocks.loadSettings.mockResolvedValue({
 			...settings,

@@ -29,9 +29,13 @@ let languageLearningRequestSequence = 0;
 const GROK_JAPANESE_READING_PROMPT_CHAR_LIMIT = 1600;
 const CODEX_JAPANESE_READING_PROMPT_CHAR_LIMIT = 2500;
 const MIN_CLI_JAPANESE_READING_PROMPT_CHAR_LIMIT = 600;
-const MAX_READING_SESSION_ENTRIES = 20;
+const CLI_TRANSCRIPT_TRANSLATION_PROMPT_CHAR_LIMIT = 6000;
+const MIN_CLI_TRANSCRIPT_TRANSLATION_PROMPT_CHAR_LIMIT = 1200;
+const MAX_AUTOMATIC_TRANSCRIPT_TIMEOUT_RETRIES = 3;
+const MAX_ADAPTIVE_SESSION_ENTRIES = 20;
 const JAPANESE_TRANSLATION_CHECKPOINT_SCOPE = 'japanese-readings:Japanese';
 const japaneseReadingPromptLimits = new Map<string, number>();
+const transcriptTranslationPromptLimits = new Map<string, number>();
 
 export class LanguageLearningRequestError extends Error {
 	code: NativeCliErrorCode | 'failed';
@@ -51,6 +55,14 @@ export class LanguageLearningRequestError extends Error {
 
 function getJapaneseReadingSessionKey(scope: string, segments: string[]): string {
 	return JSON.stringify([scope, segments]);
+}
+
+function getTranscriptTranslationSessionKey(
+	executionScope: string,
+	checkpointScope: string,
+	segments: string[]
+): string {
+	return JSON.stringify([executionScope, checkpointScope, segments]);
 }
 
 function cloneTranscriptReadings(readings: TranscriptReadingSegments): TranscriptReadingSegments {
@@ -80,10 +92,24 @@ function reduceJapaneseReadingPromptLimit(key: string, currentLimit: number): vo
 	);
 	if (japaneseReadingPromptLimits.has(key)) japaneseReadingPromptLimits.delete(key);
 	japaneseReadingPromptLimits.set(key, nextLimit);
-	while (japaneseReadingPromptLimits.size > MAX_READING_SESSION_ENTRIES) {
+	while (japaneseReadingPromptLimits.size > MAX_ADAPTIVE_SESSION_ENTRIES) {
 		const oldestKey = japaneseReadingPromptLimits.keys().next().value;
 		if (oldestKey === undefined) break;
 		japaneseReadingPromptLimits.delete(oldestKey);
+	}
+}
+
+function reduceTranscriptTranslationPromptLimit(key: string, currentLimit: number): void {
+	const nextLimit = Math.max(
+		MIN_CLI_TRANSCRIPT_TRANSLATION_PROMPT_CHAR_LIMIT,
+		Math.floor(currentLimit / 2)
+	);
+	if (transcriptTranslationPromptLimits.has(key)) transcriptTranslationPromptLimits.delete(key);
+	transcriptTranslationPromptLimits.set(key, nextLimit);
+	while (transcriptTranslationPromptLimits.size > MAX_ADAPTIVE_SESSION_ENTRIES) {
+		const oldestKey = transcriptTranslationPromptLimits.keys().next().value;
+		if (oldestKey === undefined) break;
+		transcriptTranslationPromptLimits.delete(oldestKey);
 	}
 }
 
@@ -100,12 +126,14 @@ function createLanguageLearningRequestId(): string {
 
 interface ConfiguredAssistantOptions {
 	japaneseReadingSegments?: string[];
+	transcriptTranslationSegments?: string[];
 	transcriptTargetLanguage?: string;
 	transcriptCheckpointScope?: string;
 }
 
 async function loadConfiguredAssistant({
 	japaneseReadingSegments,
+	transcriptTranslationSegments,
 	transcriptTargetLanguage,
 	transcriptCheckpointScope
 }: ConfiguredAssistantOptions = {}) {
@@ -143,6 +171,19 @@ async function loadConfiguredAssistant({
 			? japaneseReadingPromptLimits.get(japaneseReadingSessionKey)
 				?? initialJapaneseReadingPromptCharLimit
 			: initialJapaneseReadingPromptCharLimit;
+	const transcriptTranslationSessionKey = executionMode === 'api' || !transcriptTranslationSegments
+		? undefined
+		: getTranscriptTranslationSessionKey(
+			executionScope,
+			resolvedTranscriptCheckpointScope,
+			transcriptTranslationSegments
+		);
+	const transcriptTranslationPromptCharLimit = executionMode === 'api'
+		? undefined
+		: transcriptTranslationSessionKey
+			? transcriptTranslationPromptLimits.get(transcriptTranslationSessionKey)
+				?? CLI_TRANSCRIPT_TRANSLATION_PROMPT_CHAR_LIMIT
+			: CLI_TRANSCRIPT_TRANSLATION_PROMPT_CHAR_LIMIT;
 	const japaneseReadingCheckpoints = createJapaneseReadingCheckpointStore('shared');
 	const transcriptTranslationCheckpoints = createTranslationCheckpointStore(
 		resolvedTranscriptCheckpointScope
@@ -189,6 +230,7 @@ async function loadConfiguredAssistant({
 		return response.promptResponses;
 	}, {
 		japaneseReadingPromptCharLimit,
+		transcriptTranslationPromptCharLimit,
 		japaneseReadingCheckpoints,
 		transcriptTranslationCheckpoints
 	});
@@ -200,8 +242,79 @@ async function loadConfiguredAssistant({
 		japaneseReadingCheckpoints,
 		transcriptTranslationCheckpoints,
 		japaneseReadingSessionKey,
-		japaneseReadingPromptCharLimit
+		japaneseReadingPromptCharLimit,
+		transcriptTranslationSessionKey,
+		transcriptTranslationPromptCharLimit
 	};
+}
+
+async function translateConfiguredTranscript(
+	segments: string[],
+	transcriptTargetLanguage: string | undefined,
+	transcriptCheckpointScope: string | undefined,
+	onProgress?: TranscriptTranslationProgressHandler,
+	signal?: AbortSignal
+): Promise<string[]> {
+	let automaticRetryCount = 0;
+	while (true) {
+		const {
+			assistant,
+			responseLanguage,
+			executionMode,
+			transcriptTranslationSessionKey,
+			transcriptTranslationPromptCharLimit
+		} = await loadConfiguredAssistant({
+			transcriptTranslationSegments: segments,
+			transcriptTargetLanguage,
+			transcriptCheckpointScope
+		});
+		const targetLanguage = transcriptTargetLanguage?.trim() || responseLanguage;
+		try {
+			const translations = await assistant.translateTranscript(
+				segments,
+				targetLanguage,
+				onProgress,
+				signal
+			);
+			if (
+				transcriptTranslationSessionKey
+				&& translations.length === segments.length
+				&& translations.every(translation => translation.trim())
+			) {
+				transcriptTranslationPromptLimits.delete(transcriptTranslationSessionKey);
+			}
+			return translations;
+		} catch (error) {
+			const timeoutRetryKey = transcriptTranslationSessionKey;
+			const timeoutRetryLimit = transcriptTranslationPromptCharLimit;
+			if (
+				timeoutRetryKey
+				&& timeoutRetryLimit
+				&& executionMode !== 'api'
+				&& isCliTimeoutError(error)
+				&& !signal?.aborted
+			) {
+				if (
+					timeoutRetryLimit > MIN_CLI_TRANSCRIPT_TRANSLATION_PROMPT_CHAR_LIMIT
+					&& automaticRetryCount < MAX_AUTOMATIC_TRANSCRIPT_TIMEOUT_RETRIES
+				) {
+					automaticRetryCount += 1;
+					reduceTranscriptTranslationPromptLimit(timeoutRetryKey, timeoutRetryLimit);
+					continue;
+				}
+				throw new LanguageLearningRequestError(
+					'failed',
+					getMessage('readerTranscriptTranslationBatchFailed'),
+					{
+						...(error instanceof LanguageLearningRequestError ? error.details : {}),
+						mode: executionMode,
+						automaticBatchRetry: true
+					}
+				);
+			}
+			throw error;
+		}
+	}
 }
 
 export const configuredLanguageLearning = {
@@ -364,8 +477,7 @@ export const configuredLanguageLearning = {
 		onProgress?: TranscriptTranslationProgressHandler,
 		signal?: AbortSignal
 	): Promise<string[]> {
-		const { assistant, responseLanguage } = await loadConfiguredAssistant();
-		return assistant.translateTranscript(segments, responseLanguage, onProgress, signal);
+		return translateConfiguredTranscript(segments, undefined, undefined, onProgress, signal);
 	},
 
 	async translateTranscriptToJapanese(
@@ -373,10 +485,12 @@ export const configuredLanguageLearning = {
 		onProgress?: TranscriptTranslationProgressHandler,
 		signal?: AbortSignal
 	): Promise<string[]> {
-		const { assistant } = await loadConfiguredAssistant({
-			transcriptTargetLanguage: 'Japanese',
-			transcriptCheckpointScope: JAPANESE_TRANSLATION_CHECKPOINT_SCOPE
-		});
-		return assistant.translateTranscript(segments, 'Japanese', onProgress, signal);
+		return translateConfiguredTranscript(
+			segments,
+			'Japanese',
+			JAPANESE_TRANSLATION_CHECKPOINT_SCOPE,
+			onProgress,
+			signal
+		);
 	}
 };

@@ -71,6 +71,7 @@ export interface TranscriptTranslationCheckpointStore {
 
 export interface LanguageLearningAssistantOptions {
 	japaneseReadingPromptCharLimit?: number;
+	transcriptTranslationPromptCharLimit?: number;
 	japaneseReadingCheckpoints?: TranscriptReadingCheckpointStore;
 	transcriptTranslationCheckpoints?: TranscriptTranslationCheckpointStore;
 }
@@ -338,7 +339,7 @@ export function createLanguageLearningAssistant(
 			const promptGroups = buildTranscriptPromptGroups(
 				segments,
 				promptHeader,
-				MAX_TRANSCRIPT_PROMPT_CHARS,
+				options.transcriptTranslationPromptCharLimit ?? MAX_TRANSCRIPT_PROMPT_CHARS,
 				index => !translations[index]
 			);
 			onProgress?.({ completed: 0, total: promptGroups.length, translations: [...translations] });
