@@ -1,5 +1,5 @@
 {
-	"version": "2026.12.08",
+	"version": "2026.08.07",
 	"anthropic": {
 		"id": "anthropic",
 		"name": "Anthropic",
@@ -35,8 +35,8 @@
 		"modelsList": "https://api-docs.deepseek.com/quick_start/pricing",
 		"baseUrl": "https://api.deepseek.com/v1/chat/completions",
 		"popularModels": [
-			{ "id": "deepseek-chat", "name": "DeepSeek Chat" },
-			{ "id": "deepseek-reasoner", "name": "DeepSeek Reasoner" }
+			{ "id": "deepseek-v4-flash", "name": "DeepSeek V4 Flash", "recommended": true },
+			{ "id": "deepseek-v4-pro", "name": "DeepSeek V4 Pro" }
 		]
 	},
 	"google-gemini": {

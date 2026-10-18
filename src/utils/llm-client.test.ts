@@ -3,7 +3,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 const fetchMock = vi.fn();
 
 const mocks = vi.hoisted(() => ({
-	getExtensionBranding: vi.fn()
+	getExtensionBranding: vi.fn(),
+	providers: [{
+		id: 'provider-1',
+		name: 'OpenAI-compatible',
+		baseUrl: 'https://model.example/v1/chat/completions',
+		apiKey: 'test-key',
+		apiKeyRequired: true
+	}]
 }));
 
 vi.mock('./debug', () => ({ debugLog: vi.fn() }));
@@ -11,21 +18,20 @@ vi.mock('./extension-branding', () => ({
 	getExtensionBranding: mocks.getExtensionBranding
 }));
 vi.mock('./storage-utils', () => ({
-	generalSettings: {
-		providers: [{
-			id: 'provider-1',
-			name: 'OpenAI-compatible',
-			baseUrl: 'https://model.example/v1/chat/completions',
-			apiKey: 'test-key',
-			apiKeyRequired: true
-		}]
-	}
+	generalSettings: { providers: mocks.providers }
 }));
 
 import { sendToLLM } from './llm-client';
 
 describe('LLM client', () => {
 	beforeEach(() => {
+		Object.assign(mocks.providers[0], {
+			id: 'provider-1',
+			name: 'OpenAI-compatible',
+			baseUrl: 'https://model.example/v1/chat/completions',
+			apiKey: 'test-key',
+			apiKeyRequired: true
+		});
 		mocks.getExtensionBranding.mockReset().mockReturnValue({
 			name: 'PagePick for Obsidian',
 			homepageUrl: 'https://github.com/LeiGaoRobot/obsidian-clipper',
@@ -80,6 +86,59 @@ describe('LLM client', () => {
 			user_response: 'smoke-ok'
 		}]);
 	});
+
+	test.each(['deepseek-v4-flash', 'deepseek-v4-pro'])(
+		'uses the existing Chat Completions contract for %s',
+		async providerModelId => {
+			Object.assign(mocks.providers[0], {
+				name: 'DeepSeek',
+				baseUrl: 'https://api.deepseek.com/v1/chat/completions',
+				apiKey: 'deepseek-test-key'
+			});
+			fetchMock.mockResolvedValue(new Response(JSON.stringify({
+				choices: [{
+					message: {
+						content: JSON.stringify({
+							prompts_responses: { prompt_1: 'deepseek-ok' }
+						})
+					}
+				}]
+			}), { status: 200 }));
+			vi.stubGlobal('fetch', fetchMock);
+
+			const result = await sendToLLM(
+				'smoke context',
+				'',
+				[{ key: 'prompt_1', prompt: 'Return smoke.' }],
+				{
+					id: `model-${providerModelId}`,
+					providerId: 'provider-1',
+					providerModelId,
+					name: providerModelId,
+					enabled: true
+				},
+				{ maxTokens: 3200, cooldownMs: 0 }
+			);
+
+			expect(fetchMock).toHaveBeenCalledWith(
+				'https://api.deepseek.com/v1/chat/completions',
+				expect.objectContaining({ method: 'POST' })
+			);
+			const request = fetchMock.mock.calls[0][1] as RequestInit;
+			expect(request.headers).toMatchObject({
+				'Authorization': 'Bearer deepseek-test-key'
+			});
+			expect(JSON.parse(request.body as string)).toMatchObject({
+				model: providerModelId,
+				max_tokens: 3200,
+				messages: expect.arrayContaining([
+					expect.objectContaining({ role: 'system' }),
+					expect.objectContaining({ role: 'user', content: 'smoke context' })
+				])
+			});
+			expect(result.promptResponses[0].user_response).toBe('deepseek-ok');
+		}
+	);
 
 	test('aborts a provider request when the configured timeout expires', async () => {
 		vi.useFakeTimers();

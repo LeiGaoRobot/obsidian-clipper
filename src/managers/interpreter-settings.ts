@@ -8,25 +8,11 @@ import { debugLog } from '../utils/debug';
 import { NativeCliHealthError, requestNativeCliHealth } from '../utils/native-cli-health';
 import { wireLanguageLearningReadiness } from '../utils/language-learning-readiness';
 import { normalizeCodexModel } from '../utils/codex-model';
-
-export interface PresetProvider {
-	id: string;
-	name: string;
-	baseUrl: string;
-	apiKeyUrl?: string;
-	apiKeyRequired?: boolean;
-	modelsList?: string;
-	popularModels?: Array<{
-		id: string;
-		name: string;
-		recommended?: boolean;
-	}>;
-}
-
-interface ProviderPresets {
-	version: string;
-	[key: string]: PresetProvider | string;
-}
+import {
+	normalizeProviderPresets,
+	type PresetProvider,
+	type ProviderPresets
+} from '../utils/provider-presets';
 
 const PROVIDERS_URL = 'https://raw.githubusercontent.com/obsidianmd/obsidian-clipper/refs/heads/main/providers.json';
 const PRESET_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -52,14 +38,7 @@ async function fetchPresetProviders(): Promise<Record<string, PresetProvider>> {
 		await setLocalStorage(LOCAL_STORAGE_KEY, data);
 		debugLog('Providers', 'Stored providers in local storage:', data);
 
-		const providers: Record<string, PresetProvider> = {};
-		for (const key in data) {
-			if (key !== 'version' && Object.prototype.hasOwnProperty.call(data, key)) {
-				const provider = data[key] as PresetProvider;
-				provider.id = key;
-				providers[key] = provider;
-			}
-		}
+		const providers = normalizeProviderPresets(data);
 
 		debugLog('Providers', 'Successfully fetched presets:', providers);
 		return providers;
@@ -74,15 +53,7 @@ async function getLocalPresets(): Promise<Record<string, PresetProvider> | null>
 		const data = await getLocalStorage(LOCAL_STORAGE_KEY) as ProviderPresets | null;
 		if (!data) return null;
 
-		const providers: Record<string, PresetProvider> = {};
-		for (const key in data) {
-			if (key !== 'version' && Object.prototype.hasOwnProperty.call(data, key)) {
-				const provider = data[key] as PresetProvider;
-				provider.id = key;
-				providers[key] = provider;
-			}
-		}
-		return providers;
+		return normalizeProviderPresets(data);
 	} catch (error) {
 		console.error('Failed to get providers from local storage:', error);
 		return null;

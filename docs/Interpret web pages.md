@@ -101,6 +101,8 @@ Interpreter includes several preset providers. To use these providers you need a
 | Perplexity         | [API key](https://www.perplexity.ai/settings/api)           | [Models](https://docs.perplexity.ai/guides/model-cards)                              |
 | xAI Grok           | [API key](https://console.x.ai/team/default/api-keys)       | [Models](https://docs.x.ai/docs/models)                                              |
 
+The DeepSeek preset recommends `deepseek-v4-flash` and `deepseek-v4-pro`. Existing models saved with the legacy `deepseek-chat` or `deepseek-reasoner` IDs remain editable as custom models; Web Clipper does not automatically migrate them. Update the model ID manually if the provider no longer accepts a legacy ID.
+
 ### Choosing a model
 
 In general we recommend using small models with Web Clipper because they are faster and perform fairly accurately for this task. Examples of smaller models include **Anthropic's Claude Haiku**, **Google Gemini Flash**, **Llama** with 3B or 8B parameters, or **OpenAI's Mini** series of models.
