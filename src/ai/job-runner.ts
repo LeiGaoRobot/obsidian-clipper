@@ -2,7 +2,7 @@ import type { AiTaskInput, AiTaskOutput, ReadingToken, TranscriptSegment } from 
 import { isCliKind } from './connection-kind';
 import { AiError, toAiError } from './errors';
 import { hashSegments, type TranscriptJobTask } from './job-identity';
-import type { AiJobRecord, AiJobStatus, AiJobStore, AiJobStoredInput } from './job-store';
+import { isAiJobUnstorableError, type AiJobRecord, type AiJobStatus, type AiJobStore, type AiJobStoredInput } from './job-store';
 import {
 	serializeAiError,
 	type AiJobInput,
@@ -241,7 +241,14 @@ interface Job {
 	totalGroups: number;
 	retriesThisRun: number;
 	retryBudget: number;
+	/** The latest checkpoint; the store applies a job's writes in call order. */
 	writes: Promise<void>;
+	/** False once the store rejected the record as unstorable: no further checkpoints are sent. */
+	durable: boolean;
+	/** One warning per job when a checkpoint is rejected. */
+	warned: boolean;
+	/** Set when the job starts to settle; the job keeps its id until the final write lands. */
+	settling?: Promise<void>;
 	heartbeat?: unknown;
 }
 
@@ -334,10 +341,16 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 
 	const checkpoint = (job: Job) => {
 		job.record.updatedAt = now();
-		const copy = cloneRecord(job.record);
-		// Serialized here as well as in the store, so each write sees a consistent snapshot. A failed
-		// write loses durability, not the job; the next checkpoint carries every result again.
-		job.writes = job.writes.then(() => store.put(copy).catch(() => undefined));
+		if (!job.durable) return;
+		// Queued in the store at once, so a later read of this id waits for it; the store applies a
+		// job's writes in call order. A failed write loses durability, not the job: the next
+		// checkpoint carries every result again, unless the record can never fit.
+		job.writes = store.put(cloneRecord(job.record)).catch(error => {
+			if (isAiJobUnstorableError(error)) job.durable = false;
+			if (job.warned) return;
+			job.warned = true;
+			console.warn(`[ai] A transcript ${job.task} job checkpoint was not saved${job.durable ? '' : '; the job continues without saving progress'}.`);
+		});
 	};
 
 	const snapshot = (job: Job, full: boolean): AiJobStateMessage => {
@@ -390,7 +403,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 	const startHeartbeat = (job: Job) => {
 		const beat = () => {
 			job.heartbeat = setTimer(() => {
-				if (job.cancelled || job.finished) return;
+				if (job.cancelled || job.finished || !job.durable) return;
 				checkpoint(job);
 				beat();
 			}, heartbeatMs);
@@ -398,39 +411,104 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		beat();
 	};
 
-	const settle = async (job: Job, status: Exclude<AiJobStatus, 'running'>, error?: AiError) => {
+	// The job keeps its id until its final write lands, so a start, attach, or cancel of the same id
+	// waits for `settling` and then reads the final record instead of a stale one.
+	const settle = (job: Job, status: Exclude<AiJobStatus, 'running'>, error?: AiError): Promise<void> => {
+		if (job.settling) return job.settling;
 		stopHeartbeat(job);
 		job.record.status = status;
 		if (error) job.record.error = serializeAiError(error);
 		else delete job.record.error;
 		checkpoint(job);
-		const listeners = Array.from(job.listeners);
-		if (jobs.get(job.id) === job) jobs.delete(job.id);
-		await job.writes;
-		const final = snapshot(job, true);
-		job.finished = true;
-		job.listeners.clear();
-		for (const listener of listeners) {
-			try {
-				listener(final);
-			} catch {
-				// Ignored as in emit.
+		job.settling = (async () => {
+			await job.writes;
+			// The stored record is an older `running` one; left behind, an attach would resume it.
+			if (!job.durable) await store.remove(job.id).catch(() => undefined);
+			const listeners = Array.from(job.listeners);
+			const final = snapshot(job, true);
+			job.finished = true;
+			job.listeners.clear();
+			if (jobs.get(job.id) === job) jobs.delete(job.id);
+			for (const listener of listeners) {
+				try {
+					listener(final);
+				} catch {
+					// Ignored as in emit.
+				}
 			}
+		})();
+		return job.settling;
+	};
+
+	const missingLateResults = (
+		record: AiJobRecord,
+		accepted: Array<[number, string | ReadingToken[]]>
+	): Array<[number, string | ReadingToken[]]> => accepted.filter(([id]) => (
+		Number.isInteger(id) && id >= 0 && id < record.segmentCount && !(id in record.results)
+	));
+
+	// With no live job of the id, the late result goes into the stored record as it is now: a newer
+	// job may have completed it, and a removed record stays removed.
+	const keepStoredLateResults = async (jobId: string, accepted: Array<[number, string | ReadingToken[]]>) => {
+		for (;;) {
+			const pending = locks.get(jobId);
+			if (pending) await pending.catch(() => undefined);
+			const live = jobs.get(jobId);
+			if (live && !live.settling) {
+				addLateResults(live, accepted, true);
+				return;
+			}
+			if (live) {
+				await live.settling;
+				continue;
+			}
+			const stored = await store.get(jobId);
+			// A job started meanwhile owns the record; hand the result to it.
+			if (jobs.has(jobId) || locks.has(jobId)) continue;
+			if (!stored || stored.status === 'completed') return;
+			const missing = missingLateResults(stored, accepted);
+			if (missing.length === 0) return;
+			const next = cloneRecord(stored);
+			for (const [id, value] of missing) next.results[id] = value;
+			next.updatedAt = now();
+			await store.put(next).catch(() => undefined);
+			return;
 		}
 	};
 
+	// Adds the missing ids to a job's record. A newer job reports them, because its own group for
+	// these ids will skip them; a cancelled job reports nothing.
+	const addLateResults = (target: Job, accepted: Array<[number, string | ReadingToken[]]>, report: boolean) => {
+		const missing = missingLateResults(target.record, accepted).filter(([id]) => !target.emptyIds.has(id));
+		if (missing.length === 0) return;
+		const items: JobResultItem[] = [];
+		for (const [id, value] of missing) {
+			target.record.results[id] = value;
+			if (target.emitted.has(id)) continue;
+			target.emitted.add(id);
+			items.push(resultItem(target.task, id, value));
+		}
+		checkpoint(target);
+		if (!report || items.length === 0) return;
+		emit(target, {
+			type: 'job-progress',
+			jobId: target.id,
+			completedGroups: target.completedGroups,
+			totalGroups: target.totalGroups,
+			completedSegments: target.emitted.size,
+			totalSegments: target.record.segmentCount,
+			results: items
+		});
+	};
+
 	// A result that arrives after cancel (Safari cannot abort a sendNativeMessage) is still billed,
-	// so it is kept: in a newer live job of the same id, or in the cancelled record.
+	// so it is kept: in the cancelled job while it settles, in a newer live job of the same id, or in
+	// the stored record.
 	const keepLateResults = (job: Job, accepted: Array<[number, string | ReadingToken[]]>) => {
 		const live = jobs.get(job.id);
-		const target = live && live !== job ? live : job;
-		let changed = false;
-		for (const [id, value] of accepted) {
-			if (id in target.record.results) continue;
-			target.record.results[id] = value;
-			changed = true;
-		}
-		if (changed) checkpoint(target);
+		if (live === job) addLateResults(job, accepted, false);
+		else if (live && !live.settling) addLateResults(live, accepted, true);
+		else void keepStoredLateResults(job.id, accepted);
 	};
 
 	const accept = (job: Job, group: TranscriptPromptGroup, output: AiTaskOutput<TranscriptJobTask>): GroupOutcome => {
@@ -646,7 +724,9 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			totalGroups: 0,
 			retriesThisRun: 0,
 			retryBudget: 0,
-			writes: Promise.resolve()
+			writes: Promise.resolve(),
+			durable: true,
+			warned: false
 		};
 		jobs.set(job.id, job);
 		checkpoint(job);
@@ -658,6 +738,11 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 	const obtain = async (jobId: string, factory: () => Promise<Job | undefined>): Promise<Job | undefined> => {
 		for (;;) {
 			const live = jobs.get(jobId);
+			if (live?.settling) {
+				// Proceed against the final record once it is written.
+				await live.settling;
+				continue;
+			}
 			if (live) return live;
 			const pending = locks.get(jobId);
 			if (!pending) break;
@@ -764,6 +849,11 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		async cancel(jobId) {
 			await locks.get(jobId)?.catch(() => undefined);
 			const job = jobs.get(jobId);
+			if (job?.settling) {
+				// Already ending: its final record stands, and a terminal record is never overwritten.
+				await job.settling;
+				return false;
+			}
 			if (job) {
 				// Terminal at once: progress stops, and a group that cannot be aborted (Safari) only
 				// checkpoints its late result.

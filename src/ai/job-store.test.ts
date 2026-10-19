@@ -3,7 +3,9 @@ import {
 	aiJobInputStorageKey,
 	aiJobStorageKey,
 	createAiJobStore,
+	isAiJobUnstorableError,
 	LEGACY_CHECKPOINT_KEY_PREFIX,
+	MAX_JOB_RECORD_CHARS,
 	MAX_JOB_RECORDS,
 	type AiJobRecord,
 	type AiJobStatus,
@@ -181,6 +183,40 @@ describe('createAiJobStore', () => {
 		area.failQuota = 2;
 		await expect(store.put(record('big', { updatedAt: 10 }))).rejects.toThrow(/quota/);
 		expect(area.calls.filter(call => call.startsWith('set:'))).toHaveLength(2);
+	});
+
+	test('rejects an oversized record on a quota error without evicting other records', async () => {
+		const area = fakeArea();
+		const store = createAiJobStore(area);
+		await seed(area, [record('done-1', { updatedAt: 1 }), record('done-2', { updatedAt: 2 })]);
+		area.failQuota = 1;
+		const big = record('big', { status: 'running', results: { 0: 'x'.repeat(MAX_JOB_RECORD_CHARS) } });
+		const error = await store.put(big).catch((thrown: unknown) => thrown);
+		expect(isAiJobUnstorableError(error)).toBe(true);
+		expect((error as Error).message).toMatch(/quota/);
+		expect(area.calls.filter(call => call.startsWith('remove:'))).toEqual([]);
+		expect((await store.list()).map(entry => entry.id).sort()).toEqual(['done-1', 'done-2']);
+	});
+
+	test('a record that still does not fit after one eviction is rejected later without evicting again', async () => {
+		const area = fakeArea();
+		const store = createAiJobStore(area);
+		await seed(area, [1, 2, 3].map(index => record(`done-${index}`, { updatedAt: index })));
+		area.failQuota = 2;
+		await expect(store.put(record('big', { status: 'running', updatedAt: 10 }))).rejects.toThrow(/quota/);
+		expect((await store.list()).map(entry => entry.id).sort()).toEqual(['done-2', 'done-3']);
+		const sets = area.calls.filter(call => call.startsWith('set:')).length;
+		// Checkpoints and heartbeats of the same job: rejected at once, and no other record goes.
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			const error = await store.put(record('big', { status: 'running', updatedAt: 11 + attempt })).catch((thrown: unknown) => thrown);
+			expect(isAiJobUnstorableError(error)).toBe(true);
+		}
+		expect(area.calls.filter(call => call.startsWith('set:'))).toHaveLength(sets);
+		expect((await store.list()).map(entry => entry.id).sort()).toEqual(['done-2', 'done-3']);
+		// Removing the job forgets the mark.
+		await store.remove('big');
+		await store.put(record('big', { updatedAt: 20 }));
+		expect((await store.get('big'))?.updatedAt).toBe(20);
 	});
 
 	test('rejects a quota error when only running records could be evicted', async () => {

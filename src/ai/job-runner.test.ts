@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import type { TranscriptSegment } from './contracts';
 import { AiError } from './errors';
 import { hashSegments, transcriptJobId, type TranscriptJobTask } from './job-identity';
@@ -17,7 +17,7 @@ import {
 	type JobRunnerDeps,
 	type JobRunnerEvent
 } from './job-runner';
-import { aiJobInputStorageKey, createAiJobStore, type AiJobRecord, type StorageAreaLike } from './job-store';
+import { aiJobInputStorageKey, aiJobStorageKey, createAiJobStore, type AiJobRecord, type StorageAreaLike } from './job-store';
 import type { AiJobInput, AiJobProgressMessage, AiJobRetryMessage, AiJobStateMessage } from './protocol';
 import type { ConnectionKind } from './types';
 
@@ -31,6 +31,12 @@ const flush = async (rounds = 4) => {
 interface TrackingArea extends StorageAreaLike {
 	values: Map<string, unknown>;
 	maxConcurrentSets: number;
+	/** Keys of every `set` call, including rejected ones. */
+	sets: string[];
+	/** While set, `set` calls wait for it. */
+	gate?: Promise<void>;
+	/** Returns an error to reject a `set` with, e.g. a quota error. */
+	rejectSet?: (entries: Record<string, unknown>) => Error | undefined;
 }
 
 // Async and cloning like storage.session; counts overlapping `set` calls.
@@ -41,6 +47,7 @@ function trackingArea(): TrackingArea {
 	const area: TrackingArea = {
 		values,
 		maxConcurrentSets: 0,
+		sets: [],
 		async get(keys) {
 			await Promise.resolve();
 			const wanted = keys === null || keys === undefined
@@ -49,6 +56,10 @@ function trackingArea(): TrackingArea {
 			return Object.fromEntries(wanted.map(key => [key, clone(values.get(key))]));
 		},
 		async set(entries) {
+			area.sets.push(...Object.keys(entries));
+			if (area.gate) await area.gate;
+			const rejection = area.rejectSet?.(entries);
+			if (rejection) throw rejection;
 			active += 1;
 			area.maxConcurrentSets = Math.max(area.maxConcurrentSets, active);
 			await Promise.resolve();
@@ -62,6 +73,18 @@ function trackingArea(): TrackingArea {
 		}
 	};
 	return area;
+}
+
+/** Holds every later `set` until the returned function opens the gate. */
+function closeGate(area: TrackingArea): () => void {
+	let open: () => void = () => undefined;
+	area.gate = new Promise<void>(resolve => {
+		open = resolve;
+	});
+	return () => {
+		area.gate = undefined;
+		open();
+	};
 }
 
 function fakeClock(start = 1_000_000) {
@@ -719,6 +742,103 @@ describe('job runner terminal states', () => {
 		expect(next.final()).toMatchObject({ status: 'completed', results: [{ id: 0, text: 'late' }] });
 	});
 
+	test('a late result after a newer job completed the record does not flip it back to cancelled', async () => {
+		const harness = setup({ abortable: false, respond: (call, index) => index === 0 ? 'hold' : echo(call, index) });
+		const { jobId, input } = jobInput('translate', ['hello']);
+		await harness.runner.start(jobId, 'translate', input, undefined, harness.listener);
+		await flush();
+		await harness.runner.cancel(jobId);
+		await harness.runner.start(jobId, 'translate', input, undefined, () => undefined);
+		await flush();
+		expect(await harness.store.get(jobId)).toMatchObject({ status: 'completed', results: { 0: 'T:hello' } });
+		harness.calls[0].resolve([{ id: 0, text: 'late' }]);
+		await flush();
+		expect(await harness.store.get(jobId)).toMatchObject({ status: 'completed', results: { 0: 'T:hello' } });
+	});
+
+	test('a late result after checkpoint-clear does not resurrect the removed record', async () => {
+		const harness = setup({ abortable: false, respond: () => 'hold' });
+		const { jobId, input } = jobInput('translate', ['hello']);
+		await harness.runner.start(jobId, 'translate', input, undefined, harness.listener);
+		await flush();
+		await harness.runner.cancel(jobId);
+		await harness.store.remove(jobId);
+		harness.calls[0].resolve([{ id: 0, text: 'late' }]);
+		await flush();
+		expect(await harness.store.get(jobId)).toBeUndefined();
+	});
+
+	test('a late result that lands in a newer live job is reported and counted', async () => {
+		const harness = setup({ abortable: false, respond: () => 'hold' });
+		const { jobId, input } = jobInput('translate', ['hello']);
+		await harness.runner.start(jobId, 'translate', input, undefined, () => undefined);
+		await flush();
+		await harness.runner.cancel(jobId);
+		await harness.runner.start(jobId, 'translate', input, undefined, harness.listener);
+		await flush();
+		expect(harness.calls).toHaveLength(2);
+		harness.calls[0].resolve([{ id: 0, text: 'late' }]);
+		await flush();
+		expect(harness.progress()).toEqual([expect.objectContaining({
+			completedSegments: 1,
+			totalSegments: 1,
+			results: [{ id: 0, text: 'late' }]
+		})]);
+		// The newer job's own request for id 0 then adds nothing, and the count stays right.
+		harness.calls[1].resolve([{ id: 0, text: 'T:hello' }]);
+		await flush();
+		expect(harness.progress().map(event => event.completedSegments)).toEqual([1, 1]);
+		expect(harness.final()).toMatchObject({ status: 'completed', completedSegments: 1, results: [{ id: 0, text: 'late' }] });
+
+		// The late result arrives while the newer job is still starting: it is handed to that job.
+		const racing = setup({ abortable: false, respond: () => 'hold' });
+		await racing.runner.start(jobId, 'translate', input, undefined, () => undefined);
+		await flush();
+		await racing.runner.cancel(jobId);
+		const starting = racing.runner.start(jobId, 'translate', input, undefined, racing.listener);
+		racing.calls[0].resolve([{ id: 0, text: 'late' }]);
+		await starting;
+		await flush();
+		expect(racing.progress().flatMap(event => event.results)).toEqual([{ id: 0, text: 'late' }]);
+		expect(racing.progress()[racing.progress().length - 1].completedSegments).toBe(1);
+	});
+
+	test('start, attach, and cancel during settle wait for the final record', async () => {
+		for (const action of ['start', 'attach', 'cancel'] as const) {
+			const harness = setup({ maxConcurrency: 1, respond: () => 'hold' });
+			const { jobId, input } = jobInput('translate', oneGroupEach(2));
+			await harness.runner.start(jobId, 'translate', input, undefined, () => undefined);
+			await flush();
+			// Storage is slow: every checkpoint from here on waits, the final one included.
+			const open = closeGate(harness.area);
+			harness.calls[0].resolve(echo(harness.calls[0], 0) as unknown[]);
+			await flush();
+			harness.calls[1].resolve(echo(harness.calls[1], 1) as unknown[]);
+			await flush();
+			// The job still owns its id while the final write is pending.
+			expect(harness.runner.isActive(jobId)).toBe(true);
+			const pending = action === 'start'
+				? harness.runner.start(jobId, 'translate', input, undefined, harness.listener)
+				: action === 'attach'
+					? harness.runner.attach(jobId, harness.listener)
+					: harness.runner.cancel(jobId);
+			await flush();
+			open();
+			const result = await pending;
+			await flush();
+			// No group is requested again, and the completed record is not overwritten.
+			expect(harness.calls).toHaveLength(2);
+			expect(await harness.store.get(jobId)).toMatchObject({ status: 'completed' });
+			expect(Object.keys((await harness.store.get(jobId))!.results)).toEqual(['0', '1']);
+			if (action === 'cancel') {
+				expect(result).toBe(false);
+			} else {
+				expect(harness.final()).toMatchObject({ status: 'completed', completedSegments: 2 });
+				expect(harness.states().filter(state => state.status === 'running')).toHaveLength(action === 'start' ? 1 : 0);
+			}
+		}
+	});
+
 	test('cancel of a running record without a live job marks it cancelled', async () => {
 		const harness = setup();
 		const texts = ['hello'];
@@ -898,5 +1018,55 @@ describe('job runner resume', () => {
 		expect(harness.final()?.status).toBe('completed');
 		expect(harness.clock.pending).toBe(0);
 		expect(harness.area.values.has(aiJobInputStorageKey(jobId))).toBe(true);
+	});
+
+	test('a record that cannot fit the quota stops checkpointing without evicting other jobs, and the job completes', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		try {
+			const harness = setup({ maxConcurrency: 1, respond: () => 'hold' });
+			const texts = oneGroupEach(4);
+			const { jobId, input } = jobInput('translate', texts);
+			const siblings = Array.from({ length: 5 }, (_, index) => storedRecord(
+				'translate',
+				[`sibling-${index}`],
+				{ status: 'completed', updatedAt: index },
+				harness.clock.now()
+			));
+			for (const sibling of siblings) await seed(harness, sibling);
+			const key = aiJobStorageKey(jobId);
+			// The record stops fitting once it holds a result.
+			harness.area.rejectSet = entries => {
+				const value = entries[key] as AiJobRecord | undefined;
+				return value && Object.keys(value.results).length > 0
+					? new Error('Session storage quota bytes exceeded. Values were not stored.')
+					: undefined;
+			};
+			await harness.runner.start(jobId, 'translate', input, undefined, harness.listener);
+			await flush();
+			harness.calls[0].resolve(echo(harness.calls[0], 0) as unknown[]);
+			await flush();
+			const attempts = () => harness.area.sets.filter(entry => entry === key).length;
+			const afterRejection = attempts();
+			// Neither heartbeats nor later checkpoints try to write the record again.
+			await harness.clock.advance(60_000);
+			for (let index = 1; index < 4; index += 1) {
+				harness.calls[index].resolve(echo(harness.calls[index], index) as unknown[]);
+				await flush();
+			}
+			expect(attempts()).toBe(afterRejection);
+			expect(harness.progress().flatMap(event => event.results.map(item => item.id))).toEqual([0, 1, 2, 3]);
+			expect(harness.final()).toMatchObject({ status: 'completed', completedSegments: 4 });
+			// One sibling went for the single retry; the others stay.
+			const ids = (await harness.store.list()).map(entry => entry.id);
+			expect(siblings.filter(sibling => ids.includes(sibling.id))).toHaveLength(4);
+			expect(warn).toHaveBeenCalledTimes(1);
+			expect(String(warn.mock.calls[0][0])).not.toContain(texts[0].slice(0, 20));
+			// The stale `running` record is gone, so an attach cannot resume and bill it again.
+			expect(await harness.store.get(jobId)).toBeUndefined();
+			expect(await harness.runner.attach(jobId, () => undefined)).toBeUndefined();
+			expect(harness.calls).toHaveLength(4);
+		} finally {
+			warn.mockRestore();
+		}
 	});
 });

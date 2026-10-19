@@ -12,6 +12,14 @@ export const AI_JOB_INPUT_KEY_PREFIX = 'aiJobInput:';
 /** Phase 3 Reader checkpoints; removed once on gateway init, never migrated. */
 export const LEGACY_CHECKPOINT_KEY_PREFIX = 'languageLearningTranscriptCheckpointV1:';
 export const MAX_JOB_RECORDS = 20;
+/**
+ * The largest write, in JSON characters, worth evicting another job for. Chrome's
+ * `storage.session` holds 10 MB (10,485,760 bytes) for all of the extension's keys together, and
+ * a character of a Chinese translation or a Japanese reading takes up to 3 bytes, so a value of
+ * 4M characters needs at least 40% of the area and may not fit even when it is empty. Such a
+ * value that hits the quota is rejected at once instead of evicting other jobs to make room.
+ */
+export const MAX_JOB_RECORD_CHARS = 4_000_000;
 
 export type AiJobStatus = 'running' | 'completed' | 'incomplete' | 'failed' | 'cancelled';
 
@@ -52,12 +60,31 @@ export interface StorageAreaLike {
 	remove(keys: string | string[]): Promise<void>;
 }
 
+/**
+ * A write that cannot fit in the storage quota: larger than `MAX_JOB_RECORD_CHARS`, or still over
+ * the quota after evicting another record. The store then rejects every later `put` of that job
+ * without writing or evicting, until the job is removed.
+ */
+export class AiJobUnstorableError extends Error {
+	constructor() {
+		super('The job record does not fit in the storage quota.');
+		this.name = 'AiJobUnstorableError';
+	}
+}
+
+export function isAiJobUnstorableError(error: unknown): error is AiJobUnstorableError {
+	return error instanceof Error && error.name === 'AiJobUnstorableError';
+}
+
 export interface AiJobStore {
 	/** Waits for this job's queued writes, then reads it. Malformed records read as undefined. */
 	get(jobId: string): Promise<AiJobRecord | undefined>;
-	/** Queues a whole-record write after this job's earlier writes; prunes old records. */
+	/**
+	 * Queues a whole-record write after this job's earlier writes; prunes old records. Rejects with
+	 * `AiJobUnstorableError` when the record cannot fit in the quota.
+	 */
 	put(record: AiJobRecord): Promise<void>;
-	/** Removes the record and its stored input. */
+	/** Removes the record and its stored input, and forgets that the record was unstorable. */
 	remove(jobId: string): Promise<void>;
 	/** Queues the job's input write; it lives as long as the record and is evicted with it. */
 	putInput(jobId: string, input: AiJobStoredInput): Promise<void>;
@@ -139,6 +166,9 @@ export function createAiJobStore(area: StorageAreaLike = createMemoryArea()): Ai
 	// Ids written by this store instance. The number of records grows only on a first write,
 	// so pruning runs then instead of reading every record on each checkpoint.
 	const written = new Set<string>();
+	// Jobs whose record did not fit even after an eviction. Records only grow while a job runs, so
+	// later writes would fail the same way; they are rejected without evicting anything else.
+	const unstorable = new Set<string>();
 
 	const enqueue = (jobId: string, write: () => Promise<void>): Promise<void> => {
 		const result = (queues.get(jobId) ?? Promise.resolve()).then(write);
@@ -182,17 +212,29 @@ export function createAiJobStore(area: StorageAreaLike = createMemoryArea()): Ai
 		await area.remove(jobIds.map(aiJobStorageKey));
 	};
 
-	const write = async (jobId: string, values: Record<string, unknown>) => {
+	// `record` writes mark their job unstorable when they cannot fit; input writes only reject.
+	const write = async (jobId: string, values: Record<string, unknown>, record: boolean) => {
+		if (record && unstorable.has(jobId)) throw new AiJobUnstorableError();
 		try {
 			await area.set(values);
 		} catch (error) {
 			if (!isQuotaError(error)) throw error;
+			const giveUp = () => {
+				if (record) unstorable.add(jobId);
+				return new AiJobUnstorableError();
+			};
+			// Evicting cannot make room for a value this large; keep the other jobs instead.
+			if (JSON.stringify(values).length > MAX_JOB_RECORD_CHARS) throw giveUp();
 			const oldest = evictionOrder(await list(), jobId).find(candidate => candidate.status !== 'running');
 			if (!oldest) throw error;
 			written.delete(oldest.id);
 			await area.remove(aiJobInputStorageKey(oldest.id));
 			await area.remove(aiJobStorageKey(oldest.id));
-			await area.set(values);
+			try {
+				await area.set(values);
+			} catch (retryError) {
+				throw isQuotaError(retryError) ? giveUp() : retryError;
+			}
 		}
 	};
 
@@ -204,7 +246,7 @@ export function createAiJobStore(area: StorageAreaLike = createMemoryArea()): Ai
 		},
 		put(record) {
 			return enqueue(record.id, async () => {
-				await write(record.id, { [aiJobStorageKey(record.id)]: record });
+				await write(record.id, { [aiJobStorageKey(record.id)]: record }, true);
 				if (written.has(record.id)) return;
 				written.add(record.id);
 				// Best effort: the record itself is stored, and the next new job prunes again.
@@ -214,12 +256,13 @@ export function createAiJobStore(area: StorageAreaLike = createMemoryArea()): Ai
 		remove(jobId) {
 			return enqueue(jobId, async () => {
 				written.delete(jobId);
+				unstorable.delete(jobId);
 				await removeKeys([jobId]);
 			});
 		},
 		putInput(jobId, input) {
 			const copy: AiJobStoredInput = { instruction: input.instruction, segments: [...input.segments] };
-			return enqueue(jobId, () => write(jobId, { [aiJobInputStorageKey(jobId)]: copy }));
+			return enqueue(jobId, () => write(jobId, { [aiJobInputStorageKey(jobId)]: copy }, false));
 		},
 		async getInput(jobId) {
 			await queues.get(jobId);

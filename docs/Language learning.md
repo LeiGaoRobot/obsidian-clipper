@@ -69,7 +69,7 @@ The original subtitle remains visible. If **Bilingual subtitles** is also enable
 
 Long transcripts are processed in batches, with smaller batches for Japanese readings because their output is larger than the source text. Progress counts completed subtitle segments rather than model batches. If a batch fails or is cancelled, completed segments remain saved; selecting **Continue remaining** or **Japanese readings** again sends only missing segments.
 
-When an API provider reports that it is rate limited (HTTP 429) or has a temporary server error (HTTP 500, 502, 503, 504, or 529), Web Clipper waits and retries that batch automatically, up to two times per batch and within a limit for the whole job. The task bar shows a countdown, such as *Provider busy, retrying in 5 s…*. Web Clipper waits at least as long as the provider's `Retry-After` header asks, and does not retry when the provider asks for more than 60 seconds. Quota, authentication, and network errors, and API request timeouts, are never retried automatically.
+When an API provider reports that it is rate limited (HTTP 429) or has a temporary server error (HTTP 500, 502, 503, 504, or 529), Web Clipper waits and retries that batch automatically, up to two times per batch and within a limit for the whole job. The task bar shows how long it will wait, such as *Provider busy, retrying in 5 s…*. Web Clipper waits at least as long as the provider's `Retry-After` header asks, and does not retry when the provider asks for more than 60 seconds. Quota, authentication, and network errors, and API request timeouts, are never retried automatically.
 
 After a local CLI timeout, for translations and Japanese readings alike, Web Clipper automatically halves the batch size and continues with the remaining segments, up to three times per run and not below a safe minimum, without showing an intermediate timeout card. If the smaller batches still time out, the error card offers **Continue remaining**, which keeps the smaller batch size.
 
@@ -137,7 +137,7 @@ The controls are available only when Reader detects a supported YouTube or Bilib
 
 ### A translation is incomplete or stops partway
 
-Select **Continue remaining**. Completed lines are kept, and only missing segments are sent. If the task bar shows *Provider busy, retrying*, the provider is rate limiting requests; wait for the countdown or select **Cancel** and try again later. If the problem continues, choose **Current segment** or **Next 5 minutes**, switch execution mode from the error card, or use a model with a larger context window.
+Select **Continue remaining**. Completed lines are kept, and only missing segments are sent. If the task bar shows *Provider busy, retrying*, the provider is rate limiting requests; wait for the retry or select **Cancel** and try again later. If the problem continues, choose **Current segment** or **Next 5 minutes**, switch execution mode from the error card, or use a model with a larger context window.
 
 ### Japanese readings time out in CLI mode
 
@@ -150,6 +150,7 @@ Check the provider URL, API key, enabled model, quota, local-model server, or Na
 ## Current limitations
 
 - Saved transcript results are session-scoped rather than permanent study history, and only the 20 most recent are kept. Saved vocabulary is persistent local extension data.
+- A transcript job whose results grow too large for extension session storage keeps running and shows every result, but its progress is no longer saved: it cannot resume after an extension background restart, and a Reader reload does not restore it.
 - Bilibili integration requires Chromium or Firefox, a public video with a Bilibili-provided timed subtitle track, and the in-page Reader; the standalone `reader.html` view does not have the live player session needed to load Bilibili subtitles.
 - AI output quality and language accuracy depend on the selected model.
 - Japanese names and context-dependent kanji readings may need manual correction.
