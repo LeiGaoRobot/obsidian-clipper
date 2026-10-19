@@ -169,6 +169,26 @@
 		}
 	}
 
+	#interpreter-cancel-btn {
+		font-family: var(--font-monospace-default);
+		font-size: 0.6875rem;
+		height: 1.5rem;
+		padding: 0 0.25rem;
+		width: auto;
+		box-shadow: none;
+		background-color: transparent;
+		color: var(--text-muted);
+		white-space: nowrap;
+		&[hidden] {
+			display: none;
+		}
+		@media (hover: hover) {
+			&:hover {
+				color: var(--text-normal);
+			}
+		}
+	}
+
 	#interpreter-timer {
 		user-select: none;
 		-webkit-user-select: none;
@@ -198,21 +218,29 @@
 		}
 	}
 
+	// Holds the shared AI error card, or the partial-result warning.
 	#interpreter-error {
 		border-top: 1px solid var(--background-modifier-error-border);
 		padding: 0.5rem;
-		font-size: var(--font-ui-smaller);
-		color: var(--text-error);
-		white-space: pre-wrap;
-		word-break: break-word;
-		max-height: 150px;
+		max-height: 200px;
 		overflow-y: auto;
 		display: none;
-		line-height: 1.2;
+
+		// The Interpreter box is already tinted for the error, so the card drops its own frame.
+		.ai-error-card {
+			padding: 0;
+			background-color: transparent;
+			border: none;
+			font-size: var(--font-ui-smaller);
+		}
 
 		&.warning {
 			border-top-color: var(--background-modifier-warning-border);
+			font-size: var(--font-ui-smaller);
 			color: var(--text-warning);
+			white-space: pre-wrap;
+			word-break: break-word;
+			line-height: 1.2;
 		}
 
 		ul {

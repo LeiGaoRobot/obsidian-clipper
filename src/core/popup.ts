@@ -16,7 +16,10 @@ import {
 	initializeInterpreter,
 	handleInterpreterUI,
 	collectPromptVariables,
-	populatePopupModelSelect
+	populatePopupModelSelect,
+	waitForInterpreter,
+	InterpreterCancelledError,
+	InterpreterPartialError
 } from '../utils/interpreter';
 import { loadAiSettingsWithCredentialPresence } from '../utils/ai-settings';
 import type { AiSettingsView } from '../ai/types';
@@ -638,7 +641,10 @@ async function initializeLanguageLearningTools(): Promise<void> {
 	initializeLanguageLearningPopup({
 		enabled: isLanguageLearningPopupAvailable(aiSettings),
 		transformContent: configuredLanguageLearning.transformContent,
-		getMessage
+		getMessage,
+		openSettings: () => {
+			void browser.runtime.sendMessage({ action: 'openOptionsPage', section: 'ai' });
+		}
 	});
 }
 
@@ -669,31 +675,6 @@ function clearError(): void {
 function logError(message: string, error?: any): void {
 	console.error(message, error);
 	showError(message);
-}
-
-/** The interpreter left prompts unanswered; the clipper stays visible to show which. */
-class InterpreterPartialError extends Error {}
-
-async function waitForInterpreter(interpretBtn: HTMLButtonElement): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const checkProcessing = () => {
-			if (!interpretBtn.classList.contains('processing')) {
-				if (interpretBtn.classList.contains('done')) {
-					resolve();
-				} else if (interpretBtn.classList.contains('partial')) {
-					// Keep the popup open so the unanswered prompts are seen before saving.
-					reject(new InterpreterPartialError(getMessage('interpreterPartialTitle')));
-				} else if (interpretBtn.classList.contains('error')) {
-					reject(new Error(getMessage('failedToProcessInterpreter')));
-				} else {
-					setTimeout(checkProcessing, 100);
-				}
-			} else {
-				setTimeout(checkProcessing, 100);
-			}
-		};
-		checkProcessing();
-	});
 }
 
 async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebuildSkeleton = true }: { checkTemplateTriggers?: boolean; rebuildSkeleton?: boolean } = {}) {
@@ -980,23 +961,10 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 		const promptVariables = collectPromptVariables(template);
 
 		if (view.interpreter.autoRun && promptVariables.length > 0) {
-			try {
-				const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
-				const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
-				// Without a choice in the select, routing picks the profile.
-				await handleInterpreterUI(template, variables, currentTabId!, currentUrl, modelSelect?.value || undefined);
-
-				if (interpretBtn && !interpretBtn.classList.contains('partial')) {
-					interpretBtn.classList.add('done');
-					interpretBtn.disabled = true;
-				}
-			} catch (error) {
-				console.error('Error auto-processing with interpreter:', error);
-				const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
-				if (interpretBtn) {
-					interpretBtn.classList.add('error');
-				}
-			}
+			const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
+			// Without a choice in the select, routing picks the profile. The Interpreter shows its own
+			// outcome (done, partial, error card, or cancelled) and does not throw.
+			await handleInterpreterUI(template, variables, currentTabId!, currentUrl, modelSelect?.value || undefined);
 		}
 	}
 
@@ -1392,7 +1360,7 @@ async function handleClipObsidian(): Promise<void> {
 		}
 	} catch (error) {
 		console.error('Error in handleClipObsidian:', error);
-		if (!(error instanceof InterpreterPartialError)) showError('failedToSaveFile');
+		if (!(error instanceof InterpreterPartialError || error instanceof InterpreterCancelledError)) showError('failedToSaveFile');
 		throw error;
 	}
 }

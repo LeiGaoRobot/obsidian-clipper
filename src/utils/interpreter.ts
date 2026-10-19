@@ -6,10 +6,13 @@ import { adjustNoteNameHeight } from './ui-utils';
 import { debugLog } from './debug';
 import { getMessage } from './i18n';
 import { updateTokenCount } from './token-counter';
-import { runAiTask } from '../ai/client';
+import browser from './browser-polyfill';
+import { runAiTask, type AiTaskResult } from '../ai/client';
 import { describeAiError } from '../ai/error-messages';
-import { isAiError } from '../ai/errors';
+import { toAiError, type AiError } from '../ai/errors';
 import type { AiSettingsView } from '../ai/types';
+import { createAiAction, type AiAction, type AiActionStatus } from '../ai/ui/action';
+import { renderAiErrorCard } from '../ai/ui/error-card';
 import {
 	listEnabledProfileGroups,
 	profileDisplayName,
@@ -176,8 +179,8 @@ export async function initializeInterpreter(
 	}
 
 	if (template) {
-		// Only add click listener if auto-run is disabled
-		if (interpretBtn && !view.interpreter.autoRun) {
+		// Auto-run starts the first run itself; the button runs it again after a cancel.
+		if (interpretBtn) {
 			const clickListener = async () => {
 				// No choice (no enabled profile, or the routed one is unavailable): routing decides.
 				await handleInterpreterUI(template, variables, tabId, currentUrl, modelSelect?.value || undefined);
@@ -205,162 +208,220 @@ export async function initializeInterpreter(
 	}
 }
 
+type InterpretResult = AiTaskResult<'interpret'>;
+
+// One controller per popup document: a newer run aborts the previous one, and a settlement that
+// arrives after it (or after a cancel) changes nothing.
+let interpreterAction: AiAction<InterpretResult> | undefined;
+
+function getInterpreterAction(): AiAction<InterpretResult> {
+	interpreterAction ??= createAiAction<InterpretResult>();
+	return interpreterAction;
+}
+
+interface InterpreterElements {
+	container: HTMLElement | null;
+	interpretBtn: HTMLButtonElement;
+	cancelBtn: HTMLButtonElement | null;
+	message: HTMLDivElement;
+	timer: HTMLSpanElement;
+	clipButton: HTMLButtonElement;
+	moreButton: HTMLButtonElement;
+}
+
+/**
+ * Runs the template's prompt variables through the `interpret` task and fills the fields with the
+ * responses. Resolves with how the run ended: errors are shown in `#interpreter-error`, not thrown.
+ * Cancel aborts the request; the error card's Retry sends the same request again.
+ */
 export async function handleInterpreterUI(
 	template: Template,
 	variables: { [key: string]: string },
 	tabId: number,
 	currentUrl: string,
 	profileId?: string
-): Promise<void> {
-	const interpreterContainer = document.getElementById('interpreter');
-	const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
-	const interpreterErrorMessage = document.getElementById('interpreter-error') as HTMLDivElement;
-	const responseTimer = document.getElementById('interpreter-timer') as HTMLSpanElement;
-	const clipButton = document.getElementById('clip-btn') as HTMLButtonElement;
-	const moreButton = document.getElementById('more-btn') as HTMLButtonElement;
+): Promise<AiActionStatus> {
+	const ui: InterpreterElements = {
+		container: document.getElementById('interpreter'),
+		interpretBtn: document.getElementById('interpret-btn') as HTMLButtonElement,
+		cancelBtn: document.getElementById('interpreter-cancel-btn') as HTMLButtonElement | null,
+		message: document.getElementById('interpreter-error') as HTMLDivElement,
+		timer: document.getElementById('interpreter-timer') as HTMLSpanElement,
+		clipButton: document.getElementById('clip-btn') as HTMLButtonElement,
+		moreButton: document.getElementById('more-btn') as HTMLButtonElement
+	};
 	const promptContextTextarea = document.getElementById('prompt-context') as HTMLTextAreaElement;
+	const action = getInterpreterAction();
+	if (ui.cancelBtn) ui.cancelBtn.onclick = () => action.cancel();
 
-	try {
-		// Hide any previous error message
-		interpreterErrorMessage.style.display = 'none';
-		interpreterErrorMessage.textContent = '';
-		interpreterErrorMessage.classList.remove('warning');
-
-		// Remove any previous done, partial, or error classes
-		interpreterContainer?.classList.remove('done', 'partial', 'error');
-		interpretBtn.classList.remove('done', 'partial', 'error');
-
-		const promptVariables = collectPromptVariables(template);
-
+	const promptVariables = collectPromptVariables(template);
+	const input = { context: promptContextTextarea.value, prompts: promptVariables };
+	return runInterpreter(ui, promptVariables, () => action.start(async signal => {
 		if (promptVariables.length === 0) {
 			throw new Error('No prompt variables found. Please add at least one prompt variable to your template.');
 		}
-
-		const contextToUse = promptContextTextarea.value;
-		const contentToProcess = variables.content || '';
-
-		// Start the timer
-		const startTime = performance.now();
-		let timerInterval: number;
-
-		// Change button text and add class
-		interpretBtn.textContent = getMessage('thinking');
-		interpretBtn.classList.add('processing');
-
-		// Disable the clip button
-		clipButton.disabled = true;
-		moreButton.disabled = true;
-
-		// Show and update the timer
-		responseTimer.style.display = 'inline';
-		responseTimer.textContent = '0ms';
-
-		// Update the timer text with elapsed time
-		timerInterval = window.setInterval(() => {
-			const elapsedTime = performance.now() - startTime;
-			responseTimer.textContent = formatDuration(elapsedTime);
-		}, 10);
-
 		// The model select's profile is an explicit choice for this run; without one, routing picks.
-		const { output: { responses, missing } } = await runAiTask('interpret', {
-			context: contextToUse,
-			prompts: promptVariables
-		}, profileId ? { profileId } : {});
-		// Unanswered prompts get no response, so their placeholders stay in the fields.
-		const promptResponses = promptVariables
-			.filter(variable => Object.prototype.hasOwnProperty.call(responses, variable.key))
-			.map(variable => ({
-				key: variable.key,
-				prompt: variable.prompt,
-				user_response: responses[variable.key]
-			}));
-		debugLog('Interpreter', 'LLM response:', { promptResponses, missing });
+		return runAiTask('interpret', input, profileId ? { profileId, signal } : { signal });
+	}));
+}
 
-		// Stop the timer and update UI
-		clearInterval(timerInterval);
-		const endTime = performance.now();
-		const totalTime = endTime - startTime;
-		responseTimer.textContent = formatDuration(totalTime);
+/** Drives the Interpreter's controls through one run, which `launch` starts on the controller. */
+async function runInterpreter(
+	ui: InterpreterElements,
+	promptVariables: PromptVariable[],
+	launch: () => Promise<InterpretResult | undefined>
+): Promise<AiActionStatus> {
+	const action = getInterpreterAction();
+	const { container, interpretBtn, cancelBtn, message, timer, clipButton, moreButton } = ui;
 
-		// Update button state; a partial result is never marked done
-		const state = missing.length > 0 ? 'partial' : 'done';
-		interpretBtn.textContent = getMessage(state === 'done' ? 'done' : 'interpreterPartialStatus').toLowerCase();
-		interpretBtn.classList.remove('processing');
-		interpretBtn.classList.add(state);
-		interpretBtn.disabled = true;
-		interpreterContainer?.classList.add(state);
-		if (state === 'partial') {
-			const unanswered = promptVariables.filter(variable => missing.includes(variable.key));
-			showInterpreterPartial(interpreterErrorMessage, unanswered, promptVariables.length);
+	// Everything up to the first await runs synchronously, so a Clip that clicks the button sees
+	// `processing` at once.
+	clearInterpreterMessage(message);
+	container?.classList.remove('done', 'partial', 'error');
+	interpretBtn.classList.remove('done', 'partial', 'error', 'cancelled');
+	interpretBtn.textContent = getMessage('thinking');
+	interpretBtn.classList.add('processing');
+	clipButton.disabled = true;
+	moreButton.disabled = true;
+	if (cancelBtn) cancelBtn.hidden = false;
+	timer.style.display = 'inline';
+	timer.textContent = '0ms';
+
+	const pending = launch();
+	const startedAt = action.state.startedAt ?? Date.now();
+	const timerInterval = window.setInterval(() => {
+		timer.textContent = formatDuration(Date.now() - startedAt);
+	}, 10);
+	let result: InterpretResult | undefined;
+	try {
+		result = await pending;
+	} finally {
+		window.clearInterval(timerInterval);
+	}
+	const { state } = action;
+	// A newer run owns the controls now.
+	if (state.status === 'running') return state.status;
+
+	if (cancelBtn) cancelBtn.hidden = true;
+	interpretBtn.classList.remove('processing');
+	clipButton.disabled = false;
+	moreButton.disabled = false;
+
+	if (state.status === 'done' && result) {
+		timer.textContent = formatDuration(Date.now() - startedAt);
+		try {
+			applyInterpretResult(ui, promptVariables, result);
+			return 'done';
+		} catch (error) {
+			showInterpreterFailure(ui, promptVariables, toAiError(error));
+			return 'error';
 		}
+	}
+	if (state.status === 'error' && state.error) {
+		showInterpreterFailure(ui, promptVariables, state.error);
+		return 'error';
+	}
+	// Cancelled: the button returns to its idle label and can run again.
+	interpretBtn.textContent = getMessage('interpret');
+	interpretBtn.classList.add('cancelled');
+	timer.style.display = 'none';
+	return 'cancelled';
+}
 
-		// Update fields with responses
-		replacePromptVariables(promptVariables, promptResponses);
+function applyInterpretResult(ui: InterpreterElements, promptVariables: PromptVariable[], result: InterpretResult): void {
+	const { output: { responses, missing } } = result;
+	// Unanswered prompts get no response, so their placeholders stay in the fields.
+	const promptResponses = promptVariables
+		.filter(variable => Object.prototype.hasOwnProperty.call(responses, variable.key))
+		.map(variable => ({
+			key: variable.key,
+			prompt: variable.prompt,
+			user_response: responses[variable.key]
+		}));
+	debugLog('Interpreter', 'LLM response:', { promptResponses, missing });
 
-		// Re-enable clip button
-		clipButton.disabled = false;
-		moreButton.disabled = false;
+	// Update button state; a partial result is never marked done
+	const state = missing.length > 0 ? 'partial' : 'done';
+	ui.interpretBtn.textContent = getMessage(state === 'done' ? 'done' : 'interpreterPartialStatus').toLowerCase();
+	ui.interpretBtn.classList.add(state);
+	ui.interpretBtn.disabled = true;
+	ui.container?.classList.add(state);
+	if (state === 'partial') {
+		const unanswered = promptVariables.filter(variable => missing.includes(variable.key));
+		showInterpreterPartial(ui.message, unanswered, promptVariables.length);
+	}
 
-		// Adjust height for noteNameField after content is replaced
-		const noteNameField = document.getElementById('note-name-field') as HTMLTextAreaElement | null;
-		if (noteNameField instanceof HTMLTextAreaElement) {
-			adjustNoteNameHeight(noteNameField);
-		}
+	// Update fields with responses
+	replacePromptVariables(promptVariables, promptResponses);
 
-	} catch (error) {
-		console.error('Error processing LLM:', error);
-		
-		// Revert button text and remove class in case of error
-		interpretBtn.textContent = getMessage('error');
-		interpretBtn.classList.remove('processing');
-		interpretBtn.classList.add('error');
-		interpretBtn.disabled = true;
-
-		// Add error class to interpreter container
-		interpreterContainer?.classList.add('error');
-
-		// Hide the timer
-		responseTimer.style.display = 'none';
-
-		// Display the error message
-		showInterpreterError(interpreterErrorMessage, error);
-
-		// Re-enable the clip button
-		clipButton.disabled = false;
-		moreButton.disabled = false;
-
-		if (isAiError(error)) {
-			throw new Error(describeAiError(error).body);
-		} else if (error instanceof Error) {
-			throw new Error(`${error.message}`);
-		} else {
-			throw new Error('An unknown error occurred while processing the interpreter request.');
-		}
+	// Adjust height for noteNameField after content is replaced
+	const noteNameField = document.getElementById('note-name-field') as HTMLTextAreaElement | null;
+	if (noteNameField instanceof HTMLTextAreaElement) {
+		adjustNoteNameHeight(noteNameField);
 	}
 }
 
-function showInterpreterError(container: HTMLElement, error: unknown): void {
-	container.replaceChildren();
-	if (isAiError(error)) {
-		const description = describeAiError(error);
-		const title = document.createElement('strong');
-		title.textContent = description.title;
-		container.append(title, ` ${description.body}`);
-		if (description.detail) {
-			const details = document.createElement('details');
-			const summary = document.createElement('summary');
-			summary.textContent = getMessage('readerTechnicalDetails');
-			const detail = document.createElement('div');
-			detail.textContent = description.detail;
-			details.append(summary, detail);
-			container.append(details);
+function showInterpreterFailure(ui: InterpreterElements, promptVariables: PromptVariable[], error: AiError): void {
+	console.error('Error processing LLM:', error);
+	ui.interpretBtn.textContent = getMessage('error');
+	ui.interpretBtn.classList.add('error');
+	ui.interpretBtn.disabled = true;
+	ui.container?.classList.add('error');
+	ui.timer.style.display = 'none';
+
+	renderAiErrorCard(ui.message, describeAiError(error), {
+		handlers: {
+			// The same request again: same context, prompts, and profile.
+			retry: () => {
+				ui.interpretBtn.disabled = false;
+				void runInterpreter(ui, promptVariables, () => getInterpreterAction().retry());
+			},
+			openSettings: () => {
+				void browser.runtime.sendMessage({ action: 'openOptionsPage', section: 'ai' });
+			}
 		}
-	} else {
-		container.textContent = error instanceof Error
-			? error.message
-			: 'An unknown error occurred while processing the interpreter request.';
-	}
-	container.style.display = 'block';
+	});
+	ui.message.style.display = 'block';
+}
+
+function clearInterpreterMessage(container: HTMLElement): void {
+	container.replaceChildren();
+	container.classList.remove('warning');
+	container.style.display = 'none';
+}
+
+/** The interpreter left prompts unanswered; the clipper stays visible to show which. */
+export class InterpreterPartialError extends Error {}
+
+/** The interpreter run was cancelled; nothing is saved and the clipper stays as it is. */
+export class InterpreterCancelledError extends Error {}
+
+/**
+ * Waits for the Interpreter run a Clip depends on by polling the button's state classes. Rejects
+ * when the run left prompts unanswered, failed, or was cancelled.
+ */
+export async function waitForInterpreter(interpretBtn: HTMLButtonElement): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const checkProcessing = () => {
+			if (!interpretBtn.classList.contains('processing')) {
+				if (interpretBtn.classList.contains('done')) {
+					resolve();
+				} else if (interpretBtn.classList.contains('partial')) {
+					// Keep the popup open so the unanswered prompts are seen before saving.
+					reject(new InterpreterPartialError(getMessage('interpreterPartialTitle')));
+				} else if (interpretBtn.classList.contains('error')) {
+					reject(new Error(getMessage('failedToProcessInterpreter')));
+				} else if (interpretBtn.classList.contains('cancelled')) {
+					reject(new InterpreterCancelledError(getMessage('aiRequestCancelled')));
+				} else {
+					setTimeout(checkProcessing, 100);
+				}
+			} else {
+				setTimeout(checkProcessing, 100);
+			}
+		};
+		checkProcessing();
+	});
 }
 
 function showInterpreterPartial(container: HTMLElement, unanswered: PromptVariable[], total: number): void {

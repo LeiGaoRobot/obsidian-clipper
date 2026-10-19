@@ -50,6 +50,7 @@ function createPopupFixture() {
 			</div>
 			<button id="ai-edit-cancel-request-btn" hidden>Cancel request</button>
 			<div id="ai-edit-status"></div>
+			<div id="ai-edit-error" hidden></div>
 		</section>
 		<textarea id="note-content-field">Before difficult after.</textarea>
 	`;
@@ -63,7 +64,8 @@ function createPopupFixture() {
 			preview: document.getElementById('ai-edit-preview') as HTMLElement,
 			previewContent: document.getElementById('ai-edit-preview-content') as HTMLElement,
 			instruction: document.getElementById('ai-edit-instruction') as HTMLTextAreaElement,
-			status: document.getElementById('ai-edit-status') as HTMLElement
+			status: document.getElementById('ai-edit-status') as HTMLElement,
+			errorCard: document.getElementById('ai-edit-error') as HTMLElement
 	};
 }
 
@@ -130,7 +132,7 @@ describe('Language learning popup', () => {
 				'message:aiEditInstructionBilingual',
 				expect.any(AbortSignal)
 			);
-		expect(fixture.previewContent.textContent).toBe('simple');
+		await vi.waitFor(() => expect(fixture.previewContent.textContent).toBe('simple'));
 		expect(fixture.preview.style.display).toBe('block');
 
 		fixture.applyButton.click();
@@ -143,6 +145,7 @@ describe('Language learning popup', () => {
 
 		fixture.previewButton.click();
 		await vi.waitFor(() => expect(transformContent).toHaveBeenCalledTimes(2));
+		await vi.waitFor(() => expect(fixture.preview.style.display).toBe('block'));
 		fixture.cancelButton.click();
 		expect(fixture.preview.style.display).toBe('none');
 		expect(fixture.content.value).toBe('Before difficult after.');
@@ -166,24 +169,103 @@ describe('Language learning popup', () => {
 		expect(fixture.cancelRequestButton.hidden).toBe(true);
 	});
 
-	test('shows the localized body of a model error and a cancelled code as cancelled', async () => {
+	test('shows a model error in the error card, and a cancelled code as cancelled without a card', async () => {
 		const fixture = createPopupFixture();
 		const auth = new AiError('auth', { status: 401, detail: 'invalid key', task: 'edit' });
 		const transformContent = vi.fn()
 			.mockRejectedValueOnce(auth)
 			.mockRejectedValueOnce(new AiError('cancelled', { task: 'edit' }));
+		const openSettings = vi.fn();
 		initializeLanguageLearningPopup({
 			enabled: true,
 			transformContent,
-			getMessage: key => key
+			getMessage: key => key,
+			openSettings
 		});
 
 		fixture.previewButton.click();
-		await vi.waitFor(() => expect(fixture.status.textContent).toBe(describeAiError(auth).body));
-		expect(fixture.status.classList.contains('is-error')).toBe(true);
+		await vi.waitFor(() => expect(fixture.errorCard.hidden).toBe(false));
+		const description = describeAiError(auth);
+		expect(fixture.errorCard.querySelector('.ai-error-card-title')?.textContent).toBe(description.title);
+		expect(fixture.errorCard.querySelector('.ai-error-card-body')?.textContent).toBe(description.body);
+		expect(fixture.errorCard.querySelector('.ai-error-card-detail')?.textContent).toContain('invalid key');
+		expect(cardActions(fixture.errorCard)).toEqual(['openSettings', 'retry']);
+		expect(fixture.status.textContent).toBe('');
+		cardAction(fixture.errorCard, 'openSettings').click();
+		expect(openSettings).toHaveBeenCalledOnce();
 
 		fixture.previewButton.click();
+		expect(fixture.errorCard.hidden).toBe(true);
 		await vi.waitFor(() => expect(fixture.status.textContent).toBe('aiRequestCancelled'));
 		expect(fixture.status.classList.contains('is-error')).toBe(false);
+		expect(fixture.errorCard.hidden).toBe(true);
+		expect(fixture.errorCard.childElementCount).toBe(0);
+	});
+
+	test('Retry sends the same content and instruction again and previews against the same source', async () => {
+		const fixture = createPopupFixture();
+		const transformContent = vi.fn()
+			.mockRejectedValueOnce(new AiError('network', { task: 'edit' }))
+			.mockResolvedValueOnce('simple');
+		initializeLanguageLearningPopup({ enabled: true, transformContent, getMessage: key => key });
+		fixture.content.setSelectionRange(7, 16);
+
+		fixture.previewButton.click();
+		await vi.waitFor(() => expect(fixture.errorCard.hidden).toBe(false));
+		// The selection may move before Retry; the request and its target stay as they were.
+		fixture.content.setSelectionRange(0, 0);
+		cardAction(fixture.errorCard, 'retry').click();
+		expect(fixture.errorCard.hidden).toBe(true);
+		await vi.waitFor(() => expect(fixture.preview.style.display).toBe('block'));
+
+		expect(transformContent).toHaveBeenCalledTimes(2);
+		expect(transformContent.mock.calls[1].slice(0, 2)).toEqual(['difficult', 'aiEditInstructionBilingual']);
+		expect(transformContent.mock.calls[1][2]).not.toBe(transformContent.mock.calls[0][2]);
+		fixture.applyButton.click();
+		expect(fixture.content.value).toBe('Before simple after.');
+	});
+
+	test('shows an empty response as an error card', async () => {
+		const fixture = createPopupFixture();
+		initializeLanguageLearningPopup({ enabled: true, transformContent: vi.fn().mockResolvedValue('  '), getMessage: key => key });
+
+		fixture.previewButton.click();
+
+		await vi.waitFor(() => expect(fixture.errorCard.hidden).toBe(false));
+		expect(fixture.errorCard.querySelector('.ai-error-card-detail')?.textContent).toContain('emptyResponse');
+		expect(fixture.preview.style.display).toBe('none');
+	});
+
+	test('ignores a stale result that settles after a newer preview started', async () => {
+		const fixture = createPopupFixture();
+		let resolveFirst!: (value: string) => void;
+		let resolveSecond!: (value: string) => void;
+		const transformContent = vi.fn()
+			.mockImplementationOnce(() => new Promise<string>(resolve => { resolveFirst = resolve; }))
+			.mockImplementationOnce(() => new Promise<string>(resolve => { resolveSecond = resolve; }));
+		initializeLanguageLearningPopup({ enabled: true, transformContent, getMessage: key => key });
+
+		fixture.previewButton.click();
+		fixture.cancelRequestButton.click();
+		await vi.waitFor(() => expect(fixture.status.textContent).toBe('aiRequestCancelled'));
+		fixture.previewButton.click();
+		expect(transformContent).toHaveBeenCalledTimes(2);
+
+		resolveFirst('stale');
+		await new Promise(resolve => setTimeout(resolve, 0));
+		expect(fixture.preview.style.display).toBe('none');
+		expect(fixture.status.textContent).toBe('thinking');
+
+		resolveSecond('fresh');
+		await vi.waitFor(() => expect(fixture.previewContent.textContent).toBe('fresh'));
+		expect(fixture.previewButton.disabled).toBe(false);
 	});
 });
+
+function cardActions(card: HTMLElement): string[] {
+	return Array.from(card.querySelectorAll<HTMLElement>('.ai-error-card-action'), button => button.dataset.action ?? '');
+}
+
+function cardAction(card: HTMLElement, action: string): HTMLButtonElement {
+	return card.querySelector(`.ai-error-card-action[data-action="${action}"]`) as HTMLButtonElement;
+}

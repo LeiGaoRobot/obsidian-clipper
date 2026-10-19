@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AiError } from '../ai/errors';
 import { deriveAiSettings } from '../ai/settings-view';
 import type { AiSettingsView } from '../ai/types';
@@ -9,8 +9,11 @@ import type { Settings, Template } from '../types/types';
 const mocks = vi.hoisted(() => ({
 	runAiTask: vi.fn(),
 	loadAiSettings: vi.fn(),
-	saveRouting: vi.fn()
+	saveRouting: vi.fn(),
+	sendMessage: vi.fn()
 }));
+
+vi.mock('./browser-polyfill', () => ({ default: { runtime: { sendMessage: mocks.sendMessage } } }));
 
 vi.mock('./ai-settings', () => ({
 	loadAiSettings: mocks.loadAiSettings,
@@ -23,10 +26,12 @@ vi.mock('./debug', () => ({ debugLog: vi.fn() }));
 
 import {
 	handleInterpreterUI,
+	InterpreterCancelledError,
 	initializeInterpreter,
 	populatePopupModelSelect,
 	popupInterpretProfileId,
-	saveInterpretProfile
+	saveInterpretProfile,
+	waitForInterpreter
 } from './interpreter';
 
 const template: Template = {
@@ -91,18 +96,25 @@ function modelSelect(): HTMLSelectElement {
 }
 
 describe('Interpreter', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
 	beforeEach(() => {
 		document.body.innerHTML = `
 			<div id="interpreter"></div>
 			<button id="interpret-btn"></button>
 			<div id="interpreter-error"></div>
 			<span id="interpreter-timer"></span>
+			<button id="interpreter-cancel-btn" hidden></button>
 			<button id="clip-btn"></button>
 			<button id="more-btn"></button>
 			<textarea id="prompt-context">Page context</textarea>
 			<select id="model-select" style="display: none;"></select>
 		`;
 		mocks.saveRouting.mockReset().mockResolvedValue(false);
+		mocks.sendMessage.mockReset().mockResolvedValue(undefined);
 		mocks.loadAiSettings.mockReset().mockResolvedValue(v1View());
 		mocks.runAiTask.mockReset().mockResolvedValue({
 			output: { responses: { prompt_1: 'Done' }, missing: [] },
@@ -116,7 +128,7 @@ describe('Interpreter', () => {
 		expect(mocks.runAiTask).toHaveBeenCalledWith(
 			'interpret',
 			{ context: 'Page context', prompts: [{ key: 'prompt_1', prompt: 'Summarize', filters: '' }] },
-			{}
+			{ signal: expect.any(AbortSignal) }
 		);
 		expect(document.getElementById('interpreter')?.classList.contains('done')).toBe(true);
 	});
@@ -168,7 +180,7 @@ describe('Interpreter', () => {
 	test('passes the chosen profile id to the gateway', async () => {
 		await handleInterpreterUI(template, {}, 1, 'https://example.com', 'legacy-cli-codex-default');
 
-		expect(mocks.runAiTask).toHaveBeenCalledWith('interpret', expect.anything(), { profileId: 'legacy-cli-codex-default' });
+		expect(mocks.runAiTask).toHaveBeenCalledWith('interpret', expect.anything(), { profileId: 'legacy-cli-codex-default', signal: expect.any(AbortSignal) });
 	});
 
 	test('lists every enabled profile in one group per connection, CLI profiles included', () => {
@@ -269,7 +281,7 @@ describe('Interpreter', () => {
 
 		(document.getElementById('interpret-btn') as HTMLButtonElement).click();
 		await vi.waitFor(() => expect(mocks.runAiTask).toHaveBeenCalledOnce());
-		expect(mocks.runAiTask).toHaveBeenCalledWith('interpret', expect.anything(), { profileId: 'codex-default' });
+		expect(mocks.runAiTask).toHaveBeenCalledWith('interpret', expect.anything(), { profileId: 'codex-default', signal: expect.any(AbortSignal) });
 	});
 
 	test('the interpret button lets routing decide when the select has no choice', async () => {
@@ -279,19 +291,138 @@ describe('Interpreter', () => {
 		(document.getElementById('interpret-btn') as HTMLButtonElement).click();
 
 		await vi.waitFor(() => expect(mocks.runAiTask).toHaveBeenCalledOnce());
-		expect(mocks.runAiTask).toHaveBeenCalledWith('interpret', expect.anything(), {});
+		expect(mocks.runAiTask).toHaveBeenCalledWith('interpret', expect.anything(), { signal: expect.any(AbortSignal) });
 	});
 
-	test('shows a localized AI error with its technical detail', async () => {
+	test('shows a localized AI error in the error card with Retry and Open AI settings', async () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		mocks.runAiTask.mockRejectedValue(new AiError('auth', { status: 401, detail: 'invalid x-api-key' }));
 
-		await expect(handleInterpreterUI(template, {}, 1, 'https://example.com')).rejects.toThrow('aiErrorAuthBody');
+		await expect(handleInterpreterUI(template, {}, 1, 'https://example.com')).resolves.toBe('error');
 
-		const error = document.getElementById('interpreter-error') as HTMLDivElement;
-		expect(error.style.display).toBe('block');
-		expect(error.querySelector('strong')?.textContent).toBe('aiErrorAuthTitle');
-		expect(error.textContent).toContain('aiErrorAuthBody');
-		expect(error.querySelector('details')?.textContent).toContain('invalid x-api-key');
+		const container = document.getElementById('interpreter-error') as HTMLDivElement;
+		expect(container.style.display).toBe('block');
+		expect(container.querySelector('.ai-error-card-title')?.textContent).toBe('aiErrorAuthTitle');
+		expect(container.querySelector('.ai-error-card-body')?.textContent).toBe('aiErrorAuthBody');
+		expect(container.querySelector('.ai-error-card-detail')?.textContent).toContain('invalid x-api-key');
+		expect(cardActions()).toEqual(['openSettings', 'retry']);
 		expect(document.getElementById('interpreter')?.classList.contains('error')).toBe(true);
+		expect(interpretButton().classList.contains('error')).toBe(true);
+		expect(cancelButton().hidden).toBe(true);
+		expect((document.getElementById('clip-btn') as HTMLButtonElement).disabled).toBe(false);
+
+		cardAction('openSettings').click();
+		expect(mocks.sendMessage).toHaveBeenCalledWith({ action: 'openOptionsPage', section: 'ai' });
+		error.mockRestore();
+	});
+
+	test('Retry sends the same request again and shows its result', async () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		mocks.runAiTask.mockRejectedValueOnce(new AiError('network'));
+		await handleInterpreterUI(template, {}, 1, 'https://example.com', 'mini');
+
+		cardAction('retry').click();
+		expect(interpretButton().classList.contains('processing')).toBe(true);
+		await vi.waitFor(() => expect(interpretButton().classList.contains('done')).toBe(true));
+
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(2);
+		expect(mocks.runAiTask.mock.calls[1][0]).toBe('interpret');
+		expect(mocks.runAiTask.mock.calls[1][1]).toEqual(mocks.runAiTask.mock.calls[0][1]);
+		expect(mocks.runAiTask.mock.calls[1][2]).toMatchObject({ profileId: 'mini' });
+		const container = document.getElementById('interpreter-error') as HTMLDivElement;
+		expect(container.style.display).toBe('none');
+		expect(container.childElementCount).toBe(0);
+		expect(document.getElementById('interpreter')?.classList.contains('error')).toBe(false);
+		error.mockRestore();
+	});
+
+	test('shows Cancel while running; cancelling aborts the request and returns the button to idle', async () => {
+		let signal: AbortSignal | undefined;
+		mocks.runAiTask.mockImplementation((_task: string, _input: unknown, options: { signal?: AbortSignal }) => {
+			signal = options.signal;
+			return new Promise(() => undefined);
+		});
+
+		const run = handleInterpreterUI(template, {}, 1, 'https://example.com');
+		expect(cancelButton().hidden).toBe(false);
+		expect(interpretButton().classList.contains('processing')).toBe(true);
+		expect((document.getElementById('clip-btn') as HTMLButtonElement).disabled).toBe(true);
+
+		cancelButton().click();
+		await expect(run).resolves.toBe('cancelled');
+
+		expect(signal?.aborted).toBe(true);
+		expect(cancelButton().hidden).toBe(true);
+		expect(interpretButton().classList.contains('processing')).toBe(false);
+		expect(interpretButton().classList.contains('cancelled')).toBe(true);
+		expect(interpretButton().textContent).toBe('interpret');
+		expect(interpretButton().disabled).toBe(false);
+		expect((document.getElementById('interpreter-timer') as HTMLSpanElement).style.display).toBe('none');
+		expect((document.getElementById('interpreter-error') as HTMLDivElement).style.display).toBe('none');
+		expect((document.getElementById('clip-btn') as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	test('clears the timer interval after an error', async () => {
+		vi.useFakeTimers();
+		const clearInterval = vi.spyOn(window, 'clearInterval');
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		mocks.runAiTask.mockRejectedValue(new AiError('timeout'));
+
+		await handleInterpreterUI(template, {}, 1, 'https://example.com');
+
+		expect(clearInterval).toHaveBeenCalledOnce();
+		expect(vi.getTimerCount()).toBe(0);
+		error.mockRestore();
+	});
+
+	test('a synthetic click on the Interpret button still starts a run', async () => {
+		await initializeInterpreter(template, {}, 1, 'https://example.com', storedView());
+
+		interpretButton().dispatchEvent(new MouseEvent('click'));
+
+		await vi.waitFor(() => expect(mocks.runAiTask).toHaveBeenCalledOnce());
+		await vi.waitFor(() => expect(interpretButton().classList.contains('done')).toBe(true));
+	});
+
+	test('a Clip waiting on a run is released by cancel, and a later Clip click runs again', async () => {
+		mocks.runAiTask.mockImplementationOnce(() => new Promise(() => undefined));
+		await initializeInterpreter(template, {}, 1, 'https://example.com', storedView());
+
+		// What handleClipObsidian does: click, then wait on the button's state.
+		interpretButton().click();
+		expect(interpretButton().classList.contains('processing')).toBe(true);
+		const waiting = waitForInterpreter(interpretButton());
+		cancelButton().click();
+		await expect(waiting).rejects.toBeInstanceOf(InterpreterCancelledError);
+
+		interpretButton().click();
+		await expect(waitForInterpreter(interpretButton())).resolves.toBeUndefined();
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(2);
+	});
+
+	test('with auto-run the button runs again after a cancel', async () => {
+		const view = storedView();
+		view.interpreter.autoRun = true;
+		await initializeInterpreter(template, {}, 1, 'https://example.com', view);
+
+		interpretButton().click();
+
+		await vi.waitFor(() => expect(mocks.runAiTask).toHaveBeenCalledOnce());
 	});
 });
+
+function interpretButton(): HTMLButtonElement {
+	return document.getElementById('interpret-btn') as HTMLButtonElement;
+}
+
+function cancelButton(): HTMLButtonElement {
+	return document.getElementById('interpreter-cancel-btn') as HTMLButtonElement;
+}
+
+function cardActions(): string[] {
+	return Array.from(document.querySelectorAll<HTMLElement>('#interpreter-error .ai-error-card-action'), button => button.dataset.action ?? '');
+}
+
+function cardAction(action: string): HTMLButtonElement {
+	return document.querySelector(`#interpreter-error .ai-error-card-action[data-action="${action}"]`) as HTMLButtonElement;
+}
