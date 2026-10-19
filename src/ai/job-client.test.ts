@@ -5,6 +5,7 @@ vi.mock('../utils/browser-polyfill', () => ({ default: { runtime: { connect: vi.
 import type { AiClientPort } from './client';
 import { isAiError } from './errors';
 import { transcriptJobId } from './job-identity';
+import { isAiClientMessage } from './protocol';
 import {
 	clearTranscriptCheckpoint,
 	loadTranscriptCheckpoint,
@@ -428,8 +429,10 @@ describe('transcript checkpoints', () => {
 			task: 'translate',
 			identity,
 			segmentCount: 4,
+			segments,
 			results: [{ id: 0, text: '一' }, { id: 2, text: '三' }]
 		});
+		expect(isAiClientMessage(message)).toBe(true);
 		connector.last.receive({ type: 'checkpoint', requestId: message.requestId, jobId, ok: true });
 		await expect(promise).resolves.toBe(true);
 		expect(connector.last.disconnected).toBe(true);
@@ -447,6 +450,8 @@ describe('transcript checkpoints', () => {
 		], { connect: connector.connect });
 		const message = connector.last.posted[0];
 		expect(message.jobId).toBe(transcriptJobId('reading', readingIdentity, readingSegments));
+		expect(message.segments).toEqual(readingSegments);
+		expect(isAiClientMessage(message)).toBe(true);
 		expect(message.results).toEqual([{ id: 0, tokens: [{ text: '日本', reading: 'にほん' }] }, { id: 1, tokens: [] }]);
 		connector.last.receive({ type: 'checkpoint', requestId: message.requestId, jobId: message.jobId, ok: false });
 		await expect(promise).resolves.toBe(false);

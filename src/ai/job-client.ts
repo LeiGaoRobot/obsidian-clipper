@@ -497,6 +497,7 @@ export async function saveTranscriptCheckpoint<T extends TranscriptJobTask>(
 		task,
 		identity: { namespace: identity.namespace, scope: identity.scope },
 		segmentCount: segments.length,
+		segments: segments.map(({ id, text }) => ({ id, text })),
 		results: toResultItems(task, segments, values)
 	} as AiClientMessage & { requestId: string; jobId: string }, options);
 	return reply.ok;

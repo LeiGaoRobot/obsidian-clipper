@@ -4,6 +4,7 @@ import {
 	deserializeAiError,
 	isAiClientMessage,
 	sanitizeJobInput,
+	sanitizeCheckpointPut,
 	sanitizeJobResults,
 	sanitizeTaskInput,
 	serializeAiError
@@ -97,11 +98,13 @@ describe('AI port protocol', () => {
 			task: 'translate',
 			identity,
 			segmentCount: 2,
+			segments: jobInput.segments,
 			results: [{ id: 1, text: 'Goodbye' }]
 		};
 		const readingPut = {
 			...put,
 			task: 'reading',
+			segments: [{ id: 0, text: '雨です' }, { id: 1, text: '' }],
 			results: [{ id: 0, tokens: [{ text: '雨', reading: 'あめ' }, { text: 'です', reading: '' }] }, { id: 1, tokens: [] }]
 		};
 
@@ -174,6 +177,40 @@ describe('AI port protocol', () => {
 			expect(isAiClientMessage({ ...readingPut, results: [{ id: 0, tokens: [{ text: '雨', reading: '' }] }] })).toBe(false);
 			expect(isAiClientMessage({ ...readingPut, results: [{ id: 0, tokens: [{ text: '', reading: 'x' }] }] })).toBe(false);
 			expect(isAiClientMessage({ ...readingPut, results: [{ id: 0, tokens: [{ text: 'a' }] }] })).toBe(false);
+		});
+
+		test('rejects checkpoint-put segments that are missing, misaligned, or not the counted ones', () => {
+			expect(isAiClientMessage({ ...put, segments: undefined })).toBe(false);
+			expect(isAiClientMessage({ ...put, segments: [{ id: 0, text: 'Hola' }] })).toBe(false);
+			expect(isAiClientMessage({ ...put, segments: [{ id: 1, text: 'Hola' }, { id: 0, text: 'Adiós' }] })).toBe(false);
+			expect(isAiClientMessage({ ...put, segments: [{ id: 0, text: 'Hola' }, { id: 1, text: 2 }] })).toBe(false);
+			expect(isAiClientMessage({ ...put, segments: [{ id: 0, text: 'x'.repeat(750_001) }, { id: 1, text: '' }] })).toBe(false);
+		});
+
+		test('checks checkpoint-put readings against their source text', () => {
+			// Self-consistent tokens that spell something other than the source.
+			expect(isAiClientMessage({ ...readingPut, results: [{ id: 0, tokens: [{ text: '雪', reading: 'ゆき' }] }] })).toBe(false);
+			// An empty reading only stands for an empty source.
+			expect(isAiClientMessage({ ...readingPut, results: [{ id: 0, tokens: [] }] })).toBe(false);
+			expect(isAiClientMessage({ ...readingPut, results: [{ id: 1, tokens: [{ text: 'a', reading: '' }] }] })).toBe(false);
+		});
+
+		test('copies only checkpoint-put fields', () => {
+			expect(sanitizeCheckpointPut({
+				...readingPut,
+				extra: 'x',
+				identity: { ...identity, apiKey: 'leak' },
+				segments: [{ id: 0, text: '雨です', start: 1 }, { id: 1, text: '' }]
+			})).toEqual({
+				type: 'checkpoint-put',
+				requestId: 'request-1',
+				jobId: readingPut.jobId,
+				task: 'reading',
+				identity,
+				segmentCount: 2,
+				segments: [{ id: 0, text: '雨です' }, { id: 1, text: '' }],
+				results: readingPut.results
+			});
 		});
 
 		test('copies only contract fields from checkpoint results', () => {

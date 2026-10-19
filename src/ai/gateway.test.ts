@@ -3,6 +3,15 @@ import type { Settings } from '../types/types';
 import { createMemoryStructuredOutputCache } from './capabilities';
 import { AiError } from './errors';
 import { createAiGateway, type AiGatewayDeps, type AiPortLike } from './gateway';
+import { hashSegments, transcriptJobId } from './job-identity';
+import {
+	AI_JOB_KEY_PREFIX,
+	LEGACY_CHECKPOINT_KEY_PREFIX,
+	createAiJobStore,
+	type AiJobRecord,
+	type StorageAreaLike
+} from './job-store';
+import { RESUME_WINDOW_MS } from './job-runner';
 import type { AiGatewayMessage } from './protocol';
 
 function v1Settings(overrides: Partial<Settings> = {}): Settings {
@@ -473,5 +482,517 @@ describe('AI gateway', () => {
 		gateway.handlePort(port);
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
 		expect(port.posted).toEqual([]);
+	});
+});
+
+describe('AI gateway durable jobs', () => {
+	const identity = { namespace: 'transcript-translation', scope: 'video-1' };
+	const texts = ['Hola', 'Adiós'];
+	const jobSegments = texts.map((text, id) => ({ id, text }));
+	const jobId = transcriptJobId('translate', identity, jobSegments);
+	const jobInput = { instruction: 'Translate.', segments: jobSegments, identity };
+	const startJob = { type: 'start-job', jobId, task: 'translate', input: jobInput };
+	const allTranslations = JSON.stringify({ translations: [{ id: 0, text: 'Hello' }, { id: 1, text: 'Goodbye' }] });
+
+	function storedRecord(overrides: Partial<AiJobRecord> = {}): AiJobRecord {
+		return {
+			v: 1,
+			id: jobId,
+			task: 'translate',
+			identity,
+			segmentCount: texts.length,
+			segmentHash: hashSegments(identity.scope, texts),
+			status: 'running',
+			results: {},
+			attempts: { requests: 0, retries: 0, splits: 0 },
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+			...overrides
+		};
+	}
+
+	function memoryArea(initial: Record<string, unknown> = {}): StorageAreaLike & { values: Map<string, unknown> } {
+		const values = new Map(Object.entries(initial));
+		return {
+			values,
+			async get(keys) {
+				const wanted = keys === undefined || keys === null
+					? Array.from(values.keys())
+					: (Array.isArray(keys) ? keys : [keys]).filter(key => values.has(key));
+				return Object.fromEntries(wanted.map(key => [key, JSON.parse(JSON.stringify(values.get(key)))]));
+			},
+			async set(entries) {
+				Object.entries(entries).forEach(([key, value]) => values.set(key, JSON.parse(JSON.stringify(value))));
+			},
+			async remove(keys) {
+				(Array.isArray(keys) ? keys : [keys]).forEach(key => values.delete(key));
+			}
+		};
+	}
+
+	function jobSetup(overrides: Partial<AiGatewayDeps> = {}, area = memoryArea()) {
+		const store = createAiJobStore(area);
+		const result = setup({ jobStore: store, executeApi: vi.fn(async () => allTranslations), ...overrides });
+		return { ...result, store, area };
+	}
+
+	async function seed(store: ReturnType<typeof createAiJobStore>, record: AiJobRecord, withInput = true) {
+		if (withInput) await store.putInput(record.id, { instruction: 'Translate.', segments: texts });
+		await store.put(record);
+	}
+
+	async function settle() {
+		for (let index = 0; index < 10; index += 1) await flush();
+	}
+
+	function pendingApi() {
+		const calls: Array<{
+			request: { messages: unknown };
+			signal?: AbortSignal;
+			resolve: (text: string) => void;
+			reject: (error: unknown) => void;
+		}> = [];
+		const executeApi = vi.fn((request: { messages: unknown }, options: { signal?: AbortSignal }) => new Promise<string>((resolve, reject) => {
+			calls.push({ request, signal: options.signal, resolve, reject });
+			options.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+		}));
+		return { calls, executeApi: executeApi as unknown as AiGatewayDeps['executeApi'] };
+	}
+
+	const types = (port: FakePort) => port.posted.map(message => (
+		message.type === 'job-state' ? `job-state:${message.status}` : message.type
+	));
+
+	test('start-job runs the transcript as one checkpointed job and streams snapshot, progress, and final state', async () => {
+		const { deps, port, store } = jobSetup();
+		port.send(startJob);
+		await settle();
+
+		expect(types(port)).toEqual(['job-state:running', 'job-progress', 'job-state:completed']);
+		expect(port.posted[1]).toMatchObject({ type: 'job-progress', jobId, results: [{ id: 0, text: 'Hello' }, { id: 1, text: 'Goodbye' }] });
+		expect(port.last()).toMatchObject({
+			type: 'job-state',
+			jobId,
+			status: 'completed',
+			completedSegments: 2,
+			totalSegments: 2,
+			results: [{ id: 0, text: 'Hello' }, { id: 1, text: 'Goodbye' }],
+			attempts: { requests: 1, retries: 0, splits: 0 }
+		});
+		expect(deps.executeApi).toHaveBeenCalledTimes(1);
+		expect(deps.executeApi).toHaveBeenCalledWith(
+			expect.objectContaining({ model: 'gpt-a', credential: 'sk-test', maxTokens: expect.any(Number) }),
+			expect.objectContaining({ connectionId: 'provider-openai' })
+		);
+		expect(await store.get(jobId)).toMatchObject({ status: 'completed', results: { 0: 'Hello', 1: 'Goodbye' } });
+	});
+
+	test('start-job answers Invalid AI request when the id does not match the input', async () => {
+		const { deps, port, store } = jobSetup();
+		const otherId = transcriptJobId('translate', { ...identity, scope: 'video-2' }, jobSegments);
+		port.send({ ...startJob, jobId: otherId });
+		port.send({ ...startJob, task: 'reading' });
+		await settle();
+
+		expect(port.posted).toEqual([
+			{ type: 'error', jobId: otherId, error: expect.objectContaining({ code: 'provider-error', detail: 'Invalid AI request.' }) },
+			{ type: 'error', jobId, error: expect.objectContaining({ code: 'provider-error', detail: 'Invalid AI request.' }) }
+		]);
+		expect(deps.executeApi).not.toHaveBeenCalled();
+		expect(await store.list()).toEqual([]);
+	});
+
+	test('a start-job for a running id attaches instead of starting again', async () => {
+		const api = pendingApi();
+		const { gateway, port } = jobSetup({ executeApi: api.executeApi });
+		port.send(startJob);
+		await settle();
+		const second = new FakePort();
+		gateway.handlePort(second);
+		second.send(startJob);
+		await settle();
+
+		expect(api.executeApi).toHaveBeenCalledTimes(1);
+		expect(types(second)).toEqual(['job-state:running']);
+
+		api.calls[0].resolve(allTranslations);
+		await settle();
+		expect(port.last()).toMatchObject({ type: 'job-state', status: 'completed' });
+		expect(second.last()).toMatchObject({ type: 'job-state', status: 'completed' });
+	});
+
+	test('attach to a live durable job replays a snapshot and forwards later events', async () => {
+		const api = pendingApi();
+		const { gateway, port } = jobSetup({ executeApi: api.executeApi });
+		port.send(startJob);
+		await settle();
+		port.disconnect();
+		const second = new FakePort();
+		gateway.handlePort(second);
+		second.send({ type: 'attach', jobId });
+		await settle();
+		expect(types(second)).toEqual(['job-state:running']);
+
+		const before = port.posted.length;
+		api.calls[0].resolve(allTranslations);
+		await settle();
+		expect(types(second)).toEqual(['job-state:running', 'job-progress', 'job-state:completed']);
+		// The disconnected port's listener was detached.
+		expect(port.posted).toHaveLength(before);
+	});
+
+	test('attach to a running record with no live job resumes only the missing segments', async () => {
+		const { deps, port, store } = jobSetup();
+		await seed(store, storedRecord({ results: { 0: 'Hello' } }));
+		port.send({ type: 'attach', jobId });
+		await settle();
+
+		expect(deps.executeApi).toHaveBeenCalledTimes(1);
+		const [call] = (deps.executeApi as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(JSON.stringify(call.messages)).toContain('Adiós');
+		expect(JSON.stringify(call.messages)).not.toContain('Hola');
+		expect(port.last()).toMatchObject({
+			type: 'job-state',
+			status: 'completed',
+			results: [{ id: 0, text: 'Hello' }, { id: 1, text: 'Goodbye' }]
+		});
+	});
+
+	test('attach to a finished durable job replays its terminal state from the store', async () => {
+		const { deps, gateway, port, store } = jobSetup();
+		port.send(startJob);
+		await settle();
+		expect(gateway.activeJobIds()).toEqual([]);
+
+		// A fresh gateway stands for a restarted worker: nothing is in memory any more.
+		const restarted = createAiGateway({ ...deps, jobStore: store });
+		const second = new FakePort();
+		restarted.handlePort(second);
+		second.send({ type: 'attach', jobId });
+		await settle();
+		expect(second.posted).toEqual([expect.objectContaining({
+			type: 'job-state',
+			jobId,
+			status: 'completed',
+			completedSegments: 2,
+			results: [{ id: 0, text: 'Hello' }, { id: 1, text: 'Goodbye' }]
+		})]);
+		expect(deps.executeApi).toHaveBeenCalledTimes(1);
+	});
+
+	test('attach to an unknown durable id reports that the job is no longer running', async () => {
+		const { port } = jobSetup();
+		port.send({ type: 'attach', jobId });
+		await settle();
+		expect(port.posted).toEqual([{
+			type: 'error',
+			jobId,
+			error: expect.objectContaining({ code: 'provider-error', retryable: true, detail: 'The job is no longer running.' })
+		}]);
+	});
+
+	test('attach with a job-shaped id falls back to a single-call job of that id', async () => {
+		const pending = deferred<string>();
+		const { gateway, port } = jobSetup({ executeApi: vi.fn(() => pending.promise) });
+		port.send({ type: 'start', jobId, task: 'translate', input: segmentInput });
+		await settle();
+		const second = new FakePort();
+		gateway.handlePort(second);
+		second.send({ type: 'attach', jobId });
+		await settle();
+		expect(second.posted).toEqual([expect.objectContaining({ type: 'progress', phase: 'started' })]);
+	});
+
+	test('cancel stops a live durable job and aborts its request', async () => {
+		const api = pendingApi();
+		const { gateway, port, store } = jobSetup({ executeApi: api.executeApi });
+		port.send(startJob);
+		await settle();
+		port.send({ type: 'cancel', jobId });
+		await settle();
+
+		expect(api.calls[0].signal?.aborted).toBe(true);
+		expect(port.last()).toMatchObject({ type: 'job-state', status: 'cancelled', error: { code: 'cancelled' } });
+		expect(await store.get(jobId)).toMatchObject({ status: 'cancelled' });
+		expect(gateway.activeJobIds()).toEqual([]);
+	});
+
+	test('a cancel sent right after start-job cancels the job it started', async () => {
+		const api = pendingApi();
+		const { port, store } = jobSetup({ executeApi: api.executeApi });
+		port.send(startJob);
+		port.send({ type: 'cancel', jobId });
+		await settle();
+
+		expect(api.calls.every(call => call.signal?.aborted)).toBe(true);
+		expect(port.last()).toMatchObject({ type: 'job-state', status: 'cancelled' });
+		expect(await store.get(jobId)).toMatchObject({ status: 'cancelled' });
+	});
+
+	test('cancel of a running record with no live job marks it cancelled without a request', async () => {
+		const { deps, port, store } = jobSetup();
+		await seed(store, storedRecord({ results: { 0: 'Hello' } }));
+		port.send({ type: 'cancel', jobId });
+		await settle();
+
+		expect(deps.executeApi).not.toHaveBeenCalled();
+		expect(await store.get(jobId)).toMatchObject({ status: 'cancelled', results: { 0: 'Hello' } });
+	});
+
+	test('checkpoint-get returns the stored record and never executes, even for a running record', async () => {
+		const { deps, gateway, port, store } = jobSetup();
+		await seed(store, storedRecord({ results: { 0: 'Hello' } }));
+		port.send({ type: 'checkpoint-get', requestId: 'request-1', jobId });
+		await settle();
+
+		expect(port.posted).toEqual([{
+			type: 'checkpoint',
+			requestId: 'request-1',
+			jobId,
+			ok: true,
+			record: { status: 'running', results: [{ id: 0, text: 'Hello' }], completedSegments: 1, totalSegments: 2 }
+		}]);
+		expect(deps.executeApi).not.toHaveBeenCalled();
+		expect(gateway.activeJobIds()).toEqual([]);
+		expect(await store.get(jobId)).toMatchObject({ status: 'running' });
+	});
+
+	test('checkpoint-get without a record answers ok without one', async () => {
+		const { port } = jobSetup();
+		port.send({ type: 'checkpoint-get', requestId: 'request-1', jobId });
+		await settle();
+		expect(port.posted).toEqual([{ type: 'checkpoint', requestId: 'request-1', jobId, ok: true }]);
+	});
+
+	describe('checkpoint-put', () => {
+		const put = (results: unknown[], overrides: Record<string, unknown> = {}) => ({
+			type: 'checkpoint-put',
+			requestId: 'request-1',
+			jobId,
+			task: 'translate',
+			identity,
+			segmentCount: texts.length,
+			segments: jobSegments,
+			results,
+			...overrides
+		});
+
+		test('writes a completed record and its source input when every segment has a result', async () => {
+			const { deps, port, store } = jobSetup();
+			port.send(put([{ id: 0, text: 'Hello' }, { id: 1, text: 'Goodbye' }]));
+			await settle();
+
+			expect(port.posted).toEqual([{ type: 'checkpoint', requestId: 'request-1', jobId, ok: true }]);
+			expect(await store.get(jobId)).toMatchObject({
+				status: 'completed',
+				segmentHash: hashSegments(identity.scope, texts),
+				results: { 0: 'Hello', 1: 'Goodbye' }
+			});
+			expect(await store.getInput(jobId)).toEqual({ instruction: '', segments: texts });
+			expect(deps.executeApi).not.toHaveBeenCalled();
+		});
+
+		test('writes an incomplete record when a segment has no result', async () => {
+			const { port, store } = jobSetup();
+			port.send(put([{ id: 1, text: 'Goodbye' }]));
+			await settle();
+			expect(port.last()).toMatchObject({ type: 'checkpoint', ok: true });
+			expect(await store.get(jobId)).toMatchObject({ status: 'incomplete', results: { 1: 'Goodbye' } });
+		});
+
+		test('counts empty-source segments as complete without a result', async () => {
+			const readingIdentity = { namespace: 'japanese-readings', scope: 'shared' };
+			const readingSegments = [{ id: 0, text: '雨' }, { id: 1, text: '' }];
+			const readingId = transcriptJobId('reading', readingIdentity, readingSegments);
+			const { port, store } = jobSetup();
+			port.send(put([{ id: 0, tokens: [{ text: '雨', reading: 'あめ' }] }, { id: 1, tokens: [] }], {
+				jobId: readingId,
+				task: 'reading',
+				identity: readingIdentity,
+				segments: readingSegments
+			}));
+			await settle();
+
+			expect(port.last()).toMatchObject({ type: 'checkpoint', jobId: readingId, ok: true });
+			const record = await store.get(readingId);
+			expect(record).toMatchObject({ status: 'completed', results: { 0: [{ text: '雨', reading: 'あめ' }] } });
+			expect(record?.results).not.toHaveProperty('1');
+
+			port.send({ type: 'checkpoint-get', requestId: 'request-2', jobId: readingId });
+			await settle();
+			expect(port.last()).toMatchObject({
+				type: 'checkpoint',
+				record: { status: 'completed', completedSegments: 2, totalSegments: 2 }
+			});
+		});
+
+		test('is refused while that job runs, live or as a stored running record', async () => {
+			const api = pendingApi();
+			const { port, store } = jobSetup({ executeApi: api.executeApi });
+			port.send(startJob);
+			await settle();
+			port.send(put([{ id: 0, text: 'Mine' }, { id: 1, text: 'Mine too' }]));
+			await settle();
+			expect(port.last()).toEqual({ type: 'checkpoint', requestId: 'request-1', jobId, ok: false });
+			expect(await store.get(jobId)).toMatchObject({ status: 'running', results: {} });
+
+			const other = jobSetup();
+			await seed(other.store, storedRecord());
+			other.port.send(put([{ id: 0, text: 'Mine' }, { id: 1, text: 'Mine too' }]));
+			await settle();
+			expect(other.port.last()).toEqual({ type: 'checkpoint', requestId: 'request-1', jobId, ok: false });
+			expect(await other.store.get(jobId)).toMatchObject({ status: 'running' });
+		});
+
+		test('rejects a job id that does not match the segments', async () => {
+			const { port, store } = jobSetup();
+			port.send(put([{ id: 0, text: 'Hello' }], { segments: [{ id: 0, text: 'Other' }, { id: 1, text: 'Adiós' }] }));
+			await settle();
+			expect(port.posted).toEqual([
+				{ type: 'error', jobId, error: expect.objectContaining({ detail: 'Invalid AI request.' }) }
+			]);
+			expect(await store.get(jobId)).toBeUndefined();
+		});
+
+		test('a later start-job continues from the saved results', async () => {
+			const { deps, port } = jobSetup();
+			port.send(put([{ id: 0, text: 'Hello' }]));
+			await settle();
+			port.send(startJob);
+			await settle();
+
+			expect(deps.executeApi).toHaveBeenCalledTimes(1);
+			const [call] = (deps.executeApi as ReturnType<typeof vi.fn>).mock.calls[0];
+			expect(JSON.stringify(call.messages)).not.toContain('Hola');
+			expect(port.last()).toMatchObject({ type: 'job-state', status: 'completed', completedSegments: 2 });
+		});
+	});
+
+	test('checkpoint-clear cancels a live job and removes its record', async () => {
+		const api = pendingApi();
+		const { gateway, port, store } = jobSetup({ executeApi: api.executeApi });
+		port.send(startJob);
+		await settle();
+		port.send({ type: 'checkpoint-clear', requestId: 'request-1', jobId });
+		await settle();
+
+		expect(api.calls[0].signal?.aborted).toBe(true);
+		expect(port.posted).toContainEqual(expect.objectContaining({ type: 'job-state', status: 'cancelled' }));
+		expect(port.last()).toEqual({ type: 'checkpoint', requestId: 'request-1', jobId, ok: true });
+		expect(await store.get(jobId)).toBeUndefined();
+		expect(await store.getInput(jobId)).toBeUndefined();
+		expect(gateway.activeJobIds()).toEqual([]);
+	});
+
+	test('checkpoint-clear of a stored record removes it without a request', async () => {
+		const { deps, port, store } = jobSetup();
+		await seed(store, storedRecord({ status: 'incomplete', results: { 0: 'Hello' } }));
+		port.send({ type: 'checkpoint-clear', requestId: 'request-1', jobId });
+		await settle();
+		expect(port.last()).toEqual({ type: 'checkpoint', requestId: 'request-1', jobId, ok: true });
+		expect(await store.get(jobId)).toBeUndefined();
+		expect(deps.executeApi).not.toHaveBeenCalled();
+	});
+
+	test('init removes legacy checkpoints, resumes recent running jobs, and expires old ones', async () => {
+		const oldTexts = ['Uno'];
+		const oldSegments = oldTexts.map((text, id) => ({ id, text }));
+		const oldId = transcriptJobId('translate', identity, oldSegments);
+		const area = memoryArea({
+			[`${LEGACY_CHECKPOINT_KEY_PREFIX}video-1`]: { translations: ['x'] },
+			unrelated: 1
+		});
+		const { deps, gateway, store } = jobSetup({}, area);
+		await seed(store, storedRecord());
+		await store.putInput(oldId, { instruction: 'Translate.', segments: oldTexts });
+		await store.put(storedRecord({
+			id: oldId,
+			segmentCount: 1,
+			segmentHash: hashSegments(identity.scope, oldTexts),
+			updatedAt: Date.now() - RESUME_WINDOW_MS - 1000
+		}));
+
+		await expect(gateway.init()).resolves.toEqual({ resumed: [jobId], expired: [oldId] });
+		await settle();
+
+		expect(area.values.has(`${LEGACY_CHECKPOINT_KEY_PREFIX}video-1`)).toBe(false);
+		expect(area.values.get('unrelated')).toBe(1);
+		expect(deps.executeApi).toHaveBeenCalledTimes(1);
+		expect(await store.get(jobId)).toMatchObject({ status: 'completed' });
+		expect(await store.get(oldId)).toMatchObject({ status: 'incomplete' });
+		expect(Array.from(area.values.keys()).filter(key => key.startsWith(AI_JOB_KEY_PREFIX)).sort())
+			.toEqual([`${AI_JOB_KEY_PREFIX}${jobId}`, `${AI_JOB_KEY_PREFIX}${oldId}`].sort());
+		// Idempotent.
+		await expect(gateway.init()).resolves.toEqual({ resumed: [jobId], expired: [oldId] });
+		expect(deps.executeApi).toHaveBeenCalledTimes(1);
+	});
+
+	test('an attach that arrives before init finishes shares the one resumed job', async () => {
+		const api = pendingApi();
+		const { gateway, port, store } = jobSetup({ executeApi: api.executeApi });
+		await seed(store, storedRecord());
+		port.send({ type: 'attach', jobId });
+		const init = gateway.init();
+		await settle();
+		await init;
+
+		expect(api.executeApi).toHaveBeenCalledTimes(1);
+		expect(types(port)).toEqual(['job-state:running']);
+		api.calls[0].resolve(allTranslations);
+		await settle();
+		expect(types(port)).toEqual(['job-state:running', 'job-progress', 'job-state:completed']);
+		expect(api.executeApi).toHaveBeenCalledTimes(1);
+	});
+
+	test('a disconnect never cancels a durable job but still cancels interactive tasks', async () => {
+		const api = pendingApi();
+		const { port, store } = jobSetup({ executeApi: api.executeApi });
+		port.send(startJob);
+		port.send({ type: 'start', jobId: 'job-explain', task: 'explain', input: textInput });
+		await settle();
+		expect(api.calls).toHaveLength(2);
+		const durableCall = api.calls.find(call => JSON.stringify(call.request.messages).includes('Hola'));
+		const explainCall = api.calls.find(call => call !== durableCall);
+		port.disconnect();
+
+		expect(explainCall?.signal?.aborted).toBe(true);
+		expect(durableCall?.signal?.aborted).toBe(false);
+		durableCall?.resolve(allTranslations);
+		await settle();
+		expect(await store.get(jobId)).toMatchObject({ status: 'completed', results: { 0: 'Hello', 1: 'Goodbye' } });
+	});
+
+	test('keeps the worker alive while a durable job runs and stops afterwards', async () => {
+		vi.useFakeTimers();
+		const keepAlive = vi.fn();
+		const api = pendingApi();
+		const { gateway, port } = jobSetup({ keepAlive, keepAliveIntervalMs: 1000, executeApi: api.executeApi });
+		port.send(startJob);
+		await vi.advanceTimersByTimeAsync(10);
+		expect(gateway.activeJobIds()).toEqual([jobId]);
+		port.disconnect();
+		await vi.advanceTimersByTimeAsync(3000);
+		expect(keepAlive).toHaveBeenCalledTimes(3);
+
+		api.calls[0].resolve(allTranslations);
+		await vi.advanceTimersByTimeAsync(10);
+		expect(gateway.activeJobIds()).toEqual([]);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(keepAlive).toHaveBeenCalledTimes(3);
+	});
+
+	test('keeps the worker alive for a job resumed on init', async () => {
+		vi.useFakeTimers();
+		const keepAlive = vi.fn();
+		const api = pendingApi();
+		const { gateway, store } = jobSetup({ keepAlive, keepAliveIntervalMs: 1000, executeApi: api.executeApi });
+		await seed(store, storedRecord());
+		await gateway.init();
+		await vi.advanceTimersByTimeAsync(2500);
+		expect(keepAlive).toHaveBeenCalledTimes(2);
+
+		api.calls[0].resolve(allTranslations);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(keepAlive).toHaveBeenCalledTimes(2);
 	});
 });

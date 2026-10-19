@@ -54,6 +54,11 @@ export type AiCheckpointPutMessage = {
 		task: T;
 		identity: TranscriptJobIdentity;
 		segmentCount: number;
+		/**
+		 * The source segments, ids equal to their index. The gateway recomputes the job id from them
+		 * and checks each reading against its source text.
+		 */
+		segments: TranscriptSegment[];
 		results: JobResultItem<T>[];
 	}
 }[TranscriptJobTask];
@@ -274,28 +279,37 @@ export function sanitizeJobInput(value: unknown): AiJobInput | undefined {
 	return { instruction, segments: copies, identity };
 }
 
-// A checkpoint carries no source text, so a reading is checked against the text its tokens spell:
-// every kanji token needs a reading. An empty token list stands for an empty source segment.
-function sanitizeResultItem(task: TranscriptJobTask, item: Record<string, unknown>, id: number): JobResultItem | undefined {
+// A reading must spell its source text with every kanji read; an empty token list stands for an
+// empty source segment. Without a source, a reading is checked against the text its tokens spell.
+function sanitizeResultItem(
+	task: TranscriptJobTask,
+	item: Record<string, unknown>,
+	id: number,
+	source: string | undefined
+): JobResultItem | undefined {
 	if (task === 'translate') {
 		const text = parseTranslationText(item.text);
 		return text ? { id, text } : undefined;
 	}
 	const tokens = Array.isArray(item.tokens) && item.tokens.length === 0 ? [] : parseReadingTokens(item.tokens);
-	if (!tokens || !isCompleteTranscriptReadingSegment(tokens, tokens.map(token => token.text).join(''))) return undefined;
-	return { id, tokens };
+	if (!tokens) return undefined;
+	const text = source ?? tokens.map(token => token.text).join('');
+	return isCompleteTranscriptReadingSegment(tokens, text) ? { id, tokens } : undefined;
 }
 
 /**
  * Validates checkpoint results for a job of `segmentCount` segments: unique integer ids below the
- * count, each item valid under the task contract. Returns copies, or undefined if any item fails.
+ * count, each item valid under the task contract, readings checked against `sources` when given.
+ * Returns copies, or undefined if any item fails.
  */
 export function sanitizeJobResults<T extends TranscriptJobTask>(
 	task: T,
 	segmentCount: number,
-	value: unknown
+	value: unknown,
+	sources?: readonly string[]
 ): JobResultItem<T>[] | undefined {
 	if (!Array.isArray(value) || value.length > segmentCount) return undefined;
+	if (sources && sources.length !== segmentCount) return undefined;
 	const ids = new Set<number>();
 	const items: JobResultItem[] = [];
 	for (const item of value) {
@@ -304,7 +318,7 @@ export function sanitizeJobResults<T extends TranscriptJobTask>(
 		if (!Number.isInteger(id) || (id as number) < 0 || (id as number) >= segmentCount || ids.has(id as number)) {
 			return undefined;
 		}
-		const copy = sanitizeResultItem(task, item as Record<string, unknown>, id as number);
+		const copy = sanitizeResultItem(task, item as Record<string, unknown>, id as number, sources?.[id as number]);
 		if (!copy) return undefined;
 		ids.add(id as number);
 		items.push(copy);
@@ -314,6 +328,35 @@ export function sanitizeJobResults<T extends TranscriptJobTask>(
 
 function isSegmentCount(value: unknown): value is number {
 	return Number.isInteger(value) && (value as number) > 0 && (value as number) <= MAX_SEGMENTS;
+}
+
+/**
+ * Validates a `checkpoint-put` and returns a copy holding only its fields: index ids, as many
+ * segments as `segmentCount`, the same size bound as a job input, and results valid under the task
+ * contract against their source text. The job id is checked by the gateway, which recomputes it.
+ */
+export function sanitizeCheckpointPut(value: unknown): AiCheckpointPutMessage | undefined {
+	if (!value || typeof value !== 'object') return undefined;
+	const message = value as Record<string, unknown>;
+	if (message.type !== 'checkpoint-put' || !isJobId(message.requestId) || !isJobId(message.jobId)) return undefined;
+	const { task, segmentCount, segments } = message;
+	const identity = sanitizeJobIdentity(message.identity);
+	if (!isJobTask(task) || !identity || !isSegmentCount(segmentCount)) return undefined;
+	if (!isSegments(segments) || segments.length !== segmentCount || !hasIndexIds(segments)) return undefined;
+	const copies = segments.map(({ id, text }) => ({ id, text }));
+	if (sumLengths(copies.map(segment => segment.text)) > MAX_INPUT_CHARS) return undefined;
+	const results = sanitizeJobResults(task, segmentCount, message.results, copies.map(segment => segment.text));
+	if (!results) return undefined;
+	return {
+		type: 'checkpoint-put',
+		requestId: message.requestId,
+		jobId: message.jobId,
+		task,
+		identity,
+		segmentCount,
+		segments: copies,
+		results
+	} as AiCheckpointPutMessage;
 }
 
 export function isAiClientMessage(value: unknown): value is AiClientMessage {
@@ -339,12 +382,7 @@ export function isAiClientMessage(value: unknown): value is AiClientMessage {
 		case 'checkpoint-clear':
 			return isJobId(message.requestId) && isJobId(message.jobId);
 		case 'checkpoint-put':
-			return isJobId(message.requestId)
-				&& isJobId(message.jobId)
-				&& isJobTask(message.task)
-				&& sanitizeJobIdentity(message.identity) !== undefined
-				&& isSegmentCount(message.segmentCount)
-				&& sanitizeJobResults(message.task, message.segmentCount, message.results) !== undefined;
+			return sanitizeCheckpointPut(message) !== undefined;
 		default:
 			return false;
 	}

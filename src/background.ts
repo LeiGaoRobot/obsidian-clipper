@@ -7,6 +7,7 @@ import { Settings } from './types/types';
 import { debugLog } from './utils/debug';
 import { createStructuredOutputCache } from './ai/capabilities';
 import { createAiGateway } from './ai/gateway';
+import { createAiJobStore, type StorageAreaLike } from './ai/job-store';
 import type { NativeMessagingSupport } from './ai/types';
 import { getExtensionBranding } from './utils/extension-branding';
 import { isCliExecutionMode } from './utils/native-cli-contract';
@@ -544,12 +545,17 @@ function detectNativeMessaging(): NativeMessagingSupport {
 	return typeof runtime.sendNativeMessage === 'function' ? 'message' : 'none';
 }
 
+// Durable transcript jobs live in storage.session, which survives a service worker restart but not
+// a browser restart. Without it (Safari < 16.4) records last only as long as this worker.
+const aiJobSession = (browser.storage as unknown as { session?: StorageAreaLike }).session;
+
 // Every model request runs here, never in Reader or page content scripts, so provider
 // credentials stay in extension storage and cross-origin requests avoid page CORS rules.
 const aiGateway = createAiGateway({
 	loadSettings,
 	nativeMessaging: detectNativeMessaging,
 	structuredOutput: createStructuredOutputCache(browser.storage.local),
+	jobStore: createAiJobStore(aiJobSession),
 	keepAlive: () => {
 		void browser.runtime.getPlatformInfo();
 	},
@@ -559,6 +565,10 @@ const aiGateway = createAiGateway({
 	}
 });
 browser.runtime.onConnect.addListener(port => aiGateway.handlePort(port));
+// Resumes jobs the user started that were running when the previous worker stopped.
+aiGateway.init().catch(error => {
+	console.error('Could not resume AI jobs:', error);
+});
 
 browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void): true | undefined => {
 	if (typeof request === 'object' && request !== null) {
