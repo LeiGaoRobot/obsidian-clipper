@@ -1,16 +1,28 @@
 import type { Settings } from '../types/types';
 import { executeApiCall, type AppIdentity } from './adapters/http';
-import { executeCliCall } from './adapters/native-cli';
+import { runCliPrompt } from './adapters/native-cli';
+import {
+	isStructuredOutputRejection,
+	probeStructuredOutput,
+	type StructuredOutputCache,
+	type StructuredOutputMode
+} from './capabilities';
 import { isCliKind } from './connection-kind';
+import {
+	outputSpec,
+	parseOutput,
+	renderCliPrompt,
+	renderMessages,
+	type AiTaskInput
+} from './contracts';
 import { AiError, toAiError } from './errors';
-import { parseEnvelopeResponse } from './prompt-envelope';
 import {
 	AI_PORT_NAME,
 	isAiClientMessage,
+	sanitizeTaskInput,
 	serializeAiError,
 	type AiGatewayMessage,
-	type AiProgressPhase,
-	type PromptsInput
+	type AiProgressPhase
 } from './protocol';
 import { resolveProfile } from './resolve';
 import { deriveAiSettings } from './settings-view';
@@ -28,7 +40,9 @@ export interface AiGatewayDeps {
 	nativeMessaging: () => NativeMessagingSupport;
 	app: () => AppIdentity;
 	executeApi?: typeof executeApiCall;
-	executeCli?: typeof executeCliCall;
+	executeCli?: typeof runCliPrompt;
+	/** Remembers a structured-output downgrade per connection. Omit to always use the default. */
+	structuredOutput?: StructuredOutputCache;
 	now?: () => number;
 	/**
 	 * Called while any job is unfinished. In Chrome, an extension API call resets the service
@@ -76,7 +90,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 	const jobs = new Map<string, Job>();
 	const now = deps.now ?? Date.now;
 	const executeApi = deps.executeApi ?? executeApiCall;
-	const executeCli = deps.executeCli ?? executeCliCall;
+	const executeCli = deps.executeCli ?? runCliPrompt;
 	const retainMs = deps.retainMs ?? DEFAULT_RETAIN_MS;
 	let keepAliveTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -124,39 +138,51 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 
 	const execute = async (
 		job: Job,
-		input: PromptsInput,
+		input: AiTaskInput,
 		profileId: string | undefined
-	): Promise<{ responses: Record<string, unknown>; connectionKind: ConnectionKind }> => {
+	): Promise<{ output: unknown; connectionKind: ConnectionKind }> => {
 		const view = deriveAiSettings(await deps.loadSettings(), { nativeMessaging: deps.nativeMessaging() });
 		const resolved = resolveProfile(view, job.task, profileId ? { profileId } : {});
 		if (!resolved.ok) throw resolved.error;
 		const { profile, connection, credential } = resolved;
 		const signal = job.controller.signal;
 		if (signal.aborted) throw new AiError('cancelled', { connectionId: connection.id });
+		const spec = outputSpec(job.task, input);
+		const mode: StructuredOutputMode = spec
+			? await probeStructuredOutput(connection, deps.structuredOutput)
+			: 'none';
+		const parse = (text: string) => {
+			try {
+				return parseOutput(job.task, input, text);
+			} catch (error) {
+				const aiError = toAiError(error);
+				throw new AiError(aiError.code, { connectionId: connection.id, retryable: aiError.retryable, detail: aiError.detail });
+			}
+		};
 
 		if (isCliKind(connection.kind)) {
-			const responses = await executeCli({
+			const stdout = await executeCli({
 				kind: connection.kind as CliConnectionKind,
 				...(profile.model ? { model: profile.model } : {}),
 				...(profile.options?.reasoningEffort ? { effort: profile.options.reasoningEffort } : {}),
-				context: input.context,
-				prompts: input.prompts
+				prompt: renderCliPrompt(job.task, input),
+				...(spec && mode === 'json_schema' ? { outputSchema: spec.schema } : {})
 			}, {
 				connectionId: connection.id,
 				signal,
 				onHeartbeat: () => progress(job, 'heartbeat')
 			});
-			return { responses, connectionKind: connection.kind };
+			return { output: parse(stdout), connectionKind: connection.kind };
 		}
 
 		let lastReceiveProgress: number | undefined;
-		const text = await executeApi({
+		const runApi = (structuredMode: StructuredOutputMode) => executeApi({
 			kind: connection.kind as ApiConnectionKind,
 			baseUrl: connection.baseUrl ?? '',
 			model: profile.model ?? '',
 			...(credential ? { credential } : {}),
-			context: input.context,
-			prompts: input.prompts,
+			messages: renderMessages(job.task, input),
+			...(spec && structuredMode !== 'none' ? { structured: { ...spec, mode: structuredMode } } : {}),
 			...(input.maxTokens ? { maxTokens: input.maxTokens } : {}),
 			app: deps.app()
 		}, {
@@ -170,20 +196,30 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 				progress(job, 'receiving', receivedChars);
 			}
 		});
-		const { promptResponses } = parseEnvelopeResponse(text, input.prompts);
-		if (promptResponses.length === 0) {
-			throw new AiError('bad-response', {
-				connectionId: connection.id,
-				detail: text.slice(0, 2000) || 'The model returned an empty response.'
-			});
+
+		let text: string;
+		try {
+			text = await runApi(mode);
+		} catch (error) {
+			const aiError = toAiError(error, connection.id);
+			// A rejected structured-output parameter is not billed; retry once with prompt rules only.
+			if (mode === 'none' || signal.aborted || !isStructuredOutputRejection(aiError)) throw aiError;
+			await deps.structuredOutput?.set(connection.id, connection.baseUrl, 'none');
+			text = await runApi('none');
 		}
-		return {
-			responses: Object.fromEntries(promptResponses.map(item => [item.key, item.user_response])),
-			connectionKind: connection.kind
-		};
+		return { output: parse(text), connectionKind: connection.kind };
 	};
 
-	const start = (port: AiPortLike, jobId: string, task: AiTask, input: PromptsInput, profileId?: string) => {
+	const start = (port: AiPortLike, jobId: string, task: AiTask, rawInput: unknown, profileId?: string) => {
+		const input = sanitizeTaskInput(task, rawInput);
+		if (!input) {
+			post(port, {
+				type: 'error',
+				jobId,
+				error: serializeAiError(new AiError('provider-error', { detail: 'Invalid AI request.' }))
+			});
+			return;
+		}
 		if (jobs.has(jobId)) {
 			post(port, {
 				type: 'error',
@@ -202,9 +238,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		jobs.set(jobId, job);
 		updateKeepAlive();
 		progress(job, 'started');
-		// Only the fields adapters use cross into provider requests.
-		const prompts = input.prompts.map(({ key, prompt }) => ({ key, prompt }));
-		execute(job, { ...input, prompts }, profileId).then(
+		execute(job, input, profileId).then(
 			result => finish(job, { type: 'result', jobId, ...result }),
 			error => {
 				const aiError = job.controller.signal.aborted ? new AiError('cancelled') : toAiError(error);

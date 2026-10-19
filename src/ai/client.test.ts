@@ -60,10 +60,10 @@ describe('runAiTask', () => {
 		expect(port.posted[0]).toMatchObject({ type: 'start', task: 'interpret', profileId: 'model-b', input });
 
 		port.receive({ type: 'progress', jobId: port.jobId, phase: 'receiving', elapsedMs: 1200, receivedChars: 40 });
-		port.receive({ type: 'result', jobId: 'other-job', responses: {}, connectionKind: 'anthropic' });
-		port.receive({ type: 'result', jobId: port.jobId, responses: { prompt_1: 'Done' }, connectionKind: 'anthropic' });
+		port.receive({ type: 'result', jobId: 'other-job', output: {}, connectionKind: 'anthropic' });
+		port.receive({ type: 'result', jobId: port.jobId, output: { prompt_1: 'Done' }, connectionKind: 'anthropic' });
 
-		await expect(promise).resolves.toEqual({ responses: { prompt_1: 'Done' }, connectionKind: 'anthropic' });
+		await expect(promise).resolves.toEqual({ output: { prompt_1: 'Done' }, connectionKind: 'anthropic' });
 		expect(onProgress).toHaveBeenCalledWith({ phase: 'receiving', elapsedMs: 1200, receivedChars: 40 });
 		expect(port.disconnected).toBe(true);
 		expect(port.listenerCount).toBe(0);
@@ -90,7 +90,7 @@ describe('runAiTask', () => {
 		const controller = new AbortController();
 		controller.abort();
 		const connect = vi.fn();
-		await expect(runAiTask('edit', input, { signal: controller.signal, connect })).rejects.toMatchObject({ code: 'cancelled' });
+		await expect(runAiTask('interpret', input, { signal: controller.signal, connect })).rejects.toMatchObject({ code: 'cancelled' });
 		expect(connect).not.toHaveBeenCalled();
 	});
 
@@ -106,7 +106,7 @@ describe('runAiTask', () => {
 		vi.advanceTimersByTime(2500);
 		expect(port.posted.filter(message => message.type === 'ping')).toHaveLength(2);
 
-		port.receive({ type: 'result', jobId: port.jobId, responses: {}, connectionKind: 'ollama' });
+		port.receive({ type: 'result', jobId: port.jobId, output: {}, connectionKind: 'ollama' });
 		await promise;
 		vi.advanceTimersByTime(5000);
 		expect(port.posted.filter(message => message.type === 'ping')).toHaveLength(2);

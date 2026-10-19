@@ -5,9 +5,9 @@ import {
 	AI_PORT_NAME,
 	deserializeAiError,
 	type AiGatewayMessage,
-	type AiProgressPhase,
-	type PromptsInput
+	type AiProgressPhase
 } from './protocol';
+import type { AiTaskInput, AiTaskOutput } from './contracts';
 import type { AiTask, ConnectionKind } from './types';
 
 export interface AiClientPort {
@@ -29,8 +29,8 @@ export interface AiProgress {
 	receivedChars?: number;
 }
 
-export interface AiTaskResult {
-	responses: Record<string, unknown>;
+export interface AiTaskResult<T extends AiTask = AiTask> {
+	output: AiTaskOutput<T>;
 	connectionKind: ConnectionKind;
 }
 
@@ -55,7 +55,11 @@ function connectToGateway(name: string): AiClientPort {
 }
 
 /** Runs one AI task through the background gateway. Rejects with an AiError. */
-export function runAiTask(task: AiTask, input: PromptsInput, options: RunAiTaskOptions = {}): Promise<AiTaskResult> {
+export function runAiTask<T extends AiTask>(
+	task: T,
+	input: AiTaskInput<T>,
+	options: RunAiTaskOptions = {}
+): Promise<AiTaskResult<T>> {
 	if (options.signal?.aborted) return Promise.reject(new AiError('cancelled'));
 	const jobId = createJobId(task);
 	let port: AiClientPort;
@@ -67,7 +71,7 @@ export function runAiTask(task: AiTask, input: PromptsInput, options: RunAiTaskO
 		}));
 	}
 
-	return new Promise<AiTaskResult>((resolve, reject) => {
+	return new Promise<AiTaskResult<T>>((resolve, reject) => {
 		let settled = false;
 		const keepalive = setInterval(() => {
 			try {
@@ -104,7 +108,8 @@ export function runAiTask(task: AiTask, input: PromptsInput, options: RunAiTaskO
 					...(message.receivedChars !== undefined ? { receivedChars: message.receivedChars } : {})
 				});
 			} else if (message.type === 'result') {
-				settle(() => resolve({ responses: message.responses, connectionKind: message.connectionKind }));
+				// The gateway validated the output against the task contract.
+				settle(() => resolve({ output: message.output as AiTaskOutput<T>, connectionKind: message.connectionKind }));
 			} else if (message.type === 'error') {
 				settle(() => reject(deserializeAiError(message.error)));
 			}

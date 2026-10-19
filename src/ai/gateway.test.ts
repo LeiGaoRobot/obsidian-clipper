@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { Settings } from '../types/types';
+import { createMemoryStructuredOutputCache } from './capabilities';
 import { AiError } from './errors';
 import { createAiGateway, type AiGatewayDeps, type AiPortLike } from './gateway';
 import type { AiGatewayMessage } from './protocol';
@@ -46,7 +47,11 @@ class FakePort implements AiPortLike {
 }
 
 const input = { context: 'Page text', prompts: [{ key: 'prompt_1', prompt: 'Summarize' }] };
-const envelope = '{"prompts_responses":{"prompt_1":"A summary"}}';
+const envelope = '{"prompt_1":"A summary"}';
+const segmentInput = { instruction: 'Translate.', segments: [{ id: 0, text: 'Hola' }] };
+const translationReply = '{"translations":[{"id":0,"text":"Hello"}]}';
+const readingReply = '{"readings":[{"id":0,"tokens":[{"text":"Hola","reading":""}]}]}';
+const textInput = { instruction: 'Explain.', content: 'word' };
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -64,7 +69,7 @@ function setup(overrides: Partial<AiGatewayDeps> = {}, settings = v1Settings()) 
 		nativeMessaging: () => 'port',
 		app: () => ({ name: 'PagePick', homepageUrl: 'https://example.com' }),
 		executeApi: vi.fn(async () => envelope),
-		executeCli: vi.fn(async () => ({ prompt_1: 'From CLI' })),
+		executeCli: vi.fn(async () => '{"prompt_1":"From CLI"}'),
 		...overrides
 	};
 	const gateway = createAiGateway(deps);
@@ -83,7 +88,7 @@ afterEach(() => {
 });
 
 describe('AI gateway', () => {
-	test('runs an API task and returns responses by prompt key', async () => {
+	test('runs an API task and returns the contract output', async () => {
 		const { deps, port } = setup();
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
 		await flush();
@@ -92,7 +97,7 @@ describe('AI gateway', () => {
 		expect(port.last()).toEqual({
 			type: 'result',
 			jobId: 'job-1',
-			responses: { prompt_1: 'A summary' },
+			output: { prompt_1: 'A summary' },
 			connectionKind: 'openai-compatible'
 		});
 		expect(deps.executeApi).toHaveBeenCalledWith(
@@ -101,7 +106,8 @@ describe('AI gateway', () => {
 				baseUrl: 'https://api.openai.com/v1/chat/completions',
 				model: 'gpt-a',
 				credential: 'sk-test',
-				context: 'Page text',
+				messages: expect.objectContaining({ user: expect.stringContaining('Page text') }),
+				structured: expect.objectContaining({ mode: 'json_schema', name: 'interpret_responses' }),
 				app: { name: 'PagePick', homepageUrl: 'https://example.com' }
 			}),
 			expect.objectContaining({ connectionId: 'provider-openai' })
@@ -138,17 +144,67 @@ describe('AI gateway', () => {
 		});
 	});
 
-	test('rejects a reply with no envelope as a bad response', async () => {
+	test('rejects a reply that breaks the contract', async () => {
 		const { port } = setup({ executeApi: vi.fn(async () => 'no json here') });
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
 		await flush();
-		expect(port.last()).toMatchObject({ type: 'error', error: { code: 'bad-response', detail: 'no json here' } });
+		expect(port.last()).toMatchObject({
+			type: 'error',
+			error: { code: 'bad-response', connectionId: 'provider-openai', detail: expect.stringContaining('no json here') }
+		});
+	});
+
+	test('returns text tasks without structured output', async () => {
+		const { deps, port } = setup({ executeApi: vi.fn(async () => ' Revised. ') });
+		port.send({ type: 'start', jobId: 'job-1', task: 'edit', input: { instruction: 'Fix it.', content: 'draft' } });
+		await flush();
+		expect(port.last()).toMatchObject({ type: 'result', output: 'Revised.' });
+		const [call] = (deps.executeApi as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(call.messages).toEqual({ system: expect.stringContaining('Fix it.'), user: 'draft' });
+		expect(call).not.toHaveProperty('structured');
+	});
+
+	test('retries once without structured output when the provider rejects it, and remembers', async () => {
+		const executeApi = vi.fn()
+			.mockRejectedValueOnce(new AiError('provider-error', { status: 400, detail: "Unknown parameter 'response_format'" }))
+			.mockResolvedValue(envelope);
+		const structuredOutput = createMemoryStructuredOutputCache();
+		const { port } = setup({ executeApi, structuredOutput });
+		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
+		await flush();
+
+		expect(port.last()).toMatchObject({ type: 'result', output: { prompt_1: 'A summary' } });
+		expect(executeApi.mock.calls[0][0].structured).toMatchObject({ mode: 'json_schema' });
+		expect(executeApi.mock.calls[1][0]).not.toHaveProperty('structured');
+		expect(await structuredOutput.get('provider-openai', 'https://api.openai.com/v1/chat/completions')).toBe('none');
+
+		port.send({ type: 'start', jobId: 'job-2', task: 'interpret', input });
+		await flush();
+		expect(executeApi).toHaveBeenCalledTimes(3);
+		expect(executeApi.mock.calls[2][0]).not.toHaveProperty('structured');
+	});
+
+	test('does not retry other 400s', async () => {
+		const executeApi = vi.fn().mockRejectedValue(new AiError('provider-error', { status: 400, detail: 'context too long' }));
+		const { port } = setup({ executeApi });
+		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
+		await flush();
+		expect(executeApi).toHaveBeenCalledTimes(1);
+		expect(port.last()).toMatchObject({ type: 'error', error: { status: 400 } });
+	});
+
+	test('rejects an input that does not match its task', async () => {
+		const { deps, port } = setup();
+		port.send({ type: 'start', jobId: 'job-1', task: 'translate', input });
+		await flush();
+		expect(port.last()).toMatchObject({ type: 'error', jobId: 'job-1', error: { code: 'provider-error' } });
+		expect(deps.executeApi).not.toHaveBeenCalled();
 	});
 
 	test('routes CLI profiles to the Native Host and forwards heartbeats', async () => {
 		const executeCli = vi.fn(async (_call: unknown, options: { onHeartbeat?: (elapsedMs: number) => void }) => {
 			options.onHeartbeat?.(10_000);
-			return { prompt_1: 'From CLI' };
+			return '{"prompt_1":"From CLI"}';
 		});
 		const { port } = setup(
 			{ executeCli: executeCli as unknown as AiGatewayDeps['executeCli'] },
@@ -162,12 +218,30 @@ describe('AI gateway', () => {
 		await flush();
 
 		expect(executeCli).toHaveBeenCalledWith(
-			{ kind: 'cli-codex', model: 'gpt-5-codex', effort: 'high', context: 'Page text', prompts: input.prompts },
+			{
+				kind: 'cli-codex',
+				model: 'gpt-5-codex',
+				effort: 'high',
+				prompt: expect.stringContaining('Page text'),
+				outputSchema: expect.objectContaining({ required: ['prompt_1'] })
+			},
 			expect.objectContaining({ connectionId: 'legacy-cli-codex' })
 		);
 		expect(port.posted.map(message => message.type === 'progress' ? message.phase : message.type))
 			.toEqual(['started', 'heartbeat', 'result']);
-		expect(port.last()).toMatchObject({ responses: { prompt_1: 'From CLI' }, connectionKind: 'cli-codex' });
+		expect(port.last()).toMatchObject({ output: { prompt_1: 'From CLI' }, connectionKind: 'cli-codex' });
+	});
+
+	test('sends Grok prompt rules only, without an output schema', async () => {
+		const executeCli = vi.fn(async () => 'Here you go: {"prompt_1":"From Grok"}');
+		const { port } = setup(
+			{ executeCli: executeCli as unknown as AiGatewayDeps['executeCli'] },
+			v1Settings({ interpreterExecutionMode: 'grok' } as Partial<Settings>)
+		);
+		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
+		await flush();
+		expect((executeCli.mock.calls[0] as unknown[])[0]).not.toHaveProperty('outputSchema');
+		expect(port.last()).toMatchObject({ output: { prompt_1: 'From Grok' }, connectionKind: 'cli-grok' });
 	});
 
 	test('reports CLI profiles as unsupported without Native Messaging', async () => {
@@ -205,7 +279,7 @@ describe('AI gateway', () => {
 			return pending.promise;
 		});
 		const { gateway, port } = setup({ executeApi: executeApi as unknown as AiGatewayDeps['executeApi'] });
-		port.send({ type: 'start', jobId: 'job-1', task: 'translate', input });
+		port.send({ type: 'start', jobId: 'job-1', task: 'translate', input: segmentInput });
 		await flush();
 		expect(gateway.activeJobIds()).toEqual(['job-1']);
 
@@ -223,7 +297,7 @@ describe('AI gateway', () => {
 			return new Promise<string>(() => undefined);
 		});
 		const { port } = setup({ executeApi: executeApi as unknown as AiGatewayDeps['executeApi'] });
-		port.send({ type: 'start', jobId: 'job-1', task: 'explain', input });
+		port.send({ type: 'start', jobId: 'job-1', task: 'explain', input: textInput });
 		await flush();
 		port.disconnect();
 		expect(seenSignal?.aborted).toBe(true);
@@ -237,30 +311,30 @@ describe('AI gateway', () => {
 			return pending.promise;
 		});
 		const { gateway, port } = setup({ executeApi: executeApi as unknown as AiGatewayDeps['executeApi'] });
-		port.send({ type: 'start', jobId: 'job-1', task: 'translate', input });
+		port.send({ type: 'start', jobId: 'job-1', task: 'translate', input: segmentInput });
 		await flush();
 		port.disconnect();
 		expect(seenSignal?.aborted).toBe(false);
 
-		pending.resolve(envelope);
+		pending.resolve(translationReply);
 		await flush();
 		const second = new FakePort();
 		gateway.handlePort(second);
 		second.send({ type: 'attach', jobId: 'job-1' });
-		expect(second.last()).toMatchObject({ type: 'result', jobId: 'job-1', responses: { prompt_1: 'A summary' } });
+		expect(second.last()).toMatchObject({ type: 'result', jobId: 'job-1', output: [{ id: 0, text: 'Hello' }] });
 	});
 
 	test('attach to a running job subscribes to its outcome', async () => {
 		const pending = deferred<string>();
 		const { gateway, port } = setup({ executeApi: vi.fn(() => pending.promise) });
-		port.send({ type: 'start', jobId: 'job-1', task: 'reading', input });
+		port.send({ type: 'start', jobId: 'job-1', task: 'reading', input: segmentInput });
 		await flush();
 		const second = new FakePort();
 		gateway.handlePort(second);
 		second.send({ type: 'attach', jobId: 'job-1' });
 		expect(second.last()).toMatchObject({ type: 'progress', phase: 'started' });
 
-		pending.resolve(envelope);
+		pending.resolve(readingReply);
 		await flush();
 		expect(port.last()).toMatchObject({ type: 'result' });
 		expect(second.last()).toMatchObject({ type: 'result' });
@@ -271,12 +345,12 @@ describe('AI gateway', () => {
 		const keepAlive = vi.fn();
 		const pending = deferred<string>();
 		const { port } = setup({ keepAlive, keepAliveIntervalMs: 1000, executeApi: vi.fn(() => pending.promise) });
-		port.send({ type: 'start', jobId: 'job-1', task: 'translate', input });
+		port.send({ type: 'start', jobId: 'job-1', task: 'translate', input: segmentInput });
 		port.disconnect();
 		await vi.advanceTimersByTimeAsync(3500);
 		expect(keepAlive).toHaveBeenCalledTimes(3);
 
-		pending.resolve(envelope);
+		pending.resolve(translationReply);
 		await vi.advanceTimersByTimeAsync(0);
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(keepAlive).toHaveBeenCalledTimes(3);
@@ -285,7 +359,7 @@ describe('AI gateway', () => {
 	test('sends attach progress only to the attaching port', async () => {
 		const pending = deferred<string>();
 		const { gateway, port } = setup({ executeApi: vi.fn(() => pending.promise) });
-		port.send({ type: 'start', jobId: 'job-1', task: 'reading', input });
+		port.send({ type: 'start', jobId: 'job-1', task: 'reading', input: segmentInput });
 		await flush();
 		const before = port.posted.length;
 		const second = new FakePort();
@@ -295,7 +369,7 @@ describe('AI gateway', () => {
 		expect(second.posted).toEqual([expect.objectContaining({ type: 'progress', phase: 'started' })]);
 	});
 
-	test('passes only prompt keys and text to adapters', async () => {
+	test('passes only contract fields to adapters', async () => {
 		const { deps, port } = setup();
 		port.send({
 			type: 'start',
@@ -304,10 +378,9 @@ describe('AI gateway', () => {
 			input: { context: 'Page text', prompts: [{ key: 'prompt_1', prompt: 'Summarize', filters: '|upper', extra: 'x' }], maxTokens: 900 }
 		});
 		await flush();
-		expect(deps.executeApi).toHaveBeenCalledWith(
-			expect.objectContaining({ prompts: [{ key: 'prompt_1', prompt: 'Summarize' }], maxTokens: 900 }),
-			expect.anything()
-		);
+		const [call] = (deps.executeApi as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(call.maxTokens).toBe(900);
+		expect(JSON.stringify(call.messages)).not.toMatch(/upper|extra/);
 	});
 
 	test('forgets finished jobs after the retention window', async () => {

@@ -1,24 +1,15 @@
+import type { AiTaskInput, AiTaskOutput, TranscriptSegment } from '../ai/contracts';
 import type { AiTask } from '../ai/types';
-import { PromptVariable } from '../types/types';
 import { throwIfRequestAborted } from './request-cancellation';
 
-export interface LanguageLearningResponse {
-	key: string;
-	prompt: string;
-	user_response: unknown;
-}
+export type LanguageLearningTask = Extract<AiTask, 'edit' | 'explain' | 'reading' | 'translate'>;
 
-export interface LanguageLearningRequest {
-	task: Extract<AiTask, 'edit' | 'explain' | 'reading' | 'translate'>;
-	context: string;
-	prompts: PromptVariable[];
-	maxTokens?: number;
-}
-
-export type SendLanguageLearningRequest = (
-	request: LanguageLearningRequest,
+/** Runs one model task. Rejects when the reply does not satisfy the task's output contract. */
+export type SendLanguageLearningRequest = <T extends LanguageLearningTask>(
+	task: T,
+	input: AiTaskInput<T>,
 	signal?: AbortSignal
-) => Promise<LanguageLearningResponse[]>;
+) => Promise<AiTaskOutput<T>>;
 
 export interface LearningSelection {
 	kind: 'word' | 'sentence';
@@ -98,48 +89,37 @@ const MAX_TRANSCRIPT_PROMPT_CHARS = 6000;
 const JAPANESE_KANJI = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF々]/;
 
 interface TranscriptPromptGroup {
-	lines: string[];
+	segments: TranscriptSegment[];
 	sourceChars: number;
-	segmentIds: number[];
 }
 
+// Groups segments under a prompt-size budget. Each segment keeps its source index as a stable
+// id and stays atomic, so one oversized segment may exceed the budget on its own.
 function buildTranscriptPromptGroups(
 	segments: string[],
-	promptHeader: string[],
+	instruction: string,
 	maxPromptChars = MAX_TRANSCRIPT_PROMPT_CHARS,
 	includeSegment: (index: number) => boolean = () => true
 ): TranscriptPromptGroup[] {
 	const promptGroups: TranscriptPromptGroup[] = [];
-	let currentGroup: string[] = [];
-	let currentSegmentIds: number[] = [];
+	let current: TranscriptSegment[] = [];
 	let currentSourceChars = 0;
-	let currentLength = promptHeader.join('\n').length;
-	segments.forEach((segment, index) => {
-		if (!includeSegment(index)) return;
-		const line = `${index}|||${segment}`;
-		if (currentGroup.length > 0 && currentLength + line.length + 1 > maxPromptChars) {
-			promptGroups.push({
-				lines: currentGroup,
-				sourceChars: currentSourceChars,
-				segmentIds: currentSegmentIds
-			});
-			currentGroup = [];
-			currentSegmentIds = [];
+	let currentLength = instruction.length;
+	segments.forEach((text, id) => {
+		if (!includeSegment(id)) return;
+		const segment = { id, text };
+		const length = JSON.stringify(segment).length + 1;
+		if (current.length > 0 && currentLength + length > maxPromptChars) {
+			promptGroups.push({ segments: current, sourceChars: currentSourceChars });
+			current = [];
 			currentSourceChars = 0;
-			currentLength = promptHeader.join('\n').length;
+			currentLength = instruction.length;
 		}
-		currentGroup.push(line);
-		currentSegmentIds.push(index);
-		currentSourceChars += segment.length;
-		currentLength += line.length + 1;
+		current.push(segment);
+		currentSourceChars += text.length;
+		currentLength += length;
 	});
-	if (currentGroup.length > 0) {
-		promptGroups.push({
-			lines: currentGroup,
-			sourceChars: currentSourceChars,
-			segmentIds: currentSegmentIds
-		});
-	}
+	if (current.length > 0) promptGroups.push({ segments: current, sourceChars: currentSourceChars });
 	return promptGroups;
 }
 
@@ -161,41 +141,6 @@ function countCompleteTranscriptReadingSegments(
 	return readings.reduce((count, tokens, index) => (
 		count + (isCompleteTranscriptReadingSegment(tokens, segments[index]) ? 1 : 0)
 	), 0);
-}
-
-function parseTranscriptReadingTokens(value: string): TranscriptReadingToken[] | null {
-	let json = value.trim();
-	if (json.startsWith('```')) {
-		json = json.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-	}
-	try {
-		const parsed: unknown = JSON.parse(json);
-		if (!Array.isArray(parsed)) return null;
-		const tokens: TranscriptReadingToken[] = [];
-		for (const item of parsed) {
-			if (Array.isArray(item)) {
-				if (
-					item.length !== 2
-					|| typeof item[0] !== 'string'
-					|| typeof item[1] !== 'string'
-					|| !item[0]
-				) return null;
-				tokens.push({ text: item[0], reading: item[1] });
-				continue;
-			}
-			if (!item || typeof item !== 'object') return null;
-			const candidate = item as { text?: unknown; reading?: unknown };
-			if (
-				typeof candidate.text !== 'string'
-				|| typeof candidate.reading !== 'string'
-				|| !candidate.text
-			) return null;
-			tokens.push({ text: candidate.text, reading: candidate.reading });
-		}
-		return tokens;
-	} catch {
-		return null;
-	}
 }
 
 export function isCompleteTranscriptReadings(
@@ -226,16 +171,13 @@ export function createLanguageLearningAssistant(
 	return {
 		async transformContent(content: string, instruction: string, signal?: AbortSignal): Promise<string> {
 			throwIfRequestAborted(signal);
-			const prompt = `${instruction.trim()} Return only the revised content in Markdown.`;
-			const responses = await sendRequest({
-				task: 'edit',
-				context: content,
-				prompts: [{ key: 'prompt_1', prompt }],
+			const revised = await sendRequest('edit', {
+				instruction: `${instruction.trim()} Return only the revised content in Markdown.`,
+				content,
 				maxTokens: Math.min(12000, Math.max(1600, Math.ceil(content.length * 1.2)))
 			}, signal);
 			throwIfRequestAborted(signal);
-			const response = responses.find(item => item.key === 'prompt_1')?.user_response;
-			return typeof response === 'string' ? response : '';
+			return revised;
 		},
 
 		async explainSelection(selection: LearningSelection, responseLanguage: string, signal?: AbortSignal): Promise<string> {
@@ -244,14 +186,12 @@ export function createLanguageLearningAssistant(
 			const prompt = selection.kind === 'word'
 				? `Explain the selected word for a language learner in ${responseLanguage}. ${languageInstruction} Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.`
 				: `Explain the selected sentence for a language learner in ${responseLanguage}. ${languageInstruction} Include a natural translation, its grammar structure, and the key expressions in context. Return concise plain text.`;
-			const responses = await sendRequest({
-				task: 'explain',
-				context: `Selected ${selection.kind}: ${selection.text}\nContext: ${selection.context}`,
-				prompts: [{ key: 'prompt_1', prompt }]
+			const explanation = await sendRequest('explain', {
+				instruction: prompt,
+				content: `Selected ${selection.kind}: ${selection.text}\nContext: ${selection.context}`
 			}, signal);
 			throwIfRequestAborted(signal);
-			const response = responses.find(item => item.key === 'prompt_1')?.user_response;
-			return typeof response === 'string' ? response : '';
+			return explanation;
 		},
 
 		async annotateJapaneseTranscript(
@@ -260,15 +200,13 @@ export function createLanguageLearningAssistant(
 			signal?: AbortSignal
 		): Promise<TranscriptReadingSegments> {
 			throwIfRequestAborted(signal);
-			const promptHeader = [
+			const instruction = [
 				'Annotate each Japanese transcript segment with hiragana readings for every kanji.',
 				'Preserve every segment exactly and do not merge or omit text.',
-				'Return exactly one line per segment using: ID|||JSON',
-				'The JSON must be an array of [text, reading] tuples.',
-				'Concatenate the first value of every tuple to reproduce the source exactly.',
-				'Use an empty reading for kana, Latin letters, numbers, spaces, and punctuation.',
-				'Split mixed kanji and kana into separate tuples so every kanji has its own reading.'
-			];
+				'Split each segment into tokens. Concatenating the token texts must reproduce the segment exactly.',
+				'Give each token that contains kanji its hiragana reading. Use an empty reading for kana, Latin letters, numbers, spaces, and punctuation.',
+				'Split mixed kanji and kana into separate tokens so every kanji has its own reading.'
+			].join('\n');
 			const checkpoint = await options.japaneseReadingCheckpoints?.load(segments);
 			const readings: TranscriptReadingSegments = segments.map((segment, index) => {
 				const tokens = checkpoint?.[index];
@@ -278,7 +216,7 @@ export function createLanguageLearningAssistant(
 			});
 			const promptGroups = buildTranscriptPromptGroups(
 				segments,
-				promptHeader,
+				instruction,
 				options.japaneseReadingPromptCharLimit,
 				index => !isCompleteTranscriptReadingSegment(readings[index], segments[index])
 			);
@@ -291,29 +229,17 @@ export function createLanguageLearningAssistant(
 			});
 			for (const [groupIndex, group] of promptGroups.entries()) {
 				throwIfRequestAborted(signal);
-				const responses = await sendRequest({
-					task: 'reading',
-					context: 'Annotate Japanese transcript segments with aligned ruby readings.',
-					prompts: [{
-						key: 'prompt_1',
-						prompt: [...promptHeader, ...group.lines].join('\n')
-					}],
-					maxTokens: Math.min(12000, Math.max(2000, Math.ceil(group.sourceChars * 2.5)))
+				const generated = await sendRequest('reading', {
+					instruction,
+					segments: group.segments,
+					// Token objects cost more output than the source text they annotate.
+					maxTokens: Math.min(12000, Math.max(2000, Math.ceil(group.sourceChars * 4)))
 				}, signal);
 				throwIfRequestAborted(signal);
-				const requestedSegmentIds = new Set(group.segmentIds);
-				for (const response of responses) {
-					if (typeof response.user_response !== 'string') continue;
-					for (const line of response.user_response.split('\n')) {
-						const match = line.match(/^\s*(\d+)\|\|\|(.*)$/);
-						if (!match) continue;
-						const index = Number(match[1]);
-						if (!requestedSegmentIds.has(index)) continue;
-						const tokens = parseTranscriptReadingTokens(match[2]);
-						if (tokens && isCompleteTranscriptReadings([tokens], [segments[index]])) {
-							readings[index] = tokens;
-						}
-					}
+				// Accept only requested ids, and only readings that reproduce their source.
+				const requested = new Set(group.segments.map(segment => segment.id));
+				for (const { id, tokens } of generated) {
+					if (requested.has(id) && isCompleteTranscriptReadings([tokens], [segments[id]])) readings[id] = tokens;
 				}
 				await options.japaneseReadingCheckpoints?.save(segments, cloneTranscriptReadings(readings));
 				onProgress?.({
@@ -334,42 +260,31 @@ export function createLanguageLearningAssistant(
 			signal?: AbortSignal
 		): Promise<string[]> {
 			throwIfRequestAborted(signal);
-			const promptHeader = [
+			const instruction = [
 				`Translate each transcript segment into ${targetLanguage}.`,
-				'Preserve meaning and tone. Do not merge or omit segments.',
-				'Return exactly one line per segment using: ID|||translation'
-			];
+				'Preserve meaning and tone. Do not merge or omit segments.'
+			].join('\n');
 			const checkpoint = await options.transcriptTranslationCheckpoints?.load(segments);
 			const translations = segments.map((_segment, index) => checkpoint?.[index]?.trim() || '');
 			const promptGroups = buildTranscriptPromptGroups(
 				segments,
-				promptHeader,
+				instruction,
 				options.transcriptTranslationPromptCharLimit ?? MAX_TRANSCRIPT_PROMPT_CHARS,
 				index => !translations[index]
 			);
 			onProgress?.({ completed: 0, total: promptGroups.length, translations: [...translations] });
 			for (const [groupIndex, group] of promptGroups.entries()) {
 				throwIfRequestAborted(signal);
-				const responses = await sendRequest({
-					task: 'translate',
-					context: 'Translate timed transcript segments without changing their alignment.',
-					prompts: [{
-						key: 'prompt_1',
-						prompt: [...promptHeader, ...group.lines].join('\n')
-					}],
-					maxTokens: Math.min(8000, Math.max(1600, Math.ceil(group.sourceChars * 1.2)))
+				const translated = await sendRequest('translate', {
+					instruction,
+					segments: group.segments,
+					// Each item adds a small JSON wrapper around its translation.
+					maxTokens: Math.min(8000, Math.max(1600, Math.ceil(group.sourceChars * 1.2 + group.segments.length * 15)))
 				}, signal);
 				throwIfRequestAborted(signal);
-				for (const response of responses) {
-					if (typeof response.user_response !== 'string') continue;
-					for (const line of response.user_response.split('\n')) {
-						const match = line.match(/^\s*(\d+)\|\|\|(.*)$/);
-						if (!match) continue;
-						const index = Number(match[1]);
-						if (index >= 0 && index < translations.length) {
-							translations[index] = match[2].trim();
-						}
-					}
+				const requested = new Set(group.segments.map(segment => segment.id));
+				for (const { id, text } of translated) {
+					if (requested.has(id)) translations[id] = text;
 				}
 				await options.transcriptTranslationCheckpoints?.save(segments, [...translations]);
 				onProgress?.({

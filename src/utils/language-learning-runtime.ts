@@ -218,19 +218,10 @@ async function loadConfiguredAssistant({
 	const transcriptTranslationCheckpoints = createTranslationCheckpointStore(
 		resolvedTranscriptCheckpointScope
 	);
-	const assistant = createLanguageLearningAssistant(async (request, signal) => {
+	const assistant = createLanguageLearningAssistant(async (task, input, signal) => {
 		throwIfRequestAborted(signal);
 		try {
-			const { responses } = await runAiTask(request.task, {
-				context: request.context,
-				prompts: request.prompts,
-				...(request.maxTokens ? { maxTokens: request.maxTokens } : {})
-			}, { signal });
-			return request.prompts.map(prompt => ({
-				key: prompt.key,
-				prompt: prompt.prompt,
-				user_response: responses[prompt.key]
-			}));
+			return (await runAiTask(task, input, { signal })).output;
 		} catch (error) {
 			throw toLanguageLearningError(error, executionMode);
 		}

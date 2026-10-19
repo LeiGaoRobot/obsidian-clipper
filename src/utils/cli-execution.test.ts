@@ -84,7 +84,7 @@ describe('CLI execution modes', () => {
 
 	test('executes either mode with the shared JSON response contract', async () => {
 		const runner = vi.fn().mockResolvedValue({
-			stdout: '```json\n{"prompts_responses":{"prompt_1":"done"}}\n```',
+			stdout: '```json\n{"prompt_1":"done"}\n```',
 			stderr: ''
 		});
 
@@ -104,14 +104,14 @@ describe('CLI execution modes', () => {
 
 	test('rejects incomplete CLI responses', () => {
 		expect(() => parsePromptResponses(
-			'{"prompts_responses":{}}',
+			'{"prompt_2":"other"}',
 			[{ key: 'prompt_1', prompt: 'Summarize this', filters: '' }]
-		)).toThrow('missing prompt_1');
+		)).toThrow('did not answer any of: prompt_1');
 	});
 
 	test('skips unrelated JSON emitted before the final response', () => {
 		expect(parsePromptResponses(
-			'{"type":"status"}\n{"prompts_responses":{"prompt_1":"done"}}',
+			'{"type":"status"}\n{"prompt_1":"done"}',
 			[{ key: 'prompt_1', prompt: 'Summarize this', filters: '' }]
 		)).toEqual({ prompt_1: 'done' });
 	});

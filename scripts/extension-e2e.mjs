@@ -138,9 +138,9 @@ if (!existsSync(path.join(extensionPath, 'manifest.json'))) {
 const chrome = findChrome();
 if (!chrome) throw new Error('Chrome or Chromium is required. Set CHROME_PATH to its executable.');
 
-// A mock OpenAI-compatible provider that streams its envelope in delayed SSE deltas.
+// A mock OpenAI-compatible provider that streams the interpret contract object in delayed SSE deltas.
 const providerRequests = [];
-const streamedEnvelope = '{"prompts_responses":{"prompt_1":"Streamed summary"}}';
+const streamedEnvelope = '{"prompt_1":"Streamed summary"}';
 async function streamMockCompletion(request, response) {
 	let body = '';
 	for await (const chunk of request) body += chunk;
@@ -529,12 +529,14 @@ try {
 	})`);
 	if (
 		gatewayRun.outcome?.type !== 'result'
-		|| gatewayRun.outcome.responses?.prompt_1 !== 'Streamed summary'
+		|| gatewayRun.outcome.output?.prompt_1 !== 'Streamed summary'
 		|| !gatewayRun.messages.includes('receiving')
 		|| providerRequests.length !== 1
 		|| providerRequests[0].body.stream !== true
 		|| providerRequests[0].body.model !== 'mock-model'
 		|| providerRequests[0].authorization !== 'Bearer sk-e2e'
+		|| providerRequests[0].body.response_format?.type !== 'json_object'
+		|| JSON.stringify(providerRequests[0].body.messages).includes('prompts_responses')
 	) {
 		throw new Error(`AI gateway did not stream the mock provider response: ${JSON.stringify({ gatewayRun, providerRequests })}`);
 	}

@@ -5,6 +5,7 @@ import { TextHighlightData } from './utils/highlighter';
 import { debounce } from './utils/debounce';
 import { Settings } from './types/types';
 import { debugLog } from './utils/debug';
+import { createStructuredOutputCache } from './ai/capabilities';
 import { createAiGateway } from './ai/gateway';
 import type { NativeMessagingSupport } from './ai/types';
 import { getExtensionBranding } from './utils/extension-branding';
@@ -548,6 +549,7 @@ function detectNativeMessaging(): NativeMessagingSupport {
 const aiGateway = createAiGateway({
 	loadSettings,
 	nativeMessaging: detectNativeMessaging,
+	structuredOutput: createStructuredOutputCache(browser.storage.local),
 	keepAlive: () => {
 		void browser.runtime.getPlatformInfo();
 	},

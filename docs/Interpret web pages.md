@@ -60,6 +60,8 @@ When Interpreter is enabled *and* your template contains [[Variables#Prompt vari
 
 When you click **interpret**, Interpreter sends the page context to your selected model, along with *all* the prompts in your template in one request. Depending on the model provider you choose, this can be an external call or local to your device. The model evaluates your prompts against the page context, and returns its responses. Interpreter then replaces the prompt variables with the response data.
 
+Interpreter asks the model for one JSON object with an answer for every prompt variable. Where the provider supports structured output (OpenAI, Azure OpenAI, Anthropic, Ollama, and most OpenAI-compatible servers), the provider enforces that shape; if a server rejects the structured-output option, Interpreter retries once without it and remembers that for the provider. If the model leaves out a prompt, Interpreter reports an incomplete answer instead of filling in a blank.
+
 The whole process can take milliseconds or more than 30 seconds depending on the model you use and the amount of data you are processing. API responses are streamed, so long answers keep arriving instead of stalling. A request stops with a timeout error after 60 seconds without any data, or after five minutes in total. Closing the extension window cancels a running Interpreter request.
 
 If a request fails, Interpreter shows what went wrong (for example a rejected API key, an unavailable model, a rate limit, or a missing local CLI) and what to do next. Select **Technical details** to see the provider's raw message.

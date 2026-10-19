@@ -222,7 +222,7 @@ export async function handleInterpreterUI(
 		}, 10);
 
 		// The model select picks the profile for API runs; CLI modes use their own profile.
-		const { responses } = await runAiTask('interpret', {
+		const { output: responses } = await runAiTask('interpret', {
 			context: contextToUse,
 			prompts: promptVariables
 		}, executionMode === 'api' && modelConfig ? { profileId: modelConfig.id } : {});

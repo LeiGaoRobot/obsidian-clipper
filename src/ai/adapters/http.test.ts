@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { ENVELOPE_SYSTEM_PROMPT } from '../prompt-envelope';
 import type { ApiConnectionKind } from '../types';
-import { buildApiRequest, executeApiCall, type ApiPromptCall } from './http';
+import { ANTHROPIC_RESPONSE_TOOL, buildApiRequest, executeApiCall, type ApiPromptCall, type ApiStructuredOutput } from './http';
 
 const app = { name: 'PagePick for Obsidian', homepageUrl: 'https://home.example' };
-const prompts = [{ key: 'prompt_1', prompt: 'Summarize' }];
-const payload = '{"prompts":{"prompt_1":"Summarize"}}';
+const messages = { system: 'Answer as JSON.', user: 'Page' };
+const schema = { type: 'object', properties: { a: { type: 'string' } }, required: ['a'], additionalProperties: false };
+const strict: ApiStructuredOutput = { mode: 'json_schema', name: 'answer', schema };
+const jsonMode: ApiStructuredOutput = { mode: 'json_object', name: 'answer', schema };
 
 function call(kind: ApiConnectionKind, overrides: Partial<ApiPromptCall> = {}): ApiPromptCall {
 	return {
@@ -13,8 +14,7 @@ function call(kind: ApiConnectionKind, overrides: Partial<ApiPromptCall> = {}): 
 		baseUrl: 'https://model.example/v1/chat/completions',
 		model: 'model-x',
 		credential: 'key',
-		context: 'Page',
-		prompts,
+		messages,
 		app,
 		...overrides
 	};
@@ -34,12 +34,11 @@ function streamResponse(chunks: string[], contentType: string, status = 200): Re
 
 describe('buildApiRequest', () => {
 	const chat = [
-		{ role: 'system', content: ENVELOPE_SYSTEM_PROMPT },
-		{ role: 'user', content: 'Page' },
-		{ role: 'user', content: payload }
+		{ role: 'system', content: 'Answer as JSON.' },
+		{ role: 'user', content: 'Page' }
 	];
 
-	test('keeps the OpenAI-compatible request and only sends max_tokens when requested', () => {
+	test('sends OpenAI-compatible chat with max_tokens only when requested', () => {
 		expect(buildApiRequest(call('openai-compatible'))).toEqual({
 			url: 'https://model.example/v1/chat/completions',
 			headers: {
@@ -53,7 +52,18 @@ describe('buildApiRequest', () => {
 		expect(buildApiRequest(call('openai-compatible', { maxTokens: 3200 })).body.max_tokens).toBe(3200);
 	});
 
-	test('keeps the Anthropic request shape and headers', () => {
+	test('maps structured modes to response_format for OpenAI-style kinds', () => {
+		for (const kind of ['openai-compatible', 'azure-openai', 'huggingface', 'perplexity'] as const) {
+			expect(buildApiRequest(call(kind, { structured: strict })).body.response_format).toEqual({
+				type: 'json_schema',
+				json_schema: { name: 'answer', schema, strict: true }
+			});
+			expect(buildApiRequest(call(kind, { structured: jsonMode })).body.response_format).toEqual({ type: 'json_object' });
+			expect(buildApiRequest(call(kind)).body).not.toHaveProperty('response_format');
+		}
+	});
+
+	test('sends Anthropic one user message and forces the response tool for schemas', () => {
 		const request = buildApiRequest(call('anthropic', { baseUrl: 'https://api.anthropic.com/v1/messages' }));
 		expect(request.headers).toEqual({
 			'Content-Type': 'application/json',
@@ -64,11 +74,16 @@ describe('buildApiRequest', () => {
 		expect(request.body).toEqual({
 			model: 'model-x',
 			max_tokens: 1600,
-			messages: [{ role: 'user', content: 'Page' }, { role: 'user', content: payload }],
+			system: 'Answer as JSON.',
+			messages: [{ role: 'user', content: 'Page' }],
 			temperature: 0.5,
-			system: ENVELOPE_SYSTEM_PROMPT,
 			stream: true
 		});
+		expect(buildApiRequest(call('anthropic', { structured: strict })).body).toMatchObject({
+			tools: [{ name: ANTHROPIC_RESPONSE_TOOL, input_schema: schema }],
+			tool_choice: { type: 'tool', name: ANTHROPIC_RESPONSE_TOOL }
+		});
+		expect(buildApiRequest(call('anthropic', { structured: jsonMode })).body).not.toHaveProperty('tools');
 	});
 
 	test('keeps the Azure, Hugging Face, Perplexity, and Ollama differences', () => {
@@ -81,15 +96,13 @@ describe('buildApiRequest', () => {
 		expect(hf.body).toMatchObject({ model: 'model-x', max_tokens: 1600, stream: true });
 
 		const perplexity = buildApiRequest(call('perplexity'));
-		expect(perplexity.body).toMatchObject({ temperature: 0.3, max_tokens: 1600 });
-		expect((perplexity.body.messages as Array<{ content: string }>)[1].content)
-			.toBe(`\n\t\t\t\t\t\t"Page"\n\t\t\t\t\t\t"${payload}"`);
+		expect(perplexity.body).toMatchObject({ temperature: 0.3, max_tokens: 1600, messages: chat });
 
 		const ollama = buildApiRequest(call('ollama', { credential: undefined }));
 		expect(ollama.headers).toEqual({ 'Content-Type': 'application/json' });
-		expect(ollama.body).toEqual({
-			model: 'model-x', messages: chat, format: 'json', num_ctx: 120000, temperature: 0.5, stream: true
-		});
+		expect(ollama.body).toEqual({ model: 'model-x', messages: chat, num_ctx: 120000, temperature: 0.5, stream: true });
+		expect(buildApiRequest(call('ollama', { structured: strict })).body.format).toEqual(schema);
+		expect(buildApiRequest(call('ollama', { structured: jsonMode })).body.format).toBe('json');
 	});
 
 	test('sends an empty bearer token for keyless connections, like v1', () => {
@@ -105,13 +118,13 @@ describe('executeApiCall', () => {
 
 	test('accumulates OpenAI SSE deltas split across chunk boundaries', async () => {
 		const fetchImpl = vi.fn().mockResolvedValue(streamResponse([
-			'data: {"choices":[{"delta":{"content":"{\\"prompts_"}}]}\n\ndata: {"choi',
-			'ces":[{"delta":{"content":"responses\\":{}}"}}]}\n\n',
+			'data: {"choices":[{"delta":{"content":"{\\"a\\":"}}]}\n\ndata: {"choi',
+			'ces":[{"delta":{"content":"\\"b\\"}"}}]}\n\n',
 			'data: [DONE]\n\n'
 		], 'text/event-stream'));
 		const received: number[] = [];
 		const text = await executeApiCall(call('openai-compatible'), { fetchImpl, onReceive: chars => received.push(chars) });
-		expect(text).toBe('{"prompts_responses":{}}');
+		expect(text).toBe('{"a":"b"}');
 		expect(received[received.length - 1]).toBe(text.length);
 		const [url, init] = fetchImpl.mock.calls[0];
 		expect(url).toBe('https://model.example/v1/chat/completions');
@@ -124,7 +137,24 @@ describe('executeApiCall', () => {
 			'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"{ \\"a\\": 1 }"}}\n\n',
 			'event: message_stop\ndata: {"type":"message_stop"}\n\n'
 		], 'text/event-stream'));
-		await expect(executeApiCall(call('anthropic'), { fetchImpl })).resolves.toBe('{"a":1}');
+		await expect(executeApiCall(call('anthropic'), { fetchImpl })).resolves.toBe('{ "a": 1 }');
+	});
+
+	test('accumulates Anthropic tool input deltas', async () => {
+		const fetchImpl = vi.fn().mockResolvedValue(streamResponse([
+			'data: {"type":"content_block_start","content_block":{"type":"tool_use","name":"respond","input":{}}}\n\n',
+			'data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{\\"a\\": "}}\n\n',
+			'data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"\\"x\\"}"}}\n\n',
+			'data: {"type":"message_stop"}\n\n'
+		], 'text/event-stream'));
+		await expect(executeApiCall(call('anthropic', { structured: strict }), { fetchImpl })).resolves.toBe('{"a": "x"}');
+	});
+
+	test('reads tool input from a complete Anthropic body', async () => {
+		const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+			content: [{ type: 'tool_use', name: 'respond', input: { a: 'x' } }]
+		}), { headers: { 'content-type': 'application/json' } }));
+		await expect(executeApiCall(call('anthropic', { structured: strict }), { fetchImpl })).resolves.toBe('{"a":"x"}');
 	});
 
 	test('reads Ollama NDJSON', async () => {
@@ -133,6 +163,13 @@ describe('executeApiCall', () => {
 			'"done":false}\n{"done":true}\n'
 		], 'application/x-ndjson'));
 		await expect(executeApiCall(call('ollama'), { fetchImpl })).resolves.toBe('{"a":2}');
+	});
+
+	test('returns empty text when a complete body has no content', async () => {
+		const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: null } }] }), {
+			headers: { 'content-type': 'application/json' }
+		}));
+		await expect(executeApiCall(call('openai-compatible'), { fetchImpl })).resolves.toBe('');
 	});
 
 	test('falls back to a complete JSON body when the endpoint ignores streaming', async () => {

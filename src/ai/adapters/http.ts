@@ -1,6 +1,5 @@
-import type { PromptVariable } from '../../types/types';
+import type { RenderedMessages, StructuredOutputSpec } from '../contracts';
 import { AiError, classifyHttpStatus, toAiError } from '../errors';
-import { buildEnvelopePayload, ENVELOPE_SYSTEM_PROMPT } from '../prompt-envelope';
 import type { ApiConnectionKind } from '../types';
 
 export const DEFAULT_IDLE_TIMEOUT_MS = 60_000;
@@ -13,13 +12,19 @@ export interface AppIdentity {
 	homepageUrl: string;
 }
 
+export interface ApiStructuredOutput extends StructuredOutputSpec {
+	/** `json_schema` is the kind's strongest mechanism; `json_object` is plain JSON mode. */
+	mode: 'json_schema' | 'json_object';
+}
+
 export interface ApiPromptCall {
 	kind: ApiConnectionKind;
 	baseUrl: string;
 	model: string;
 	credential?: string;
-	context: string;
-	prompts: PromptVariable[];
+	messages: RenderedMessages;
+	/** Omitted for text tasks and for connections without structured output. */
+	structured?: ApiStructuredOutput;
 	maxTokens?: number;
 	app: AppIdentity;
 }
@@ -30,36 +35,55 @@ export interface ApiRequest {
 	body: Record<string, unknown>;
 }
 
+// Anthropic has no JSON mode; a forced call to this tool returns schema-shaped input instead.
+export const ANTHROPIC_RESPONSE_TOOL = 'respond';
+
+function openAiResponseFormat(structured: ApiStructuredOutput | undefined): Record<string, unknown> {
+	if (!structured) return {};
+	return structured.mode === 'json_schema'
+		? { response_format: { type: 'json_schema', json_schema: { name: structured.name, schema: structured.schema, strict: true } } }
+		: { response_format: { type: 'json_object' } };
+}
+
 /**
- * Builds the provider request. Bodies and headers match the v1 llm-client.ts branches
- * exactly, except that every kind now asks for a streamed response.
+ * Builds the provider request: one system and one user message, streamed, plus the kind's
+ * structured-output field when the task has a schema.
  */
 export function buildApiRequest(call: ApiPromptCall): ApiRequest {
 	const maxTokens = call.maxTokens ?? DEFAULT_MAX_TOKENS;
-	const payload = buildEnvelopePayload(call.prompts);
 	const key = call.credential ?? '';
 	const json = { 'Content-Type': 'application/json' };
 	const attribution = { 'HTTP-Referer': call.app.homepageUrl, 'X-Title': call.app.name };
 	const chatMessages = [
-		{ role: 'system', content: ENVELOPE_SYSTEM_PROMPT },
-		{ role: 'user', content: `${call.context}` },
-		{ role: 'user', content: payload }
+		{ role: 'system', content: call.messages.system },
+		{ role: 'user', content: call.messages.user }
 	];
+	const responseFormat = openAiResponseFormat(call.structured);
 
 	switch (call.kind) {
 		case 'huggingface':
 			return {
 				url: call.baseUrl.replace('{model-id}', call.model),
 				headers: { ...json, 'Authorization': `Bearer ${key}` },
-				body: { model: call.model, messages: chatMessages, max_tokens: maxTokens, stream: true }
+				body: { model: call.model, messages: chatMessages, max_tokens: maxTokens, ...responseFormat, stream: true }
 			};
 		case 'azure-openai':
 			return {
 				url: call.baseUrl,
 				headers: { ...json, 'api-key': key },
-				body: { messages: chatMessages, max_tokens: maxTokens, stream: true }
+				body: { messages: chatMessages, max_tokens: maxTokens, ...responseFormat, stream: true }
 			};
-		case 'anthropic':
+		case 'anthropic': {
+			const tool = call.structured?.mode === 'json_schema'
+				? {
+					tools: [{
+						name: ANTHROPIC_RESPONSE_TOOL,
+						description: 'Return the response in the required structure.',
+						input_schema: call.structured.schema
+					}],
+					tool_choice: { type: 'tool', name: ANTHROPIC_RESPONSE_TOOL }
+				}
+				: {};
 			return {
 				url: call.baseUrl,
 				headers: {
@@ -71,15 +95,14 @@ export function buildApiRequest(call: ApiPromptCall): ApiRequest {
 				body: {
 					model: call.model,
 					max_tokens: maxTokens,
-					messages: [
-						{ role: 'user', content: `${call.context}` },
-						{ role: 'user', content: payload }
-					],
+					system: call.messages.system,
+					messages: [{ role: 'user', content: call.messages.user }],
 					temperature: 0.5,
-					system: ENVELOPE_SYSTEM_PROMPT,
+					...tool,
 					stream: true
 				}
 			};
+		}
 		case 'perplexity':
 			return {
 				url: call.baseUrl,
@@ -87,13 +110,9 @@ export function buildApiRequest(call: ApiPromptCall): ApiRequest {
 				body: {
 					model: call.model,
 					max_tokens: maxTokens,
-					messages: [
-						{ role: 'system', content: ENVELOPE_SYSTEM_PROMPT },
-						{ role: 'user', content: `
-						"${call.context}"
-						"${payload}"` }
-					],
+					messages: chatMessages,
 					temperature: 0.3,
+					...responseFormat,
 					stream: true
 				}
 			};
@@ -104,7 +123,9 @@ export function buildApiRequest(call: ApiPromptCall): ApiRequest {
 				body: {
 					model: call.model,
 					messages: chatMessages,
-					format: 'json',
+					...(call.structured
+						? { format: call.structured.mode === 'json_schema' ? call.structured.schema : 'json' }
+						: {}),
 					num_ctx: 120000,
 					temperature: 0.5,
 					stream: true
@@ -118,19 +139,10 @@ export function buildApiRequest(call: ApiPromptCall): ApiRequest {
 					model: call.model,
 					messages: chatMessages,
 					...(call.maxTokens ? { max_tokens: maxTokens } : {}),
+					...responseFormat,
 					stream: true
 				}
 			};
-	}
-}
-
-// v1 re-serialized Anthropic and Ollama JSON content so the envelope parser saw normalized JSON.
-function finalizeText(kind: ApiConnectionKind, text: string): string {
-	if (kind !== 'anthropic' && kind !== 'ollama') return text;
-	try {
-		return JSON.stringify(JSON.parse(text));
-	} catch {
-		return text;
 	}
 }
 
@@ -144,17 +156,16 @@ function parseJsonBody(kind: ApiConnectionKind, text: string): string {
 	return parseCompleteResponse(kind, data);
 }
 
-/** Extracts the model text from a complete, non-streamed response body (v1 behavior). */
+/** Extracts the model text from a complete, non-streamed response body. */
 export function parseCompleteResponse(kind: ApiConnectionKind, data: any): string {
 	if (kind === 'anthropic') {
-		const text = data?.content?.[0]?.text;
-		return text ? finalizeText(kind, text) : JSON.stringify(data);
+		const blocks: any[] = Array.isArray(data?.content) ? data.content : [];
+		const tool = blocks.find(block => block?.type === 'tool_use');
+		if (tool) return JSON.stringify(tool.input ?? {});
+		return blocks.filter(block => block?.type === 'text').map(block => String(block.text ?? '')).join('');
 	}
-	if (kind === 'ollama') {
-		const text = data?.message?.content;
-		return text ? finalizeText(kind, text) : JSON.stringify(data);
-	}
-	return data?.choices?.[0]?.message?.content || JSON.stringify(data);
+	if (kind === 'ollama') return String(data?.message?.content ?? '');
+	return String(data?.choices?.[0]?.message?.content ?? '');
 }
 
 function streamEventError(event: any): AiError | undefined {
@@ -170,9 +181,11 @@ export function streamEventText(kind: ApiConnectionKind, event: any): string {
 	const error = streamEventError(event);
 	if (error) throw error;
 	if (kind === 'anthropic') {
-		return event?.type === 'content_block_delta' && event.delta?.type === 'text_delta'
-			? String(event.delta.text ?? '')
-			: '';
+		if (event?.type !== 'content_block_delta') return '';
+		if (event.delta?.type === 'text_delta') return String(event.delta.text ?? '');
+		// Forced tool use streams the tool input as partial JSON text.
+		if (event.delta?.type === 'input_json_delta') return String(event.delta.partial_json ?? '');
+		return '';
 	}
 	if (kind === 'ollama') return String(event?.message?.content ?? '');
 	return String(event?.choices?.[0]?.delta?.content ?? '');
@@ -247,7 +260,7 @@ function parseBufferedBody(kind: ApiConnectionKind, text: string): string {
 	for (const line of text.split(/\r?\n/)) {
 		if (!consumeLine(kind, format, line, part => { output += part; })) break;
 	}
-	return finalizeText(kind, output);
+	return output;
 }
 
 export interface ApiCallOptions {
@@ -380,7 +393,7 @@ export async function executeApiCall(call: ApiPromptCall, options: ApiCallOption
 			if (done) finished = true;
 		}
 		if (timeoutError || options.signal?.aborted) return fail(undefined);
-		return finalizeText(call.kind, output);
+		return output;
 	} catch (error) {
 		return fail(error);
 	} finally {

@@ -1,4 +1,5 @@
 import type { PromptVariable } from '../types/types';
+import { parseOutput, renderCliPrompt, type PromptItem } from '../ai/contracts';
 import { applyFilters } from './filters';
 
 export type CliExecutionMode = 'grok' | 'codex';
@@ -57,100 +58,19 @@ export function replacePromptVariables(
 	});
 }
 
-function extractJsonObjects(value: string): string[] {
-	const objects: string[] = [];
-	let start = -1;
-	let depth = 0;
-	let inString = false;
-	let escaped = false;
-
-	for (let index = 0; index < value.length; index++) {
-		const character = value[index];
-		if (inString) {
-			if (escaped) {
-				escaped = false;
-			} else if (character === '\\') {
-				escaped = true;
-			} else if (character === '"') {
-				inString = false;
-			}
-			continue;
-		}
-
-		if (character === '"') {
-			inString = true;
-			continue;
-		}
-		if (character === '{') {
-			if (depth === 0) start = index;
-			depth++;
-		} else if (character === '}' && depth > 0) {
-			depth--;
-			if (depth === 0 && start >= 0) {
-				objects.push(value.slice(start, index + 1));
-				start = -1;
-			}
-		}
-	}
-
-	return objects;
-}
-
-function parseJsonOutputs(output: string): unknown[] {
-	const candidates = [output.trim(), ...extractJsonObjects(output)];
-	const parsed: unknown[] = [];
-	for (const candidate of candidates) {
-		if (!candidate) continue;
-		try {
-			parsed.push(JSON.parse(candidate));
-		} catch {
-			// Try the next JSON object when the CLI added progress text or a code fence.
-		}
-	}
-	return parsed;
-}
-
+/** Parses CLI stdout against the interpret contract and returns responses by prompt key. */
 export function parsePromptResponses(
 	output: string,
 	promptVariables: PromptVariable[]
 ): Record<string, unknown> {
-	const parsedValues = parseJsonOutputs(output);
-	for (const parsed of parsedValues) {
-		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
-
-		const parsedObject = parsed as Record<string, unknown>;
-		const responseObject = parsedObject.prompts_responses;
-		const responses = responseObject && typeof responseObject === 'object' && !Array.isArray(responseObject)
-			? responseObject as Record<string, unknown>
-			: parsedObject;
-		if (!promptVariables.every(variable => Object.prototype.hasOwnProperty.call(responses, variable.key))) {
-			continue;
-		}
-
-		return promptVariables.reduce<Record<string, unknown>>((result, variable) => {
-			result[variable.key] = responses[variable.key];
-			return result;
-		}, {});
-	}
-
-	if (parsedValues.length === 0) {
-		throw new Error('CLI response did not contain valid JSON.');
-	}
-	throw new Error(`CLI response is missing ${promptVariables[0]?.key || 'prompt response'}.`);
+	return parseOutput('interpret', { context: '', prompts: toPromptItems(promptVariables) }, output);
 }
 
+/** The single CLI prompt for interpret, shared by the Native Host path and `src/cli.ts`. */
 export function buildExecutionPrompt(context: string, promptVariables: PromptVariable[]): string {
-	const prompts = promptVariables.reduce<Record<string, string>>((result, variable) => {
-		result[variable.key] = variable.prompt;
-		return result;
-	}, {});
+	return renderCliPrompt('interpret', { context, prompts: toPromptItems(promptVariables) });
+}
 
-	return [
-		'You are the Obsidian Web Clipper template interpreter.',
-		'Return exactly one JSON object with a "prompts_responses" object. Use every requested key exactly once. Do not include markdown fences, explanations, tool output, or any other text.',
-		'Page content:',
-		context,
-		'Prompt variables:',
-		JSON.stringify(prompts, null, 2)
-	].join('\n\n');
+function toPromptItems(promptVariables: PromptVariable[]): PromptItem[] {
+	return promptVariables.map(({ key, prompt }) => ({ key, prompt }));
 }

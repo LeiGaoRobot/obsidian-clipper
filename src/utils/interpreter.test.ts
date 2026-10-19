@@ -52,7 +52,7 @@ describe('Interpreter', () => {
 			<textarea id="prompt-context">Page context</textarea>
 		`;
 		mocks.generalSettings.interpreterExecutionMode = 'codex';
-		mocks.runAiTask.mockReset().mockResolvedValue({ responses: { prompt_1: 'Done' }, connectionKind: 'cli-codex' });
+		mocks.runAiTask.mockReset().mockResolvedValue({ output: { prompt_1: 'Done' }, connectionKind: 'cli-codex' });
 	});
 
 	test('runs CLI modes through the gateway without an explicit profile', async () => {
