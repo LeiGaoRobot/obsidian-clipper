@@ -1,4 +1,5 @@
 import type { CodexReasoningEffort } from '../types/types';
+import type { AiErrorCode } from './errors';
 
 export type ApiConnectionKind =
 	| 'openai-compatible'
@@ -70,4 +71,28 @@ export interface AiSettingsView {
 	/** API keys by connection id. Device-local; never part of a synced connection. */
 	credentials: Record<string, string>;
 	nativeMessaging: NativeMessagingSupport;
+}
+
+/** Whether a Test found a profile's model in the connection's model listing. */
+export interface ConnectionModelCheck {
+	profileId: string;
+	model: string;
+	listed: boolean;
+}
+
+/**
+ * Per-device connection state in `storage.local` (`ai_connection_status`), keyed by connection id.
+ * Only the gateway creates entries; Settings may delete them. `state` and `testedAt` are set
+ * together when a Test finishes. An entry can also exist with only `structuredOutput`, written
+ * when a run downgrades the structured-output mode of an untested connection.
+ */
+export interface ConnectionStatus {
+	state?: 'ok' | 'failing';
+	testedAt?: number;
+	code?: AiErrorCode;
+	/** HTTP status of the failing request, when there was one. */
+	status?: number;
+	detail?: string;
+	models?: ConnectionModelCheck[];
+	structuredOutput?: Exclude<StructuredOutputSupport, 'unknown'>;
 }
