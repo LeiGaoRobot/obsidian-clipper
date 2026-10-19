@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import {
 	createTranscriptCheckpointState,
 	createYouTubeTranscriptFixtureHtml,
+	transcriptJobId,
 	transcriptReadings,
 	transcriptTranslations
 } from './transcript-e2e-fixture.mjs';
@@ -73,8 +74,10 @@ function connectCdp(webSocketUrl) {
 		const pending = new Map();
 		const listeners = new Map();
 		let sequence = 1;
+		const closed = new Promise(resolveClosed => socket.addEventListener('close', () => resolveClosed()));
 		socket.addEventListener('open', () => resolve({
 			close: () => socket.close(),
+			closed,
 			on: (method, listener) => {
 				const entries = listeners.get(method) || [];
 				entries.push(listener);
@@ -138,21 +141,67 @@ if (!existsSync(path.join(extensionPath, 'manifest.json'))) {
 const chrome = findChrome();
 if (!chrome) throw new Error('Chrome or Chromium is required. Set CHROME_PATH to its executable.');
 
-// A mock OpenAI-compatible provider that streams the interpret contract object in delayed SSE deltas.
+// A mock OpenAI-compatible provider that answers by task in SSE deltas: interpret with a fixed
+// contract object in small delayed deltas, translate with `T:` + source text for every requested
+// segment id. `providerHook(request)` may delay a reply or answer it with an error status.
 const providerRequests = [];
+let providerHook = () => ({});
 const streamedEnvelope = '{"prompt_1":"Streamed summary"}';
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function requestedSegments(body) {
+	const messages = Array.isArray(body.messages) ? body.messages : [];
+	const system = messages.find(message => message.role === 'system')?.content || '';
+	if (!system.includes('{"translations":')) return { task: 'interpret' };
+	const user = messages.find(message => message.role === 'user')?.content || '{}';
+	return { task: 'translate', segments: JSON.parse(user).segments || [] };
+}
+
 async function streamMockCompletion(request, response) {
 	let body = '';
 	for await (const chunk of request) body += chunk;
-	providerRequests.push({ authorization: request.headers.authorization, body: JSON.parse(body) });
+	const parsed = JSON.parse(body);
+	const { task, segments } = requestedSegments(parsed);
+	const record = {
+		index: providerRequests.length,
+		at: Date.now(),
+		authorization: request.headers.authorization,
+		body: parsed,
+		task,
+		ids: segments?.map(segment => segment.id) ?? [],
+		aborted: false
+	};
+	providerRequests.push(record);
+	response.on('close', () => {
+		if (!response.writableFinished) record.aborted = true;
+	});
+	const hook = providerHook(record) || {};
+	if (hook.delayMs) await sleep(hook.delayMs);
+	if (response.destroyed) return;
+	if (hook.status) {
+		record.status = hook.status;
+		response.writeHead(hook.status, {
+			'Content-Type': 'application/json',
+			'Access-Control-Allow-Origin': '*',
+			...hook.headers
+		});
+		response.end(JSON.stringify({ error: { message: 'E2E mock: too many requests, slow down.' } }));
+		return;
+	}
+	record.status = 200;
 	response.writeHead(200, {
 		'Content-Type': 'text/event-stream',
 		'Access-Control-Allow-Origin': '*'
 	});
-	for (let index = 0; index < streamedEnvelope.length; index += 12) {
-		const content = streamedEnvelope.slice(index, index + 12);
+	const envelope = task === 'translate'
+		? JSON.stringify({ translations: segments.map(segment => ({ id: segment.id, text: `T:${segment.text}` })) })
+		: streamedEnvelope;
+	const chunkSize = task === 'translate' ? 2000 : 12;
+	for (let index = 0; index < envelope.length; index += chunkSize) {
+		if (response.destroyed) return;
+		const content = envelope.slice(index, index + chunkSize);
 		response.write(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);
-		await new Promise(resolve => setTimeout(resolve, 40));
+		if (task !== 'translate') await sleep(40);
 	}
 	response.end('data: [DONE]\n\n');
 }
@@ -234,20 +283,26 @@ try {
 	settings.on('Runtime.consoleAPICalled', event => {
 		if (event.type === 'error') settingsErrors.push(event.args?.map(item => item.value || item.description).join(' '));
 	});
-	const workerTarget = await waitForValue(async () => (
-		(await listTargets(port)).find(target => (
-			target.type === 'service_worker'
-			&& target.url === `chrome-extension://${extensionId}/background.js`
-		))
-	), `The unpacked extension service worker did not start.${stderr.trim() ? ` Chrome: ${stderr.trim()}` : ''}`);
-	const worker = await connectCdp(workerTarget.webSocketDebuggerUrl);
-	clients.push(worker);
+	const workerUrl = `chrome-extension://${extensionId}/background.js`;
 	const runtimeErrors = [];
-	worker.on('Runtime.exceptionThrown', event => runtimeErrors.push(event.exceptionDetails?.text || 'Worker exception'));
-	worker.on('Runtime.consoleAPICalled', event => {
-		if (event.type === 'error') runtimeErrors.push(event.args?.map(item => item.value || item.description).join(' '));
-	});
-	await worker.send('Runtime.enable');
+	// Lists the extension worker target and collects its runtime errors. A stopped worker's client
+	// dies with it, so a restarted worker is attached again through a fresh listing.
+	const attachWorker = async message => {
+		const target = await waitForValue(async () => (
+			(await listTargets(port)).find(entry => entry.type === 'service_worker' && entry.url === workerUrl)
+		), message);
+		const client = await connectCdp(target.webSocketDebuggerUrl);
+		clients.push(client);
+		client.on('Runtime.exceptionThrown', event => runtimeErrors.push(event.exceptionDetails?.text || 'Worker exception'));
+		client.on('Runtime.consoleAPICalled', event => {
+			if (event.type === 'error') runtimeErrors.push(event.args?.map(item => item.value || item.description).join(' '));
+		});
+		await client.send('Runtime.enable');
+		return { target, client };
+	};
+	let worker = (await attachWorker(
+		`The unpacked extension service worker did not start.${stderr.trim() ? ` Chrome: ${stderr.trim()}` : ''}`
+	)).client;
 	const settingsUrl = `chrome-extension://${extensionId}/settings.html`;
 	await settings.send('Page.navigate', { url: settingsUrl });
 	await waitForValue(async () => evaluate(settings, `
@@ -541,6 +596,247 @@ try {
 	) {
 		throw new Error(`AI gateway did not stream the mock provider response: ${JSON.stringify({ gatewayRun, providerRequests })}`);
 	}
+	// Durable transcript jobs. The page drives the `ai` Port the way src/ai/job-client.ts does:
+	// `start-job` once, keepalive pings, and reconnect + `attach` (never a new start) on disconnect.
+	await evaluate(settings, `(() => {
+		if (globalThis.__e2eStartJob) return true;
+		const runs = globalThis.__e2eJobs = {};
+		const reconnectDelays = [250, 500, 1000, 2000, 4000];
+		globalThis.__e2eStartJob = message => {
+			const run = runs[message.jobId] = { messages: [], connects: 0, disconnects: 0 };
+			let port;
+			let failures = 0;
+			const post = value => {
+				try {
+					port.postMessage(value);
+				} catch {
+					// The port died; onDisconnect reconnects.
+				}
+			};
+			const keepalive = setInterval(() => post({ type: 'ping' }), 20000);
+			const finish = () => {
+				clearInterval(keepalive);
+				port.disconnect();
+			};
+			const open = first => {
+				run.connects += 1;
+				port = chrome.runtime.connect({ name: 'ai' });
+				port.onMessage.addListener(event => {
+					failures = 0;
+					run.messages.push({ ...event, at: Date.now(), connection: run.connects });
+					if (event.type === 'job-state' && event.status !== 'running') {
+						run.final = event;
+						finish();
+					} else if (event.type === 'error') {
+						run.error = event.error;
+						finish();
+					}
+				});
+				port.onDisconnect.addListener(() => {
+					if (run.final || run.error) return;
+					run.disconnects += 1;
+					if (failures >= reconnectDelays.length) {
+						clearInterval(keepalive);
+						run.error = { code: 'network', detail: 'Reconnects exhausted.' };
+						return;
+					}
+					setTimeout(() => open(false), reconnectDelays[failures++]);
+				});
+				post(first ? message : { type: 'attach', jobId: message.jobId });
+			};
+			open(true);
+			return true;
+		};
+		return true;
+	})()`);
+	const jobRun = jobId => evaluate(settings, `globalThis.__e2eJobs[${JSON.stringify(jobId)}]`);
+	const waitForJob = (jobId, done, message, timeoutMs = 30_000) => waitForValue(async () => {
+		const run = await jobRun(jobId);
+		if (run?.error) throw new Error(`Job failed: ${JSON.stringify(run.error)}`);
+		return run && done(run) ? run : undefined;
+	}, message, timeoutMs);
+	const sessionRecord = jobId => evaluate(settings, `new Promise(resolve => chrome.storage.session.get(
+		${JSON.stringify(`aiJob:${jobId}`)},
+		items => resolve(items[${JSON.stringify(`aiJob:${jobId}`)}])
+	))`);
+	const translationInstruction = 'Translate each transcript segment into Simplified Chinese.';
+	// The runner's grouping (src/ai/job-runner.ts buildTranscriptPromptGroups) at the API translate budget.
+	const promptGroups = (segments, budget = 6000) => {
+		const groups = [];
+		let current = [];
+		let length = translationInstruction.length;
+		for (const segment of segments) {
+			const size = JSON.stringify(segment).length + 1;
+			if (current.length > 0 && length + size > budget) {
+				groups.push(current);
+				current = [];
+				length = translationInstruction.length;
+			}
+			current.push(segment.id);
+			length += size;
+		}
+		if (current.length > 0) groups.push(current);
+		return groups;
+	};
+	const startJobMessage = (identity, segments) => ({
+		type: 'start-job',
+		jobId: transcriptJobId('translate', identity, segments.map(segment => segment.text)),
+		task: 'translate',
+		input: { instruction: translationInstruction, segments, identity }
+	});
+	const sortedResults = results => [...results].sort((left, right) => left.id - right.id);
+	const echoes = segments => segments.map(segment => ({ id: segment.id, text: `T:${segment.text}` }));
+
+	// A service worker stopped mid-job: the record checkpointed so far survives in storage.session,
+	// the reconnecting client's `attach` resumes the job, and only the missing groups are requested.
+	const stopSegments = Array.from({ length: 12 }, (_, id) => ({
+		id,
+		text: `Segment ${id} of the stop-worker job. ${'word '.repeat(276)}`.trim()
+	}));
+	const stopGroups = promptGroups(stopSegments);
+	if (stopGroups.length < 3) throw new Error(`The stop-worker segments form too few groups: ${JSON.stringify(stopGroups)}`);
+	const stopJob = startJobMessage({ namespace: 'translations', scope: 'e2e-stop-worker' }, stopSegments);
+	const firstGroup = stopGroups[0];
+	let workerStoppedAt;
+	providerHook = record => (
+		record.task === 'translate' && workerStoppedAt === undefined && !record.ids.includes(firstGroup[0])
+			? { delayMs: 5000 }
+			: {}
+	);
+	const stopRequestStart = providerRequests.length;
+	await evaluate(settings, `globalThis.__e2eStartJob(${JSON.stringify(stopJob)})`);
+	await waitForJob(
+		stopJob.jobId,
+		run => run.messages.some(message => message.type === 'job-progress'),
+		'The stop-worker job reported no progress.'
+	);
+	// job-progress follows the checkpoint write but does not await it; stop once it has landed.
+	await waitForValue(async () => {
+		const record = await sessionRecord(stopJob.jobId);
+		return record?.status === 'running' && firstGroup.every(id => String(id) in record.results);
+	}, 'The first group was not checkpointed in storage.session.', 10_000);
+	const inFlightBeforeStop = providerRequests.slice(stopRequestStart).filter(record => record.task === 'translate').length;
+
+	// The old worker's DevTools client dies with the worker; close it first so it cannot keep the worker alive.
+	worker.close();
+	// The browser target has no ServiceWorker domain ("'ServiceWorker.enable' wasn't found"); an
+	// extension page target of the same profile reports the extension worker's versions.
+	const workerVersions = [];
+	settings.on('ServiceWorker.workerVersionUpdated', event => workerVersions.push(...(event.versions || [])));
+	await settings.send('ServiceWorker.enable');
+	const runningVersion = await waitForValue(
+		() => workerVersions.find(entry => entry.scriptURL === workerUrl && entry.runningStatus === 'running'),
+		'ServiceWorker.workerVersionUpdated reported no running version of the extension worker.',
+		5000
+	);
+	await settings.send('ServiceWorker.stopWorker', { versionId: runningVersion.versionId });
+	workerStoppedAt = Date.now();
+	await waitForValue(
+		() => workerVersions.some(entry => entry.versionId === runningVersion.versionId && entry.runningStatus === 'stopped'),
+		'The extension worker did not report a stopped state.',
+		10_000
+	);
+	await settings.send('ServiceWorker.disable');
+	const stopRun = await waitForJob(
+		stopJob.jobId,
+		run => Boolean(run.final),
+		'The stop-worker job did not finish after the worker restarted.'
+	).catch(async error => {
+		throw new Error(`${error.message} ${JSON.stringify({
+			run: await jobRun(stopJob.jobId),
+			requests: providerRequests.slice(stopRequestStart).map(({ ids, at, status, aborted }) => ({ ids, at, status, aborted }))
+		})}`);
+	});
+	// Re-list the restarted worker so its runtime errors are collected from here on.
+	const restartedWorker = await attachWorker('The restarted extension service worker was not listed.');
+	worker = restartedWorker.client;
+	const stopRequests = providerRequests.slice(stopRequestStart).filter(record => record.task === 'translate');
+	const firstGroupRequests = stopRequests.filter(record => record.ids.some(id => firstGroup.includes(id)));
+	const afterStop = stopRequests.filter(record => record.at >= workerStoppedAt);
+	const remainingIds = stopGroups.slice(1).flat();
+	const resumedIds = afterStop.flatMap(record => record.ids).sort((left, right) => left - right);
+	if (
+		stopRun.final.status !== 'completed'
+		|| stopRun.final.completedSegments !== stopSegments.length
+		|| JSON.stringify(sortedResults(stopRun.final.results)) !== JSON.stringify(echoes(stopSegments))
+		|| firstGroupRequests.length !== 1
+		|| JSON.stringify(firstGroupRequests[0].ids) !== JSON.stringify(firstGroup)
+		|| JSON.stringify(resumedIds) !== JSON.stringify(remainingIds)
+		|| stopRun.disconnects < 1
+		|| stopRun.connects < 2
+		|| !stopRun.messages.some(message => message.type === 'job-state' && message.connection > 1)
+	) {
+		throw new Error(`The stopped worker did not resume the job exactly once per group: ${JSON.stringify({
+			final: { ...stopRun.final, results: stopRun.final.results.length },
+			connects: stopRun.connects,
+			disconnects: stopRun.disconnects,
+			messages: stopRun.messages.map(message => `${message.type}@${message.connection}`),
+			firstGroup,
+			requests: stopRequests.map(({ ids, at, status, aborted }) => ({ ids, at: at - workerStoppedAt, status, aborted }))
+		})}`);
+	}
+
+	// A one-shot 429 with Retry-After: the group backs off, retries the same ids once, and completes.
+	const retrySegments = [
+		'The provider is busy at first.',
+		'The second request succeeds.',
+		'Every segment comes back translated.'
+	].map((text, id) => ({ id, text }));
+	const retryJob = startJobMessage({ namespace: 'translations', scope: 'e2e-retry-after' }, retrySegments);
+	let rateLimited = false;
+	providerHook = record => {
+		if (record.task !== 'translate' || rateLimited) return {};
+		rateLimited = true;
+		return { status: 429, headers: { 'Retry-After': '1' } };
+	};
+	const retryRequestStart = providerRequests.length;
+	await evaluate(settings, `globalThis.__e2eStartJob(${JSON.stringify(retryJob)})`);
+	const retryRun = await waitForJob(retryJob.jobId, run => Boolean(run.final), 'The 429 job did not finish.');
+	providerHook = () => ({});
+	const retryRequests = providerRequests.slice(retryRequestStart);
+	const retryMessages = retryRun.messages.filter(message => message.type === 'job-retry');
+	const allIds = JSON.stringify(retrySegments.map(segment => segment.id));
+	if (
+		retryRun.final.status !== 'completed'
+		|| JSON.stringify(sortedResults(retryRun.final.results)) !== JSON.stringify(echoes(retrySegments))
+		|| retryRun.final.attempts?.retries !== 1
+		|| retryRequests.length !== 2
+		|| retryRequests[0].status !== 429
+		|| retryRequests[1].status !== 200
+		|| retryRequests.some(record => JSON.stringify(record.ids) !== allIds)
+		|| retryRequests[1].at - retryRequests[0].at < 950
+		|| retryMessages.length !== 1
+		|| retryMessages[0].code !== 'rate-limited'
+		|| retryMessages[0].status !== 429
+		|| retryMessages[0].attempt !== 1
+		|| !(retryMessages[0].delayMs >= 1000)
+	) {
+		throw new Error(`The 429 job did not honor Retry-After and complete: ${JSON.stringify({
+			final: retryRun.final,
+			retryMessages,
+			requests: retryRequests.map(({ ids, at, status }) => ({ ids, at, status }))
+		})}`);
+	}
+
+	// Both jobs left completed records next to the restored fixture records; nothing else was written.
+	const sessionAfterJobs = await evaluate(settings, 'new Promise(resolve => chrome.storage.session.get(null, resolve))');
+	const expectedJobIds = [
+		...Object.keys(checkpointState).filter(key => key.startsWith('aiJob:')).map(key => key.slice('aiJob:'.length)),
+		stopJob.jobId,
+		retryJob.jobId
+	].sort();
+	const storedJobIds = prefix => Object.keys(sessionAfterJobs).filter(key => key.startsWith(prefix)).map(key => key.slice(prefix.length)).sort();
+	if (
+		JSON.stringify(storedJobIds('aiJob:')) !== JSON.stringify(expectedJobIds)
+		|| JSON.stringify(storedJobIds('aiJobInput:')) !== JSON.stringify(expectedJobIds)
+		|| Object.keys(sessionAfterJobs).length !== expectedJobIds.length * 2
+		|| [[stopJob, stopSegments], [retryJob, retrySegments]].some(([job, segments]) => {
+			const record = sessionAfterJobs[`aiJob:${job.jobId}`];
+			return record?.status !== 'completed' || Object.keys(record.results).length !== segments.length;
+		})
+	) {
+		throw new Error(`Unexpected storage.session after the transcript jobs: ${JSON.stringify(Object.keys(sessionAfterJobs))}`);
+	}
 	const errors = [...runtimeErrors, ...settingsErrors, ...fixtureErrors].filter(Boolean);
 	if (errors.length > 0) throw new Error(`Extension runtime errors:\n${errors.join('\n')}`);
 
@@ -550,6 +846,11 @@ try {
 	console.log('Reader restored bilingual subtitles and Japanese readings without starting a model request.');
 	console.log(`Reader lazy chunks: ${loadedChunkUrls.join(', ')}`);
 	console.log(`AI gateway streamed a mock provider response: ${gatewayRun.messages.join(' → ')}`);
+	console.log(`Stopped the worker (version ${runningVersion.versionId}) after ${firstGroup.length} of ${stopSegments.length} segments; `
+		+ `${stopRequests.filter(record => record.aborted).length} of ${inFlightBeforeStop - 1} in-flight group request(s) aborted, `
+		+ `${afterStop.length} resumed after reconnect + attach, `
+		+ `${stopRun.disconnects} disconnect(s); restarted worker re-listed (${restartedWorker.target.id}).`);
+	console.log(`429 + Retry-After: 1 retried once after ${retryMessages[0].delayMs} ms and completed.`);
 } finally {
 	clients.forEach(client => client.close());
 	stopProcessGroup(child);

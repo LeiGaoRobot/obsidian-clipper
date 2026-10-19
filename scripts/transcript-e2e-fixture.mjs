@@ -90,9 +90,14 @@ function hashSegments(scope, texts) {
 	return cyrb53(JSON.stringify([scope, texts])).toString(36);
 }
 
+/** The job id the client and gateway compute, as in src/ai/job-identity.ts `transcriptJobId`. */
+export function transcriptJobId(task, { namespace, scope }, texts) {
+	return `job:${task}:${namespace}:${hashSegments(scope, texts)}`;
+}
+
 function completedJobEntry(task, namespace, scope, values) {
 	const segmentHash = hashSegments(scope, transcriptSegments);
-	const id = `job:${task}:${namespace}:${segmentHash}`;
+	const id = transcriptJobId(task, { namespace, scope }, transcriptSegments);
 	const now = Date.now();
 	return {
 		[`${jobKeyPrefix}${id}`]: {
