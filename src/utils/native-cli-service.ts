@@ -7,7 +7,9 @@ import {
 	NativeCliHealth,
 	NativeCliHostResponse,
 	NativeCliRequest,
+	NativeCliHeartbeat,
 	buildNativeCliCancelRequest,
+	isNativeCliHeartbeat,
 	buildNativeCliHealthRequest,
 	buildNativeCliRequest
 } from './native-cli-contract';
@@ -85,7 +87,8 @@ async function recordLastRun(status: NativeCliLastRunStatus): Promise<void> {
 function sendThroughNativePort(
 	request: NativeCliRequest | ReturnType<typeof buildNativeCliHealthRequest>,
 	signal?: AbortSignal,
-	timeoutMs?: number
+	timeoutMs?: number,
+	onHeartbeat?: (heartbeat: NativeCliHeartbeat) => void
 ): Promise<NativeCliHostResponse> {
 	throwIfRequestAborted(signal);
 	const runtime = browser.runtime as typeof browser.runtime & {
@@ -135,6 +138,10 @@ function sendThroughNativePort(
 			callback();
 		};
 		const onMessage = (value: unknown) => {
+			if (isNativeCliHeartbeat(value)) {
+				if (value.requestId === request.requestId && !callerSettled) onHeartbeat?.(value);
+				return;
+			}
 			const response = value as NativeCliHostResponse;
 			if (!response) return;
 			if (response.requestId !== request.requestId) {
@@ -198,7 +205,8 @@ function sendThroughNativePort(
 
 export async function sendNativeCliRequest(
 	request: NativeCliRequest,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	onHeartbeat?: (heartbeat: NativeCliHeartbeat) => void
 ): Promise<NativeCliHostResponse> {
 	throwIfRequestAborted(signal);
 	const runtime = browser.runtime as typeof browser.runtime & {
@@ -207,13 +215,20 @@ export async function sendNativeCliRequest(
 	try {
 		let response: NativeCliHostResponse;
 		if (typeof runtime.connectNative === 'function') {
-			response = await sendThroughNativePort(request, signal);
+			response = await sendThroughNativePort(
+				onHeartbeat ? { ...request, heartbeat: true } : request,
+				signal,
+				undefined,
+				onHeartbeat
+			);
 		} else {
 			if (typeof browser.runtime.sendNativeMessage !== 'function') {
 				throw new NativeCliUnavailableError('Native Messaging is not available in this browser.');
 			}
+			// One-shot messages take the first Host reply as the response, so never request heartbeats.
+			const { heartbeat: _heartbeat, ...oneShotRequest } = request;
 			response = await raceWithRequestCancellation(
-				browser.runtime.sendNativeMessage(NATIVE_CLI_HOST_NAME, request) as Promise<NativeCliHostResponse>,
+				browser.runtime.sendNativeMessage(NATIVE_CLI_HOST_NAME, oneShotRequest) as Promise<NativeCliHostResponse>,
 				signal
 			);
 			if (!response || response.ok !== true) throw responseError(response || { ok: false });
@@ -246,6 +261,7 @@ export interface NativeCliExecutionOptions {
 	model?: string;
 	effort?: CodexReasoningEffort;
 	signal?: AbortSignal;
+	onHeartbeat?: (heartbeat: NativeCliHeartbeat) => void;
 }
 
 export async function executeNativeCliForPrompts(
@@ -259,7 +275,8 @@ export async function executeNativeCliForPrompts(
 			model: options.model,
 			effort: options.effort
 		}),
-		options.signal
+		options.signal,
+		options.onHeartbeat
 	);
 	return parsePromptResponses(response.stdout || '', promptVariables);
 }

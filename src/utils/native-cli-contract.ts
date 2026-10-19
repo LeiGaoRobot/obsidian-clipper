@@ -6,7 +6,7 @@ import { MAX_CODEX_MODEL_CHARS, normalizeCodexModel } from './codex-model';
 import { normalizeCodexReasoningEffort } from './codex-reasoning-effort';
 
 export const NATIVE_CLI_HOST_NAME = 'com.obsidian.web_clipper';
-export const NATIVE_CLI_PROTOCOL_VERSION = 4;
+export const NATIVE_CLI_PROTOCOL_VERSION = 5;
 
 let nativeCliRequestSequence = 0;
 
@@ -29,6 +29,21 @@ export interface NativeCliRequest {
 	prompt: string;
 	model?: string;
 	effort?: CodexReasoningEffort;
+	/** Ask the Host for periodic heartbeats. Only valid on a connected port. */
+	heartbeat?: boolean;
+}
+
+export interface NativeCliHeartbeat {
+	type: 'heartbeat';
+	requestId: string;
+	elapsedMs: number;
+}
+
+export function isNativeCliHeartbeat(value: unknown): value is NativeCliHeartbeat {
+	return Boolean(value)
+		&& typeof value === 'object'
+		&& (value as { type?: unknown }).type === 'heartbeat'
+		&& typeof (value as { requestId?: unknown }).requestId === 'string';
 }
 
 export interface NativeCliRequestOptions {
@@ -100,7 +115,8 @@ export function isNativeCliRequest(value: unknown): value is NativeCliRequest {
 		&& typeof request.prompt === 'string'
 		&& request.prompt.length > 0
 		&& validModel
-		&& validEffort;
+		&& validEffort
+		&& (request.heartbeat === undefined || typeof request.heartbeat === 'boolean');
 }
 
 export function buildNativeCliRequest(

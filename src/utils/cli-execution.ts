@@ -2,6 +2,8 @@ import { spawn } from 'child_process';
 import type { PromptVariable } from '../types/types';
 import { buildExecutionPrompt, parsePromptResponses } from './cli-execution-contract';
 import type { CliExecutionMode } from './cli-execution-contract';
+import type { CodexReasoningEffort } from '../types/types';
+import { buildCliArguments } from '../../native-host/cli-invocation.mjs';
 
 export * from './cli-execution-contract';
 
@@ -22,6 +24,10 @@ export type CliProcessRunner = (invocation: CliProcessInvocation) => Promise<Cli
 
 export interface CliExecutionOptions {
 	cwd?: string;
+	/** Codex only. */
+	model?: string;
+	/** Codex only. */
+	effort?: CodexReasoningEffort;
 	timeoutMs?: number;
 	runner?: CliProcessRunner;
 }
@@ -32,47 +38,18 @@ export function buildCliInvocation(
 	prompt: string,
 	options: CliExecutionOptions = {}
 ): CliProcessInvocation {
-	const invocation = {
-		cwd: options.cwd ?? process.cwd(),
-		timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS
-	};
-
-	if (mode === 'grok') {
-		return {
-			...invocation,
-			command: 'grok',
-			args: [
-				'--single',
-				prompt,
-				'--output-format',
-				'plain',
-				'--no-plan',
-				'--no-subagents',
-				'--no-memory',
-				'--disable-web-search',
-				'--tools',
-				'',
-				'--max-turns',
-				'1',
-				'--verbatim'
-			]
-		};
-	}
-
+	const { args, input } = buildCliArguments({
+		mode,
+		prompt,
+		...(mode === 'codex' && options.model ? { model: options.model } : {}),
+		...(mode === 'codex' && options.effort ? { effort: options.effort } : {})
+	});
 	return {
-		...invocation,
-		command: 'codex',
-		args: [
-			'exec',
-			'--ephemeral',
-			'--color',
-			'never',
-			'--sandbox',
-			'read-only',
-			'--skip-git-repo-check',
-			'-'
-		],
-		input: prompt
+		cwd: options.cwd ?? process.cwd(),
+		timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+		command: mode,
+		args,
+		...(input ? { input } : {})
 	};
 }
 

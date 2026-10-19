@@ -9,7 +9,9 @@ import {
 	executePromptVariables,
 	replacePromptVariables
 } from './utils/cli-execution';
-import { Template } from './types/types';
+import { CodexReasoningEffort, Template } from './types/types';
+import { normalizeCodexModel } from './utils/codex-model';
+import { CODEX_REASONING_EFFORTS, normalizeCodexReasoningEffort } from './utils/codex-reasoning-effort';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -26,6 +28,8 @@ interface CliArgs {
 	silent: boolean;
 	uri: boolean;
 	executionMode?: CliExecutionMode;
+	codexModel?: string;
+	codexEffort?: CodexReasoningEffort;
 	propertyTypesPath?: string;
 	htmlPath?: string;
 }
@@ -44,6 +48,8 @@ Options:
       --uri                    Use URI scheme instead of Obsidian CLI
       --silent                 Suppress Obsidian focus (URI mode)
       --execution-mode <mode>  Resolve template prompts with grok or codex CLI
+      --model <id>             Codex model override (codex mode only)
+      --effort <level>         Codex reasoning effort (codex mode only)
       --property-types <path>  JSON mapping property names to types
   -h, --help                   Show this help message
 `.trim();
@@ -60,6 +66,8 @@ function parseArgs(argv: string[]): CliArgs {
 	let silent = false;
 	let uri = false;
 	let executionMode: CliExecutionMode | undefined;
+	let codexModel: string | undefined;
+	let codexEffort: CodexReasoningEffort | undefined;
 	let propertyTypesPath: string | undefined;
 	let htmlPath: string | undefined;
 
@@ -105,6 +113,22 @@ function parseArgs(argv: string[]): CliArgs {
 				executionMode = value;
 				break;
 			}
+			case '--model': {
+				if (i + 1 >= args.length) { console.error('Error: --model requires a value'); process.exit(1); }
+				codexModel = normalizeCodexModel(args[++i]);
+				if (!codexModel) { console.error('Error: --model must be 1-200 characters'); process.exit(1); }
+				break;
+			}
+			case '--effort': {
+				if (i + 1 >= args.length) { console.error('Error: --effort requires a value'); process.exit(1); }
+				const value = args[++i];
+				codexEffort = normalizeCodexReasoningEffort(value);
+				if (!codexEffort) {
+					console.error(`Error: --effort must be one of ${CODEX_REASONING_EFFORTS.join(', ')}`);
+					process.exit(1);
+				}
+				break;
+			}
 			case '--html':
 				if (i + 1 >= args.length) { console.error('Error: --html requires a value'); process.exit(1); }
 				htmlPath = args[++i];
@@ -136,7 +160,12 @@ function parseArgs(argv: string[]): CliArgs {
 		process.exit(1);
 	}
 
-	return { url, templatePath, outputPath, vault, open, silent, uri, executionMode, propertyTypesPath, htmlPath };
+	if ((codexModel || codexEffort) && executionMode !== 'codex') {
+		console.error('Error: --model and --effort require --execution-mode codex');
+		process.exit(1);
+	}
+
+	return { url, templatePath, outputPath, vault, open, silent, uri, executionMode, codexModel, codexEffort, propertyTypesPath, htmlPath };
 }
 
 // ---------------------------------------------------------------------------
@@ -270,7 +299,10 @@ async function main(): Promise<void> {
 		}
 
 		const context = result.variables.content || result.variables.fullHtml || '';
-		const promptResponses = await executePromptVariables(args.executionMode, context, promptVariables);
+		const promptResponses = await executePromptVariables(args.executionMode, context, promptVariables, {
+			model: args.codexModel,
+			effort: args.codexEffort
+		});
 		fullContent = replacePromptVariables(fullContent, promptVariables, promptResponses, args.url);
 		noteName = replacePromptVariables(noteName, promptVariables, promptResponses, args.url);
 	}

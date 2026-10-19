@@ -28,20 +28,20 @@ describe('Native CLI contract', () => {
 			requestId: 'request-model',
 			model: '  gpt-5.6-sol  '
 		})).toMatchObject({
-			protocolVersion: 4,
+			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
 			requestId: 'request-model',
 			mode: 'codex',
 			model: 'gpt-5.6-sol'
 		});
 	});
 
-	test('uses protocol v4 and adds canonical effort only to Codex requests', () => {
-		expect(NATIVE_CLI_PROTOCOL_VERSION).toBe(4);
+	test('uses protocol v5 and adds canonical effort only to Codex requests', () => {
+		expect(NATIVE_CLI_PROTOCOL_VERSION).toBe(5);
 		expect(buildNativeCliRequest('codex', 'Context', [], {
 			requestId: 'request-effort',
 			effort: 'max'
 		})).toMatchObject({
-			protocolVersion: 4,
+			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
 			mode: 'codex',
 			effort: 'max'
 		});
@@ -115,7 +115,7 @@ describe('Native CLI contract', () => {
 		})).toBe(false);
 		expect(isNativeCliRequest({
 			type: 'executeCli',
-			protocolVersion: 4,
+			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
 			requestId: 'request-effort',
 			mode: 'codex',
 			prompt: 'prompt',
@@ -123,7 +123,7 @@ describe('Native CLI contract', () => {
 		})).toBe(false);
 		expect(isNativeCliRequest({
 			type: 'executeCli',
-			protocolVersion: 4,
+			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
 			requestId: 'request-effort',
 			mode: 'grok',
 			prompt: 'prompt',
@@ -137,7 +137,7 @@ describe('Native CLI contract', () => {
 		('accepts %s at the extension boundary', effort => {
 			expect(isNativeCliRequest({
 				type: 'executeCli',
-				protocolVersion: 4,
+				protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
 				requestId: `request-${effort}`,
 				mode: 'codex',
 				prompt: 'prompt',

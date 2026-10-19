@@ -71,6 +71,11 @@ export function installNativeHost({
 	mkdirSync(installDirectory, { recursive: true });
 	mkdirSync(nativeMessagingDirectory, { recursive: true });
 	copyFileSync(sourceHost, installedHost);
+	// The Host imports its argv builder from a sibling module.
+	copyFileSync(
+		path.join(workspaceRoot, 'native-host', 'cli-invocation.mjs'),
+		path.join(installDirectory, 'cli-invocation.mjs')
+	);
 	writeFileSync(configFile, JSON.stringify({
 		grokPath: resolveCliPath('grok', grokPath),
 		codexPath: resolveCliPath('codex', codexPath)

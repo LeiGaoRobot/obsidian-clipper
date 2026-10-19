@@ -24,6 +24,10 @@ try {
 			path.join(packageRoot, 'native-host', 'obsidian-clipper-host.mjs')
 		),
 		copyFile(
+			path.join(root, 'native-host', 'cli-invocation.mjs'),
+			path.join(packageRoot, 'native-host', 'cli-invocation.mjs')
+		),
+		copyFile(
 			path.join(root, 'scripts', 'install-native-host.mjs'),
 			path.join(packageRoot, 'scripts', 'install-native-host.mjs')
 		),

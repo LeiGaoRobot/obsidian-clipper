@@ -5,8 +5,9 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
+import { buildCliArguments } from './cli-invocation.mjs';
 
-export const NATIVE_CLI_PROTOCOL_VERSION = 4;
+export const NATIVE_CLI_PROTOCOL_VERSION = 5;
 export const MAX_CODEX_MODEL_CHARS = 200;
 export const CODEX_REASONING_EFFORTS = new Set([
 	'minimal',
@@ -21,6 +22,7 @@ export const MAX_PROMPT_CHARS = 750_000;
 export const MAX_REQUEST_BYTES = 4_000_000;
 export const MAX_RESPONSE_BYTES = 900_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
+export const HEARTBEAT_INTERVAL_MS = 10_000;
 
 class NativeHostError extends Error {
 	constructor(code, message, details) {
@@ -71,6 +73,9 @@ export function validateRequest(request) {
 	if (!isMode(request.mode)) return 'Unsupported CLI execution mode.';
 	if (typeof request.prompt !== 'string' || request.prompt.length === 0) return 'Prompt must be a non-empty string.';
 	if (request.prompt.length > MAX_PROMPT_CHARS) return 'Prompt is too large for Native Messaging.';
+	if (request.heartbeat !== undefined && typeof request.heartbeat !== 'boolean') {
+		return 'Heartbeat must be a boolean.';
+	}
 	if (request.model !== undefined) {
 		if (request.mode !== 'codex') return 'Codex model overrides require Codex execution mode.';
 		if (typeof request.model !== 'string'
@@ -103,49 +108,10 @@ export function createCliInvocation(request, config) {
 		);
 	}
 
-	if (request.mode === 'grok') {
-		return {
-			command,
-			args: [
-				'--single',
-				request.prompt,
-				'--output-format',
-				'plain',
-				'--no-plan',
-				'--no-subagents',
-				'--no-memory',
-				'--disable-web-search',
-				'--tools',
-				'',
-				'--max-turns',
-				'1',
-				'--verbatim'
-			],
-			input: ''
-		};
-	}
-
-	return {
-		command,
-		args: [
-			'exec',
-			...(request.model ? ['--model', request.model] : []),
-			...(request.effort
-				? ['-c', `model_reasoning_effort="${request.effort}"`]
-				: []),
-			'--ephemeral',
-			'--color',
-			'never',
-			'--sandbox',
-			'read-only',
-			'--skip-git-repo-check',
-			'-'
-		],
-		input: request.prompt
-	};
+	return { command, ...buildCliArguments(request) };
 }
 
-export function runCli(request, config, onStart) {
+export function runCli(request, config, onStart, onHeartbeat) {
 	const invocation = createCliInvocation(request, config);
 	const executablePath = [
 		path.dirname(process.execPath),
@@ -164,6 +130,15 @@ export function runCli(request, config, onStart) {
 		let terminationError;
 		let timeout;
 		let forceKillTimer;
+		const startedAt = Date.now();
+		// Only connected ports opt in: a one-shot sendNativeMessage takes the first reply as the response.
+		const heartbeatTimer = request.heartbeat && onHeartbeat
+			? setInterval(() => onHeartbeat({
+				type: 'heartbeat',
+				requestId: request.requestId,
+				elapsedMs: Date.now() - startedAt
+			}), HEARTBEAT_INTERVAL_MS)
+			: undefined;
 		const terminateWithError = error => {
 			if (settled || terminationError) return;
 			terminationError = error;
@@ -190,6 +165,7 @@ export function runCli(request, config, onStart) {
 			if (settled) return;
 			settled = true;
 			clearTimeout(timeout);
+			if (heartbeatTimer) clearInterval(heartbeatTimer);
 			if (forceKillTimer) clearTimeout(forceKillTimer);
 			callback();
 		};
@@ -346,7 +322,12 @@ function startHost() {
 			));
 			return;
 		}
-		const task = runCli(request, config, cancel => activeRequests.set(request.requestId, cancel))
+		const task = runCli(
+			request,
+			config,
+			cancel => activeRequests.set(request.requestId, cancel),
+			heartbeat => void writeResponse(heartbeat)
+		)
 			.then(writeResponse)
 			.catch(error => writeResponse(errorResponse(request.requestId, error)))
 			.finally(() => {

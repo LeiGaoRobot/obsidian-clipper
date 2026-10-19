@@ -63,6 +63,25 @@ describe('CLI execution modes', () => {
 		});
 	});
 
+	test('passes Codex model and effort, and ignores them for Grok', () => {
+		expect(buildCliInvocation('codex', 'prompt', { model: 'gpt-codex', effort: 'high' }).args).toEqual([
+			'exec',
+			'--model',
+			'gpt-codex',
+			'-c',
+			'model_reasoning_effort="high"',
+			'--ephemeral',
+			'--color',
+			'never',
+			'--sandbox',
+			'read-only',
+			'--skip-git-repo-check',
+			'-'
+		]);
+		expect(buildCliInvocation('grok', 'prompt', { model: 'gpt-codex', effort: 'high' }).args)
+			.toEqual(buildCliInvocation('grok', 'prompt').args);
+	});
+
 	test('executes either mode with the shared JSON response contract', async () => {
 		const runner = vi.fn().mockResolvedValue({
 			stdout: '```json\n{"prompts_responses":{"prompt_1":"done"}}\n```',

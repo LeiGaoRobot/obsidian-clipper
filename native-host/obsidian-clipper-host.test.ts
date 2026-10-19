@@ -1,10 +1,12 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildCliInvocation } from '../src/utils/cli-execution';
 // @ts-expect-error The Native Messaging host intentionally remains a standalone ESM script.
-import { createCliInvocation, runCli, validateRequest } from './obsidian-clipper-host.mjs';
+import { HEARTBEAT_INTERVAL_MS, createCliInvocation, runCli, validateRequest } from './obsidian-clipper-host.mjs';
+// @ts-expect-error The installer intentionally remains a standalone ESM script.
+import { installNativeHost } from '../scripts/install-native-host.mjs';
 import { NATIVE_CLI_PROTOCOL_VERSION } from '../src/utils/native-cli-contract';
 
 describe('Obsidian Web Clipper native host', () => {
@@ -183,7 +185,7 @@ describe('Obsidian Web Clipper native host', () => {
 		('accepts %s effort at the Native Host boundary', effort => {
 			expect(validateRequest({
 				type: 'executeCli',
-				protocolVersion: 4,
+				protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
 				requestId: `request-${effort}`,
 				mode: 'codex',
 				prompt: 'prompt',
@@ -205,7 +207,7 @@ describe('Obsidian Web Clipper native host', () => {
 	])('rejects $name at the Native Host boundary', ({ request, expected }) => {
 		expect(validateRequest({
 			type: 'executeCli',
-			protocolVersion: 4,
+			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
 			requestId: 'request-effort',
 			prompt: 'prompt',
 			...request
@@ -318,6 +320,100 @@ describe('Obsidian Web Clipper native host', () => {
 			if (previousPidFile === undefined) delete process.env.OBSIDIAN_CLIPPER_TEST_PID_FILE;
 			else process.env.OBSIDIAN_CLIPPER_TEST_PID_FILE = previousPidFile;
 			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	test('rejects a protocol v4 request so outdated clients reinstall', () => {
+		expect(validateRequest({
+			type: 'executeCli',
+			protocolVersion: 4,
+			requestId: 'request-v4',
+			mode: 'codex',
+			prompt: 'prompt'
+		})).toBe('Native host protocol version mismatch.');
+	});
+
+	test('validates the heartbeat opt-in flag', () => {
+		const request = {
+			type: 'executeCli',
+			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+			requestId: 'request-heartbeat',
+			mode: 'codex',
+			prompt: 'prompt'
+		};
+		expect(validateRequest({ ...request, heartbeat: true })).toBeNull();
+		expect(validateRequest({ ...request, heartbeat: 'yes' })).toBe('Heartbeat must be a boolean.');
+	});
+
+	describe('heartbeats', () => {
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		async function runBlockingCli(heartbeat: boolean) {
+			const directory = mkdtempSync(path.join(os.tmpdir(), 'obsidian-clipper-host-'));
+			const executable = path.join(directory, 'blocking-cli');
+			writeFileSync(executable, '#!/bin/sh\ntrap "exit 0" TERM\nwhile true; do sleep 1; done\n');
+			chmodSync(executable, 0o755);
+			vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+			const heartbeats: unknown[] = [];
+			let cancel: (() => void) | undefined;
+			try {
+				const request = runCli({
+					type: 'executeCli',
+					protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+					requestId: 'request-heartbeat',
+					mode: 'codex',
+					prompt: 'prompt',
+					...(heartbeat ? { heartbeat: true } : {})
+				}, {
+					grokPath: executable,
+					codexPath: executable
+				}, (terminate: () => void) => { cancel = terminate; }, (message: unknown) => heartbeats.push(message));
+				vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS * 2 + 1);
+				cancel?.();
+				await expect(request).rejects.toMatchObject({ code: 'cancelled' });
+				vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS * 3);
+				return heartbeats;
+			} finally {
+				rmSync(directory, { recursive: true, force: true });
+			}
+		}
+
+		test('emits heartbeats while an opted-in CLI request runs', async () => {
+			const heartbeats = await runBlockingCli(true);
+			expect(heartbeats).toHaveLength(2);
+			expect(heartbeats[0]).toMatchObject({ type: 'heartbeat', requestId: 'request-heartbeat' });
+			expect((heartbeats[0] as { ok?: unknown }).ok).toBeUndefined();
+		});
+
+		test('stays silent without the opt-in flag', async () => {
+			expect(await runBlockingCli(false)).toEqual([]);
+		});
+	});
+
+	test('installs the Host with its argv module so it can be imported', async () => {
+		const home = mkdtempSync(path.join(os.tmpdir(), 'obsidian-clipper-install-'));
+		try {
+			installNativeHost({
+				extensionId: 'a'.repeat(32),
+				grokPath: '/usr/local/bin/grok',
+				codexPath: '/usr/local/bin/codex',
+				home,
+				platform: 'linux',
+				env: {},
+				nodePath: process.execPath,
+				workspaceRoot: path.resolve(__dirname, '..')
+			});
+			const installDirectory = path.join(home, '.config', 'obsidian-web-clipper', 'native-host');
+			const installed = await import(path.join(installDirectory, 'obsidian-clipper-host.mjs'));
+			expect(installed.NATIVE_CLI_PROTOCOL_VERSION).toBe(NATIVE_CLI_PROTOCOL_VERSION);
+			expect(installed.createCliInvocation(
+				{ mode: 'codex', prompt: 'p', effort: 'high' },
+				{ grokPath: null, codexPath: '/bin/codex' }
+			).args).toContain('model_reasoning_effort="high"');
+		} finally {
+			rmSync(home, { recursive: true, force: true });
 		}
 	});
 });

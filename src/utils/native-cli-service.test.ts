@@ -92,6 +92,37 @@ describe('Native CLI service', () => {
 		]);
 	});
 
+	test('requests and forwards heartbeats on a connected port without settling', async () => {
+		const port = createPort();
+		mocks.connectNative.mockReturnValue(port);
+		const heartbeats: unknown[] = [];
+		const request = buildNativeCliRequest('codex', 'Context', [], { requestId: 'request-hb' });
+
+		const response = sendNativeCliRequest(request, undefined, heartbeat => heartbeats.push(heartbeat));
+		expect(port.posted[0]).toEqual({ ...request, heartbeat: true });
+		port.emitMessage({ type: 'heartbeat', requestId: 'other', elapsedMs: 1 });
+		port.emitMessage({ type: 'heartbeat', requestId: 'request-hb', elapsedMs: 10000 });
+		port.emitMessage({ requestId: 'request-hb', ok: true, stdout: 'done' });
+
+		await expect(response).resolves.toMatchObject({ stdout: 'done' });
+		expect(heartbeats).toEqual([{ type: 'heartbeat', requestId: 'request-hb', elapsedMs: 10000 }]);
+	});
+
+	test('never asks for heartbeats over one-shot Native Messaging', async () => {
+		mocks.connectNative.mockImplementation(undefined as never);
+		const runtime = (await import('./browser-polyfill')).default.runtime as { connectNative?: unknown };
+		const connectNative = runtime.connectNative;
+		runtime.connectNative = undefined;
+		mocks.sendNativeMessage.mockResolvedValue({ ok: true, requestId: 'request-once', stdout: 'done' });
+		try {
+			const request = buildNativeCliRequest('codex', 'Context', [], { requestId: 'request-once' });
+			await sendNativeCliRequest({ ...request, heartbeat: true }, undefined, () => {});
+			expect(mocks.sendNativeMessage.mock.calls[0][1]).toEqual(request);
+		} finally {
+			runtime.connectNative = connectNative;
+		}
+	});
+
 	test('forwards canonical Codex model and effort on the Native Messaging request', async () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
