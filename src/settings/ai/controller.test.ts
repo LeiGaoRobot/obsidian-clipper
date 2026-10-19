@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { getCatalogEntry } from '../../ai/catalog';
-import { AiSettingsStorageError, type AiSettingsSnapshot } from '../../ai/settings';
+import { aiSettingsBootstrapper } from '../../ai/migrate';
+import { AiSettingsStorageError, defaultAiSyncItems, type AiSettingsSnapshot } from '../../ai/settings';
 import { createAiSettingsController } from './controller';
 import { initializeAiSettings } from './index';
 import {
@@ -249,13 +250,74 @@ describe('AI settings controller: errors', () => {
 		expect(onError).toHaveBeenLastCalledWith(undefined);
 	});
 
-	test('derived mode refuses writes instead of building on the v1 view', async () => {
+	test('a store that cannot create v2 refuses writes instead of building on the derived view', async () => {
 		const { controller, sync } = await controllerFor({ derived: true });
 		expect(controller.state.mode).toBe('derived');
 
 		expect(await controller.setInterpreterEnabled(true)).toBe(false);
 		expect(controller.error).toMatchObject({ name: 'AiSettingsNotWritableError' });
 		expect(sync.sets).toEqual([]);
+	});
+});
+
+describe('AI settings controller: first write on this device', () => {
+	test('on a fresh install the first write creates v2 from the defaults, then applies', async () => {
+		const { controller, sync, local } = await controllerFor({ derived: true, bootstrapper: aiSettingsBootstrapper });
+		expect(controller.state.mode).toBe('derived');
+		// Loading writes nothing: v2 is created only by a user action.
+		expect(sync.sets).toEqual([]);
+		expect(controller.state.view.connections).toEqual([]);
+
+		const connection = await controller.addApiConnection({
+			presetId: 'openai',
+			label: 'OpenAI',
+			baseUrl: openai.baseUrl,
+			apiKey: 'sk-first',
+			apiKeyRequired: true
+		});
+
+		expect(connection).toBeDefined();
+		expect(controller.error).toBeUndefined();
+		expect(controller.state.mode).toBe('stored');
+		expect(sync.sets[0]).toEqual(defaultAiSyncItems());
+		expect(sync.data.ai_connections).toEqual({ v: 1, items: [connection] });
+		expect(sync.data).not.toHaveProperty('interpreter_settings');
+		expect(local.data.ai_credentials).toEqual({ [connection!.id]: 'sk-first' });
+	});
+
+	test('with v1 present the first write runs the migration instead of writing defaults', async () => {
+		const v1 = {
+			interpreter_settings: {
+				interpreterEnabled: true,
+				interpreterModel: 'm1',
+				providers: [{ id: 'p1', name: 'OpenAI', baseUrl: openai.baseUrl, apiKey: 'sk-v1', apiKeyRequired: true }],
+				models: [{ id: 'm1', providerId: 'p1', providerModelId: 'gpt-x', name: 'GPT', enabled: true }]
+			}
+		};
+		const fake = createFakeStore({ derived: true, v1, bootstrapper: aiSettingsBootstrapper });
+		const ensure = vi.spyOn(fake.store, 'ensureV2');
+		// Never loaded, so it starts in derived mode, as when a load raced a v1 write.
+		const controller = createAiSettingsController({ store: fake.store, createId: sequentialIds() });
+
+		expect(await controller.setTaskProfile('translate', 'm1')).toBe(true);
+
+		expect(ensure).toHaveBeenCalledTimes(1);
+		expect(controller.error).toBeUndefined();
+		expect(fake.sync.sets[0]).toMatchObject({ ai_connections: { v: 1, items: [{ id: 'p1' }] } });
+		expect(fake.sync.data.ai_routing).toEqual({ v: 1, defaultProfileId: 'm1', taskProfiles: { translate: 'm1' } });
+		expect(fake.local.data.ai_credentials).toEqual({ p1: 'sk-v1' });
+		expect(fake.sync.data.interpreter_settings).toEqual(v1.interpreter_settings);
+	});
+
+	test('existing v2 is never overwritten by the first write', async () => {
+		const { controller, sync } = await controllerFor({
+			connections: [API_CONNECTION],
+			profiles: [GPT_PROFILE],
+			bootstrapper: aiSettingsBootstrapper
+		});
+		expect(controller.state.mode).toBe('stored');
+		await controller.setTaskProfile('translate', 'gpt');
+		expect(sync.sets).toEqual([{ ai_routing: { v: 1, taskProfiles: { translate: 'gpt' } } }]);
 	});
 });
 

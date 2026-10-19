@@ -8,6 +8,7 @@ import {
 	encodeProfiles,
 	encodePromptContext,
 	encodeRouting,
+	type AiSettingsBootstrapper,
 	type AiSettingsStore,
 	type StorageChangeLike,
 	type StorageChangedListener
@@ -93,6 +94,10 @@ export interface FakeSettings {
 	nativeMessaging?: NativeMessagingSupport;
 	/** Leave v2 absent so the store is in derived mode. */
 	derived?: boolean;
+	/** Raw v1 sync items (`interpreter_settings`, `reader_settings`) to seed. */
+	v1?: Record<string, unknown>;
+	/** Makes the store a bootstrapping one, as the Settings page's is. */
+	bootstrapper?: AiSettingsBootstrapper;
 }
 
 export interface FakeStore {
@@ -104,7 +109,8 @@ export interface FakeStore {
 
 export function createFakeStore(settings: FakeSettings = {}): FakeStore {
 	const onChanged = createOnChanged();
-	const syncData: Record<string, unknown> = settings.derived ? {} : {
+	const syncData: Record<string, unknown> = settings.derived ? { ...(settings.v1 ?? {}) } : {
+		...(settings.v1 ?? {}),
 		ai_connections: encodeConnections(settings.connections ?? []),
 		ai_profiles: encodeProfiles(settings.profiles ?? [], settings.connections ?? []),
 		ai_routing: encodeRouting(settings.routing ?? { taskProfiles: {} }),
@@ -122,7 +128,8 @@ export function createFakeStore(settings: FakeSettings = {}): FakeStore {
 		local,
 		onChanged,
 		nativeMessaging: settings.nativeMessaging ?? 'port',
-		bootstrap: false
+		bootstrap: Boolean(settings.bootstrapper),
+		...(settings.bootstrapper ? { bootstrapper: settings.bootstrapper, build: '9.9.9' } : {})
 	});
 	return { store, sync, local, onChanged };
 }

@@ -262,6 +262,35 @@ try {
 	) {
 		throw new Error(`Unexpected Firefox settings state: ${JSON.stringify(settingsState)}`);
 	}
+	// The AI section renders without Native Messaging: no "Add local CLI", and loading it writes nothing.
+	await bidi.send('browsingContext.navigate', {
+		context: extensionContext,
+		url: `${settingsUrl}?section=ai`,
+		wait: 'complete'
+	});
+	const aiSectionState = await waitForValue(async () => evaluate(bidi, extensionContext, `(async () => {
+		const section = document.querySelector('#ai-section');
+		const addProvider = document.querySelector('#ai-add-api-provider');
+		const addLocalCli = document.querySelector('#ai-add-local-cli');
+		const routing = document.querySelector('#ai-routing-translate');
+		if (!section?.classList.contains('active') || !addProvider || !addLocalCli || !routing) return null;
+		const sync = await browser.storage.sync.get(null);
+		const local = await browser.storage.local.get(null);
+		return {
+			search: location.search,
+			addLocalCliHidden: addLocalCli.hidden,
+			interpreterSection: Boolean(document.querySelector('#interpreter-section')),
+			aiKeys: [...Object.keys(sync), ...Object.keys(local)].filter(key => key.startsWith('ai_') || key === 'interpreter_settings')
+		};
+	})()`), 'The Firefox AI settings section did not render.');
+	if (
+		aiSectionState.search !== '?section=ai'
+		|| !aiSectionState.addLocalCliHidden
+		|| aiSectionState.interpreterSection
+		|| aiSectionState.aiKeys.length > 0
+	) {
+		throw new Error(`Unexpected Firefox AI section state: ${JSON.stringify(aiSectionState)}`);
+	}
 	const toggleResponse = await waitForValue(async () => evaluate(bidi, extensionContext, `(async () => {
 		if (typeof browser === 'undefined' || !browser.runtime?.id) return null;
 		const tabs = await browser.tabs.query({});
@@ -332,6 +361,7 @@ try {
 
 	console.log(`Firefox temporary-extension E2E passed (${extension}).`);
 	console.log(`Settings: ${JSON.stringify(settingsState)}`);
+	console.log('AI section rendered without "Add local CLI" and wrote no AI settings on load.');
 	console.log('Reader extraction, module loading, and local language-learning checkpoint restore passed.');
 	if (loadedChunkUrls.length > 0) console.log(`Reader module chunks: ${loadedChunkUrls.join(', ')}`);
 	await bidi.send('webExtension.uninstall', { extension });

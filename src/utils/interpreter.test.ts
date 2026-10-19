@@ -8,16 +8,10 @@ import type { Settings, Template } from '../types/types';
 
 const mocks = vi.hoisted(() => ({
 	runAiTask: vi.fn(),
-	saveSettings: vi.fn(),
 	loadAiSettings: vi.fn(),
-	saveRouting: vi.fn(),
-	generalSettings: {} as Record<string, unknown>
+	saveRouting: vi.fn()
 }));
 
-vi.mock('./storage-utils', () => ({
-	generalSettings: mocks.generalSettings,
-	saveSettings: mocks.saveSettings
-}));
 vi.mock('./ai-settings', () => ({
 	loadAiSettings: mocks.loadAiSettings,
 	aiSettingsStore: { load: mocks.loadAiSettings, saveRouting: mocks.saveRouting }
@@ -108,8 +102,6 @@ describe('Interpreter', () => {
 			<textarea id="prompt-context">Page context</textarea>
 			<select id="model-select" style="display: none;"></select>
 		`;
-		Object.keys(mocks.generalSettings).forEach(key => delete mocks.generalSettings[key]);
-		mocks.saveSettings.mockReset().mockResolvedValue(undefined);
 		mocks.saveRouting.mockReset().mockResolvedValue(false);
 		mocks.loadAiSettings.mockReset().mockResolvedValue(v1View());
 		mocks.runAiTask.mockReset().mockResolvedValue({
@@ -232,7 +224,6 @@ describe('Interpreter', () => {
 			taskProfiles: { translate: 'mini', interpret: 'codex-default' }
 		});
 		expect(popupInterpretProfileId(next)).toBe('codex-default');
-		expect(mocks.saveSettings).not.toHaveBeenCalled();
 	});
 
 	test('a choice equal to the default clears the interpret entry', async () => {
@@ -244,30 +235,16 @@ describe('Interpreter', () => {
 		expect(mocks.saveRouting).toHaveBeenCalledWith({ defaultProfileId: 'gpt', taskProfiles: {} });
 	});
 
-	test('in derived mode an API choice keeps writing the v1 interpreterModel', async () => {
+	test('before v2 exists a choice is not stored, is logged, and is kept in memory for this popup', async () => {
 		mocks.saveRouting.mockResolvedValue(false);
-		mocks.loadAiSettings.mockResolvedValue(v1View({
-			models: [
-				{ id: 'model-a', providerId: 'provider-1', providerModelId: 'gpt-a', name: 'A', enabled: true },
-				{ id: 'model-b', providerId: 'provider-1', providerModelId: 'gpt-b', name: 'B', enabled: true }
-			]
-		}));
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-		const next = await saveInterpretProfile('model-a');
+		const next = await saveInterpretProfile('model-b');
 
-		expect(mocks.generalSettings.interpreterModel).toBe('model-a');
-		expect(mocks.saveSettings).toHaveBeenCalledOnce();
-		expect(popupInterpretProfileId(next)).toBe('model-a');
-	});
-
-	test('in derived mode a CLI choice is kept in memory only', async () => {
-		mocks.saveRouting.mockResolvedValue(false);
-
-		const next = await saveInterpretProfile('legacy-cli-grok-default');
-
-		expect(mocks.saveSettings).not.toHaveBeenCalled();
-		expect(mocks.generalSettings.interpreterModel).toBeUndefined();
-		expect(popupInterpretProfileId(next)).toBe('legacy-cli-grok-default');
+		expect(mocks.saveRouting).toHaveBeenCalledOnce();
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining('not saved'));
+		expect(popupInterpretProfileId(next)).toBe('model-b');
+		warn.mockRestore();
 	});
 
 	test('the popup select saves a change, reports the new view, and runs with the chosen profile', async () => {

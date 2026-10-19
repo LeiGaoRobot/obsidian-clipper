@@ -294,8 +294,18 @@ function setupMessageListeners() {
 	});
 }
 
-document.addEventListener('DOMContentLoaded', async function() {
+/**
+ * Loads the v1 settings and the AI view. The view decides whether AI is on; the template compiler's
+ * prompt-variable handling still reads the v1 `interpreterEnabled` field (until Phase 7), so it is
+ * mirrored in memory. `saveSettings` no longer writes `interpreter_settings`, so it never persists.
+ */
+async function loadPopupSettings(): Promise<void> {
 	[loadedSettings, aiSettings] = await Promise.all([loadSettings(), loadAiSettings()]);
+	loadedSettings.interpreterEnabled = aiSettings.enabled;
+}
+
+document.addEventListener('DOMContentLoaded', async function() {
+	await loadPopupSettings();
 	if (isIframe) {
 		document.documentElement.classList.add('is-embedded');
 	}
@@ -1151,7 +1161,7 @@ async function checkHighlighterModeState(tabId: number) {
 
 		const isHighlighterMode = response.isActive;
 		
-		[loadedSettings, aiSettings] = await Promise.all([loadSettings(), loadAiSettings()]);
+		await loadPopupSettings();
 		
 		updateHighlighterModeUI(isHighlighterMode);
 	} catch (error) {

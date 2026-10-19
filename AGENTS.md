@@ -34,9 +34,9 @@ All model work goes through `runAiTask` or `runTranscriptJob` and the background
 - Page-DOM controls that can create model costs must reject synthetic events with `event.isTrusted`. Programmatic controller methods may exist for isolated tests, but must not be exposed to host-page scripts.
 - Execute provider requests in the extension background. Do not fetch model providers directly from Reader or page content scripts.
 - Keep the background network path synchronous in the bundle. Do not dynamically import `interpreter.ts` or create a runtime chunk for Chrome MV3 service workers.
-- Never pass provider credentials through page DOM or language-learning messages. Resolve the provider, API key, and enabled model from stored Interpreter settings in the background.
+- Never pass provider credentials through page DOM or language-learning messages. Resolve the connection, API key, and model profile from stored AI settings (`ai_*` sync items and the local-only `ai_credentials`) in the background.
 - Preserve transcript alignment. Every source segment has a stable numeric ID equal to its source index, long transcripts run as one background job in bounded concurrent groups with stable ids and serialized checkpoint writes, and the UI must reject incomplete translations instead of displaying a partial result as complete. Keep each source segment atomic; one oversized segment may exceed the group target.
-- Resolve the response language from `readerSettings.learningResponseLanguage`, then fall back to the browser language.
+- Resolve the response language from `ai_routing.responseLanguage` (the Language panel of the Settings AI section), then fall back to the browser language.
 - AI edits operate on the selected portion of the clipping, or the full clipping when there is no selection. Applying a preview must fail if the source content changed after the preview was generated.
 - Clean up Reader controls and listeners during SPA navigation. Explanation caching is session-local and keyed by selection kind, selected text, and context.
 

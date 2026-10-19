@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "Aktivitet"
 	},
-	"addModel": {
-		"message": "+ Legg til modell"
-	},
-	"addModelTitle": {
-		"message": "Legg til modell"
-	},
 	"addProperty": {
 		"message": "+ Legg til egenskap"
-	},
-	"addProvider": {
-		"message": "+ Legg til leverandør"
-	},
-	"addProviderTitle": {
-		"message": "Legg til leverandør"
 	},
 	"addToObsidian": {
 		"message": "Legg til i Obsidian"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "Vis lagrede uthevinger når siden lastes. Deaktiver for å bare vise uthevinger når uthevingsmodus er aktiv."
-	},
-	"apiKeyMissing": {
-		"message": "API-nøkkel mangler"
 	},
 	"apiKeysWarning": {
 		"message": "Ved å bruke en ekstern leverandør godtar du deres vilkår og personvernregler. Tolkningsforespørsler sendes direkte til din valgte leverandør. Obsidian samler ikke inn eller lagrer informasjon om dine forespørsler."
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "Avbryt"
-	},
-	"cannotDeleteProvider": {
-		"message": "Kan ikke slette leverandøren \"$1\" fordi den brukes av $2 modeller."
 	},
 	"changelog": {
 		"message": "Endringslogg"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "Slette alle uthevinger for denne siden?"
 	},
-	"deleteModelConfirm": {
-		"message": "Er du sikker på at du vil slette denne modellen?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Er du sikker på at du vil slette denne leverandøren?"
-	},
 	"disableHighlighter": {
 		"message": "Deaktiver uthever"
 	},
@@ -226,26 +202,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Uthev innhold på nettsider for å lagre i Obsidian"
-	},
-	"enableInterpreter": {
-		"message": "Aktiver tolk"
-	},
-	"enableInterpreterDescription": {
-		"message": "Bruk naturlig språk for å trekke ut informasjon fra sider. For eksempel kan du bruke malsyntaksen $strong_start${{\"oppsummer denne siden\"}}$strong_end$. Krever en API-nøkkel eller oppsett av en tilpasset modell nedenfor. $link_start$Lær mer$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Åpne lesevisning"
@@ -329,9 +285,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Kunne ikke lagre filen"
-	},
-	"failedToSaveProvider": {
-		"message": "Kunne ikke lagre leverandøren. Vennligst prøv igjen."
 	},
 	"feedback": {
 		"message": "Tilbakemelding"
@@ -478,23 +431,11 @@
 	"modelName": {
 		"message": "Modellnavn"
 	},
-	"modelNameDescription": {
-		"message": "Navnet som vises i modellens nedtrekksmeny"
-	},
 	"modelProvider": {
 		"message": "Leverandør"
 	},
-	"modelProviderDescription": {
-		"message": "Velg leverandøren for denne modellen"
-	},
 	"modelProviderPlaceholder": {
 		"message": "Leverandør"
-	},
-	"modelRequiredFields": {
-		"message": "Modellnavn, leverandør og modell-ID er påkrevd."
-	},
-	"models": {
-		"message": "Modeller"
 	},
 	"modelsListFor": {
 		"message": "Modelliste for $1"
@@ -592,12 +533,6 @@
 	"pleaseReload": {
 		"message": "Vennligst prøv å oppdatere siden."
 	},
-	"popularModels": {
-		"message": "Populære modeller"
-	},
-	"popularModelsDescription": {
-		"message": "Velg fra ofte brukte modeller eller skriv inn detaljer om tilpasset modell."
-	},
 	"popup": {
 		"message": "Popup"
 	},
@@ -643,47 +578,20 @@
 	"propertyValue": {
 		"message": "Egenskapsverdi"
 	},
-	"provider": {
-		"message": "Leverandør"
-	},
 	"providerApiKey": {
 		"message": "API-nøkkel"
-	},
-	"providerApiKeyDescription": {
-		"message": "Din API-nøkkel for denne leverandøren."
 	},
 	"providerBaseUrl": {
 		"message": "Base URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "API-endepunktets URL for denne leverandøren."
-	},
 	"providerModelId": {
 		"message": "Modell-ID"
-	},
-	"providerModelIdDescription": {
-		"message": "Identifikatoren til modellen fra din leverandør. Vanligvis et kort navn uten mellomrom."
 	},
 	"providerModelIdPlaceholder": {
 		"message": "Modell-ID"
 	},
-	"providerName": {
-		"message": "Leverandørnavn"
-	},
-	"providerNameDescription": {
-		"message": "Visningsnavn for denne leverandøren."
-	},
 	"providerPreset": {
 		"message": "Forhåndsinnstilling"
-	},
-	"providerPresetDescription": {
-		"message": "Velg en leverandør eller opprett en tilpasset en."
-	},
-	"providerRequiredFields": {
-		"message": "Leverandørnavn og Base URL er nødvendig."
-	},
-	"providers": {
-		"message": "Leverandører"
 	},
 	"rateExtensionDescription": {
 		"message": "Liker du Web Clipper? Hjelp oss ved å gi en vurdering."
@@ -841,9 +749,6 @@
 	"readerViewFullSize": {
 		"message": "Vis i full størrelse"
 	},
-	"recommended": {
-		"message": "anbefalt"
-	},
 	"refresh": {
 		"message": "Oppdater"
 	},
@@ -897,9 +802,6 @@
 	},
 	"searchVariables": {
 		"message": "Søk i variabler..."
-	},
-	"selectProvider": {
-		"message": "Velg leverandør"
 	},
 	"selectTemplateToExport": {
 		"message": "Velg mal for eksport"
@@ -1020,9 +922,6 @@
 	},
 	"thinking": {
 		"message": "tenker"
-	},
-	"unknownProvider": {
-		"message": "Ukjent leverandør"
 	},
 	"updateAvailable": {
 		"message": "Oppdatering tilgjengelig"

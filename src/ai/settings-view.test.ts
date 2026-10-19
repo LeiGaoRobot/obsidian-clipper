@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 import type { Settings } from '../types/types';
 import {
 	deriveAiSettings,
-	legacyExecutionMode,
 	LEGACY_CODEX_CONNECTION_ID,
 	LEGACY_GROK_CONNECTION_ID,
 	LEGACY_GROK_PROFILE_ID
@@ -183,29 +182,5 @@ describe('deriveAiSettings', () => {
 		view.connections[0].label = 'changed';
 		view.profiles[0].enabled = false;
 		expect(settings).toEqual(snapshot);
-	});
-});
-
-describe('legacyExecutionMode', () => {
-	test('recovers the v1 mode from a derived view', () => {
-		for (const mode of ['api', 'codex', 'grok'] as const) {
-			const view = deriveAiSettings(v1Settings({ interpreterExecutionMode: mode }), { nativeMessaging: 'port' });
-			expect(legacyExecutionMode(view)).toBe(mode);
-			expect(legacyExecutionMode(view, 'interpret')).toBe(mode);
-		}
-	});
-
-	test('reads API without a default profile or with an orphaned model', () => {
-		const noModel = deriveAiSettings(v1Settings({ models: [] }), { nativeMessaging: 'port' });
-		expect(legacyExecutionMode(noModel)).toBe('api');
-		const orphan = deriveAiSettings(v1Settings({ providers: [] }), { nativeMessaging: 'port' });
-		expect(legacyExecutionMode(orphan)).toBe('api');
-	});
-
-	test('follows a task route over the default', () => {
-		const view = deriveAiSettings(v1Settings(), { nativeMessaging: 'port' });
-		view.routing.taskProfiles.translate = LEGACY_GROK_PROFILE_ID;
-		expect(legacyExecutionMode(view, 'translate')).toBe('grok');
-		expect(legacyExecutionMode(view, 'interpret')).toBe('api');
 	});
 });

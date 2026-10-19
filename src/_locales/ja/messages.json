@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "アクティビティ"
 	},
-	"addModel": {
-		"message": "+ モデルを追加"
-	},
-	"addModelTitle": {
-		"message": "モデルを追加"
-	},
 	"addProperty": {
 		"message": "+ プロパティを追加"
-	},
-	"addProvider": {
-		"message": "\"+ プロバイダーを追加\""
-	},
-	"addProviderTitle": {
-		"message": "\"プロバイダーを追加\""
 	},
 	"addToObsidian": {
 		"message": "Obsidianに追加"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "ページ読み込み時に保存したハイライトを表示します。オフにすると、ハイライトモードが有効な時のみ表示されます。"
-	},
-	"apiKeyMissing": {
-		"message": "\"APIキーがありません\""
 	},
 	"apiKeysWarning": {
 		"message": "外部プロバイダーを使用することで、そのプロバイダーの利用規約とプライバシーポリシーに同意したことになります。インタープリターのリクエストは選択したプロバイダーに直接送信されます。Obsidianはリクエストに関するデータを収集または保存しません。"
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "キャンセル"
-	},
-	"cannotDeleteProvider": {
-		"message": "\"$2 モデルで使用中のため、プロバイダー \"$1\" を削除できません。\""
 	},
 	"changelog": {
 		"message": "変更履歴"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "このページのハイライトをすべて削除しますか？"
 	},
-	"deleteModelConfirm": {
-		"message": "このモデルを削除してもよろしいですか？"
-	},
-	"deleteProviderConfirm": {
-		"message": "\"このプロバイダーを削除してもよろしいですか？\""
-	},
 	"disableHighlighter": {
 		"message": "ハイライトを無効化"
 	},
@@ -226,26 +202,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "WebページのコンテンツをハイライトしてObsidianに保存できます。"
-	},
-	"enableInterpreter": {
-		"message": "インタープリターを有効化"
-	},
-	"enableInterpreterDescription": {
-		"message": "自然言語を使用してページからデータを抽出します。例えば、テンプレート構文$strong_start${{\"ページの要約\"}}$strong_end$を使用できます。APIキーまたは以下で設定したカスタムモデルが必要です。$link_start$詳細$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "閲覧ビューを開く"
@@ -329,9 +285,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "ファイルの保存に失敗しました"
-	},
-	"failedToSaveProvider": {
-		"message": "\"プロバイダーの保存に失敗しました。もう一度お試しください。\""
 	},
 	"feedback": {
 		"message": "フィードバック"
@@ -478,23 +431,11 @@
 	"modelName": {
 		"message": "モデル名"
 	},
-	"modelNameDescription": {
-		"message": "インターフェースに表示したいモデルの名前。"
-	},
 	"modelProvider": {
 		"message": "プロバイダー"
 	},
-	"modelProviderDescription": {
-		"message": "モデルプロバイダー（例：Ollama、OpenRouter、Google など）。"
-	},
 	"modelProviderPlaceholder": {
 		"message": "プロバイダー"
-	},
-	"modelRequiredFields": {
-		"message": "モデル名、プロバイダー、モデルIDは必須です。"
-	},
-	"models": {
-		"message": "モデル"
 	},
 	"modelsListFor": {
 		"message": "$1のモデルリスト"
@@ -600,12 +541,6 @@
 	"pleaseReload": {
 		"message": "ページの再読み込みをお試しください。"
 	},
-	"popularModels": {
-		"message": "人気のモデル"
-	},
-	"popularModelsDescription": {
-		"message": "よく使用されるモデルから選択するか、カスタムモデルの詳細を入力してください。"
-	},
 	"popup": {
 		"message": "ポップアップ"
 	},
@@ -651,47 +586,20 @@
 	"propertyValue": {
 		"message": "プロパティ値"
 	},
-	"provider": {
-		"message": "プロバイダー"
-	},
 	"providerApiKey": {
 		"message": "APIキー"
-	},
-	"providerApiKeyDescription": {
-		"message": "このプロバイダーのAPIキー。"
 	},
 	"providerBaseUrl": {
 		"message": "ベースURL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "このプロバイダーのAPIエンドポイントURL。"
-	},
 	"providerModelId": {
 		"message": "モデルID"
-	},
-	"providerModelIdDescription": {
-		"message": "プロバイダーのモデルの識別子。通常はスペースを含まない短い名前です。"
 	},
 	"providerModelIdPlaceholder": {
 		"message": "モデルID"
 	},
-	"providerName": {
-		"message": "プロバイダー名"
-	},
-	"providerNameDescription": {
-		"message": "このプロバイダーの表示名。"
-	},
 	"providerPreset": {
 		"message": "プリセット"
-	},
-	"providerPresetDescription": {
-		"message": "プロバイダーを選択するか、カスタムプロバイダーを作成してください。"
-	},
-	"providerRequiredFields": {
-		"message": "プロバイダー名とベースURLは必須です。"
-	},
-	"providers": {
-		"message": "プロバイダー"
 	},
 	"rateExtensionDescription": {
 		"message": "Web Clipperを楽しんでいますか？評価をつけることで私たちを支えてください。"
@@ -849,9 +757,6 @@
 	"readerViewFullSize": {
 		"message": "フルサイズで表示"
 	},
-	"recommended": {
-		"message": "推奨"
-	},
 	"refresh": {
 		"message": "更新"
 	},
@@ -905,9 +810,6 @@
 	},
 	"searchVariables": {
 		"message": "変数を検索..."
-	},
-	"selectProvider": {
-		"message": "プロバイダーを選択"
 	},
 	"selectTemplateToExport": {
 		"message": "エクスポートするテンプレートを選択してください。"
@@ -1028,9 +930,6 @@
 	},
 	"thinking": {
 		"message": "考え中"
-	},
-	"unknownProvider": {
-		"message": "不明なプロバイダー"
 	},
 	"updateAvailable": {
 		"message": "アップデートが利用可能です。"

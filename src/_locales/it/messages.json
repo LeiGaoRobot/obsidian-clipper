@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "Attività"
 	},
-	"addModel": {
-		"message": "+ Aggiungi modello"
-	},
-	"addModelTitle": {
-		"message": "Aggiungi modello"
-	},
 	"addProperty": {
 		"message": "+ Aggiungi proprietà"
-	},
-	"addProvider": {
-		"message": "+ Aggiungi fornitore"
-	},
-	"addProviderTitle": {
-		"message": "Aggiungi fornitore"
 	},
 	"addToObsidian": {
 		"message": "Aggiungi a Obsidian"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "Mostra i tuoi evidenziatori salvati quando carichi una pagina. Disattiva per visualizzare gli evidenziatori solo quando la modalità evidenziatore è attivata."
-	},
-	"apiKeyMissing": {
-		"message": "Nessuna chiave API"
 	},
 	"apiKeysWarning": {
 		"message": "Utilizzando un fornitore esterno, accetti i loro termini e la loro politica sulla privacy. Le richieste dell'interprete vengono inviate direttamente al fornitore che scegli. Obsidian non raccoglie o memorizza alcun dato sulle tue richieste."
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "Annulla"
-	},
-	"cannotDeleteProvider": {
-		"message": "Impossibile eliminare il fornitore \"$1\" perché viene utilizzato da $2 modello(i)."
 	},
 	"changelog": {
 		"message": "Registro delle modifiche"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "Eliminare tutte le evidenziazioni per questa pagina?"
 	},
-	"deleteModelConfirm": {
-		"message": "Sei sicuro di voler eliminare questo modello?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Sei sicuro di voler eliminare questo fornitore?"
-	},
 	"disableHighlighter": {
 		"message": "Disabilita evidenziatore"
 	},
@@ -226,26 +202,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Evidenzia il contenuto sulle pagine web che puoi salvare in Obsidian."
-	},
-	"enableInterpreter": {
-		"message": "Abilita interprete"
-	},
-	"enableInterpreterDescription": {
-		"message": "Usa il linguaggio naturale per estrarre dati dalle pagine. Ad esempio, puoi usare la sintassi $strong_start${{\"un riassunto della pagina\"}}$strong_end$. Richiede una chiave API o un modello personalizzato configurato qui sotto. $link_start$Scopri di più$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Apri vista di lettura"
@@ -329,9 +285,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Impossibile salvare il file"
-	},
-	"failedToSaveProvider": {
-		"message": "Impossibile salvare il fornitore. Per favore, riprova."
 	},
 	"feedback": {
 		"message": "Feedback"
@@ -478,23 +431,11 @@
 	"modelName": {
 		"message": "Nome del modello"
 	},
-	"modelNameDescription": {
-		"message": "Il nome del modello che vuoi visualizzare nell'interfaccia."
-	},
 	"modelProvider": {
 		"message": "Fornitore"
 	},
-	"modelProviderDescription": {
-		"message": "Il fornitore del modello, ad esempio Ollama, OpenRouter, Google, ecc."
-	},
 	"modelProviderPlaceholder": {
 		"message": "Fornitore"
-	},
-	"modelRequiredFields": {
-		"message": "Nome del modello, Fornitore e ID del modello sono obbligatori."
-	},
-	"models": {
-		"message": "Modelli"
 	},
 	"modelsListFor": {
 		"message": "Elenco dei modelli per $1"
@@ -600,12 +541,6 @@
 	"pleaseReload": {
 		"message": "Prova a ricaricare la pagina."
 	},
-	"popularModels": {
-		"message": "Modelli popolari"
-	},
-	"popularModelsDescription": {
-		"message": "Scegli tra i modelli comunemente utilizzati o inserisci i dettagli del modello personalizzato."
-	},
 	"popup": {
 		"message": "Popup"
 	},
@@ -651,47 +586,20 @@
 	"propertyValue": {
 		"message": "Valore della proprietà"
 	},
-	"provider": {
-		"message": "Fornitore"
-	},
 	"providerApiKey": {
 		"message": "Chiave API"
-	},
-	"providerApiKeyDescription": {
-		"message": "La tua chiave API per questo fornitore."
 	},
 	"providerBaseUrl": {
 		"message": "URL di base"
 	},
-	"providerBaseUrlDescription": {
-		"message": "L'URL del punto finale API per questo fornitore."
-	},
 	"providerModelId": {
 		"message": "ID del modello"
-	},
-	"providerModelIdDescription": {
-		"message": "L'identificatore del modello dal tuo fornitore. Tipicamente un nome breve senza spazi."
 	},
 	"providerModelIdPlaceholder": {
 		"message": "ID del modello"
 	},
-	"providerName": {
-		"message": "Nome del fornitore"
-	},
-	"providerNameDescription": {
-		"message": "Nome da visualizzare per questo fornitore."
-	},
 	"providerPreset": {
 		"message": "Preset"
-	},
-	"providerPresetDescription": {
-		"message": "Scegli un fornitore o creane uno personalizzato."
-	},
-	"providerRequiredFields": {
-		"message": "Il nome del fornitore e l'URL di base sono obbligatori."
-	},
-	"providers": {
-		"message": "Fornitori"
 	},
 	"rateExtensionDescription": {
 		"message": "Ti piace Web Clipper? Aiutaci dandogli una valutazione."
@@ -849,9 +757,6 @@
 	"readerViewFullSize": {
 		"message": "Visualizza a dimensione intera"
 	},
-	"recommended": {
-		"message": "raccomandato"
-	},
 	"refresh": {
 		"message": "Aggiorna"
 	},
@@ -905,9 +810,6 @@
 	},
 	"searchVariables": {
 		"message": "Cerca variabili..."
-	},
-	"selectProvider": {
-		"message": "Seleziona un fornitore"
 	},
 	"selectTemplateToExport": {
 		"message": "Per favore, seleziona un modello da esportare."
@@ -1028,9 +930,6 @@
 	},
 	"thinking": {
 		"message": "pensando"
-	},
-	"unknownProvider": {
-		"message": "Fornitore sconosciuto"
 	},
 	"updateAvailable": {
 		"message": "È disponibile un aggiornamento."

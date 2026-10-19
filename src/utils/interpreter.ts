@@ -1,4 +1,3 @@
-import { generalSettings, saveSettings } from './storage-utils';
 import { PromptVariable, Template } from '../types/types';
 import { compileTemplate } from './template-compiler';
 import { applyFilters } from './filters';
@@ -12,7 +11,6 @@ import { describeAiError } from '../ai/error-messages';
 import { isAiError } from '../ai/errors';
 import type { AiSettingsView } from '../ai/types';
 import {
-	isCliProfile,
 	listEnabledProfileGroups,
 	profileDisplayName,
 	routedProfileId,
@@ -96,21 +94,15 @@ export function populatePopupModelSelect(select: HTMLSelectElement, view: AiSett
 
 /**
  * Persists the popup's model choice as `routing.taskProfiles.interpret` (cleared when it equals the
- * default) and returns the view with that routing, for the popup to keep in memory.
+ * default) and returns the view with that routing, for the popup to keep in memory. The popup's
+ * store never creates v2: before the background has bootstrapped this device (a startup race),
+ * the choice is not stored, which is logged, and applies only to runs from this popup, since the
+ * select's value is passed with each run.
  */
 export async function saveInterpretProfile(profileId: string): Promise<AiSettingsView> {
 	const { written, view } = await saveTaskProfile('interpret', profileId);
 	if (!written) {
-		// DERIVED-MODE FALLBACK — delete in Phase 5 Task 9 (the AI_V2_BOOTSTRAP switch), with the
-		// `generalSettings` / `saveSettings` imports if nothing else uses them. Until v2 is stored the
-		// store write is a no-op, so the choice keeps its v1 effect: an API profile is the v1
-		// `interpreterModel` (its id is the v1 model id). A CLI profile has no v1 per-popup
-		// equivalent (the mode is global), so it is kept only in the returned in-memory view and
-		// passed explicitly with each run.
-		if (!isCliProfile(view, profileId)) {
-			generalSettings.interpreterModel = profileId;
-			await saveSettings();
-		}
+		console.warn('The interpret model choice was not saved: AI settings are not set up on this device yet.');
 	}
 	return view;
 }

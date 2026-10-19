@@ -17,7 +17,7 @@ vi.mock('./browser-polyfill', () => ({
 	}
 }));
 
-import { loadSettings, saveSettings } from './storage-utils';
+import { generalSettings, loadSettings, saveSettings } from './storage-utils';
 
 describe('Reader preference storage', () => {
 	beforeEach(() => {
@@ -56,53 +56,19 @@ describe('Reader preference storage', () => {
 		}));
 	});
 
-	test('loads a trimmed Codex model and saves it in Interpreter settings', async () => {
+	test('loads a trimmed Codex model and a supported reasoning effort from v1', async () => {
 		mocks.state.interpreter_settings = {
 			interpreterExecutionMode: 'codex',
-			interpreterCodexModel: '  gpt-5.6-terra  '
-		};
-
-		const settings = await loadSettings();
-		expect(settings.interpreterCodexModel).toBe('gpt-5.6-terra');
-
-		await saveSettings(settings);
-		expect(mocks.set).toHaveBeenLastCalledWith(expect.objectContaining({
-			interpreter_settings: expect.objectContaining({
-				interpreterCodexModel: 'gpt-5.6-terra'
-			})
-		}));
-	});
-
-	test('omits a blank or oversized Codex model from saved settings', async () => {
-		await loadSettings();
-		await saveSettings({ interpreterCodexModel: '   ' });
-
-		const savedBlank = mocks.set.mock.calls[mocks.set.mock.calls.length - 1]?.[0].interpreter_settings;
-		expect(savedBlank).not.toHaveProperty('interpreterCodexModel');
-
-		await saveSettings({ interpreterCodexModel: 'x'.repeat(201) });
-		const savedOversized = mocks.set.mock.calls[mocks.set.mock.calls.length - 1]?.[0].interpreter_settings;
-		expect(savedOversized).not.toHaveProperty('interpreterCodexModel');
-	});
-
-	test('loads and saves a supported Codex reasoning effort', async () => {
-		mocks.state.interpreter_settings = {
-			interpreterExecutionMode: 'codex',
+			interpreterCodexModel: '  gpt-5.6-terra  ',
 			interpreterCodexReasoningEffort: 'max'
 		};
 
 		const settings = await loadSettings();
+		expect(settings.interpreterCodexModel).toBe('gpt-5.6-terra');
 		expect(settings.interpreterCodexReasoningEffort).toBe('max');
-
-		await saveSettings(settings);
-		expect(mocks.set).toHaveBeenLastCalledWith(expect.objectContaining({
-			interpreter_settings: expect.objectContaining({
-				interpreterCodexReasoningEffort: 'max'
-			})
-		}));
 	});
 
-	test('normalizes unknown or default Codex reasoning effort to an omitted value', async () => {
+	test('normalizes an unknown Codex reasoning effort to an omitted value on load', async () => {
 		mocks.state.interpreter_settings = {
 			interpreterExecutionMode: 'codex',
 			interpreterCodexReasoningEffort: 'extreme'
@@ -110,9 +76,33 @@ describe('Reader preference storage', () => {
 
 		const settings = await loadSettings();
 		expect(settings.interpreterCodexReasoningEffort).toBeUndefined();
+	});
 
-		await saveSettings({ interpreterCodexReasoningEffort: undefined });
-		const saved = mocks.set.mock.calls[mocks.set.mock.calls.length - 1]?.[0].interpreter_settings;
-		expect(saved).not.toHaveProperty('interpreterCodexReasoningEffort');
+	test('saving never writes interpreter_settings and leaves the stored v1 item untouched', async () => {
+		const v1 = {
+			interpreterEnabled: true,
+			interpreterExecutionMode: 'codex',
+			interpreterCodexModel: 'gpt-5.6-terra',
+			providers: [{ id: 'p', name: 'P', baseUrl: 'https://x.example/v1', apiKey: 'sk' }],
+			models: []
+		};
+		mocks.state.interpreter_settings = structuredClone(v1);
+
+		const settings = await loadSettings();
+		await saveSettings({ ...settings, interpreterEnabled: false, interpreterModel: 'other' });
+
+		for (const [values] of mocks.set.mock.calls) {
+			expect(values).not.toHaveProperty('interpreter_settings');
+		}
+		expect(mocks.state.interpreter_settings).toEqual(v1);
+	});
+
+	test('saving no longer runs the Codex normalizers', async () => {
+		await loadSettings();
+		await saveSettings({ interpreterCodexModel: '  padded  ', interpreterCodexReasoningEffort: 'extreme' as never });
+
+		expect(generalSettings.interpreterCodexModel).toBe('  padded  ');
+		expect(generalSettings.interpreterCodexReasoningEffort).toBe('extreme');
+		expect(mocks.set.mock.calls[mocks.set.mock.calls.length - 1]?.[0]).not.toHaveProperty('interpreter_settings');
 	});
 });

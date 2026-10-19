@@ -30,7 +30,10 @@ import type { CodexReasoningEffort } from '../../types/types';
 export interface AiSettingsState {
 	view: AiSettingsView;
 	connectionStatus: Record<string, ConnectionStatus>;
-	/** `derived` while no v2 items exist on this device; the store then refuses every write. */
+	/**
+	 * `derived` while no v2 items exist on this device; the store then refuses every write until
+	 * the first mutation creates v2 through `ensureV2`.
+	 */
 	mode: 'stored' | 'derived';
 }
 
@@ -202,15 +205,17 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 	}
 
 	/**
-	 * In derived mode the view is computed from v1 and the store refuses writes. Reload first: a
-	 * bootstrapping store may have created v2 since, and a mutation must never build on the
-	 * derived view.
+	 * In derived mode the view is computed from v1 (or is the defaults) and the store refuses
+	 * writes. The first write therefore asks the store to create v2: it runs a pending v1
+	 * migration, or on a fresh install writes the defaults. Then it reloads, so a mutation never
+	 * builds on the derived view.
 	 */
 	async function ensureStored(changed: AiStorageKey[]): Promise<void> {
 		if (state.mode === 'stored') return;
+		changed.push(...ALL_KEYS);
+		await store.ensureV2();
 		const snapshot = await store.loadSnapshot();
 		applySnapshot(snapshot);
-		changed.push(...ALL_KEYS);
 		if (snapshot.mode !== 'stored') throw new AiSettingsNotWritableError();
 	}
 

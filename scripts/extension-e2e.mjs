@@ -105,6 +105,15 @@ function connectCdp(webSocketUrl) {
 	});
 }
 
+/** JSON with object keys sorted: storage returns items with their keys in its own order. */
+function canonicalJson(value) {
+	return JSON.stringify(value, (_key, item) => (
+		item && typeof item === 'object' && !Array.isArray(item)
+			? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right)))
+			: item
+	));
+}
+
 async function evaluate(cdp, expression) {
 	const result = await cdp.send('Runtime.evaluate', {
 		expression,
@@ -263,21 +272,6 @@ try {
 	clients.push(settings);
 	await settings.send('Page.enable');
 	await settings.send('Runtime.enable');
-	await settings.send('Page.addScriptToEvaluateOnNewDocument', {
-		source: `(() => {
-			const originalFetch = globalThis.fetch.bind(globalThis);
-			globalThis.fetch = (input, init) => {
-				const url = typeof input === 'string' ? input : input?.url;
-				if (url === 'https://raw.githubusercontent.com/obsidianmd/obsidian-clipper/refs/heads/main/providers.json') {
-					return Promise.resolve(new Response(JSON.stringify({ version: 'e2e' }), {
-						status: 200,
-						headers: { 'Content-Type': 'application/json' }
-					}));
-				}
-				return originalFetch(input, init);
-			};
-		})();`
-	});
 	const settingsErrors = [];
 	settings.on('Runtime.exceptionThrown', event => settingsErrors.push(event.exceptionDetails?.exception?.description || event.exceptionDetails?.text || 'Settings exception'));
 	settings.on('Runtime.consoleAPICalled', event => {
@@ -381,15 +375,23 @@ try {
 	if (!settingsBranding) {
 		throw new Error('The settings page did not expose PagePick Chrome branding.');
 	}
-	const interpreterSettingsUrl = `${settingsUrl}?section=interpreter`;
-	await settings.send('Page.navigate', { url: interpreterSettingsUrl });
+	const syncAndLocal = () => evaluate(settings, `Promise.all([
+		new Promise(resolve => chrome.storage.sync.get(null, resolve)),
+		new Promise(resolve => chrome.storage.local.get(null, resolve))
+	]).then(([sync, local]) => ({ sync, local }))`);
+	// `?section=interpreter` is the AI section's former name; older links still open it.
+	const aiSettingsAliasUrl = `${settingsUrl}?section=interpreter`;
+	await settings.send('Page.navigate', { url: aiSettingsAliasUrl });
 	const nativeCliInstallGuide = await waitForValue(async () => evaluate(settings, `(() => {
 		const command = document.querySelector('#native-cli-install-command');
 		const copyButton = document.querySelector('#native-cli-install-copy');
-		const interpreter = document.querySelector('#interpreter-section');
+		const section = document.querySelector('#ai-section');
+		const addLocalCli = document.querySelector('#ai-add-local-cli');
 		if (
-			location.search !== '?section=interpreter'
-			|| !interpreter?.classList.contains('active')
+			location.search !== '?section=ai'
+			|| !section?.classList.contains('active')
+			|| document.querySelector('#interpreter-section')
+			|| addLocalCli?.hidden
 			|| !command?.textContent?.includes(${JSON.stringify(extensionId)})
 			|| !command?.textContent?.startsWith('npm --prefix ')
 			|| copyButton?.hidden
@@ -398,7 +400,15 @@ try {
 			command: command.textContent,
 			copyLabel: copyButton.textContent?.trim()
 		};
-	})()`), 'The Interpreter settings did not initialize the Native CLI install guide.');
+	})()`), 'The AI settings section did not initialize the Native CLI install guide.');
+	// Loading Settings on a fresh profile is storage-read only: no v2 item and no v1 item is written.
+	const freshStorage = await syncAndLocal();
+	if (
+		Object.keys(freshStorage.sync).some(key => key.startsWith('ai_') || key === 'interpreter_settings')
+		|| Object.keys(freshStorage.local).some(key => key.startsWith('ai_'))
+	) {
+		throw new Error(`Loading the AI section wrote AI settings: ${JSON.stringify(freshStorage)}`);
+	}
 	await evaluate(settings, `Promise.all([
 		new Promise((resolve, reject) => chrome.storage.local.set({ language: 'zh_CN' }, () => {
 			if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
@@ -553,13 +563,15 @@ try {
 		throw new Error(`Reader transcript preferences were not applied: ${JSON.stringify(readerState)}`);
 	}
 	const providerUrl = `http://127.0.0.1:${address.port}/v1/chat/completions`;
-	await evaluate(settings, `new Promise((resolve, reject) => chrome.storage.sync.set({ interpreter_settings: {
+	// A v1 configuration as an older build stored it; nothing in this build writes it.
+	const v1InterpreterSeed = {
 		interpreterEnabled: true,
 		interpreterExecutionMode: 'api',
 		interpreterModel: 'e2e-model',
-		providers: [{ id: 'e2e-provider', name: 'E2E Mock', baseUrl: ${JSON.stringify(providerUrl)}, apiKey: 'sk-e2e', apiKeyRequired: true }],
+		providers: [{ id: 'e2e-provider', name: 'E2E Mock', baseUrl: providerUrl, apiKey: 'sk-e2e', apiKeyRequired: true }],
 		models: [{ id: 'e2e-model', providerId: 'e2e-provider', providerModelId: 'mock-model', name: 'Mock', enabled: true }]
-	} }, () => {
+	};
+	await evaluate(settings, `new Promise((resolve, reject) => chrome.storage.sync.set({ interpreter_settings: ${JSON.stringify(v1InterpreterSeed)} }, () => {
 		if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
 		else resolve();
 	}))`);
@@ -595,6 +607,99 @@ try {
 		|| JSON.stringify(providerRequests[0].body.messages).includes('prompts_responses')
 	) {
 		throw new Error(`AI gateway did not stream the mock provider response: ${JSON.stringify({ gatewayRun, providerRequests })}`);
+	}
+	// The v1 seed became the bootstrap test: the gateway's load migrated it to v2 once, moved the
+	// key to local storage, and left the v1 item untouched.
+	const bootstrapped = await syncAndLocal();
+	const migratedConnection = bootstrapped.sync.ai_connections?.items?.[0];
+	if (
+		bootstrapped.sync.ai_connections?.items?.length !== 1
+		|| migratedConnection?.id !== 'e2e-provider'
+		|| migratedConnection.kind !== 'openai-compatible'
+		|| migratedConnection.apiKeyRequired !== true
+		|| 'apiKey' in migratedConnection
+		|| Object.entries(bootstrapped.sync).some(([key, value]) => key.startsWith('ai_') && JSON.stringify(value).includes('sk-e2e'))
+		|| !bootstrapped.sync.ai_profiles?.items?.some(profile => profile.id === 'e2e-model' && profile.model === 'mock-model')
+		|| bootstrapped.sync.ai_routing?.defaultProfileId !== 'e2e-model'
+		|| bootstrapped.sync.ai_routing?.responseLanguage !== 'Simplified Chinese'
+		|| bootstrapped.sync.ai_interpreter?.enabled !== true
+		|| bootstrapped.local.ai_credentials?.['e2e-provider'] !== 'sk-e2e'
+		|| bootstrapped.local.ai_migration?.status !== 'bootstrapped'
+		|| canonicalJson(bootstrapped.sync.interpreter_settings) !== canonicalJson(v1InterpreterSeed)
+	) {
+		const aiItems = Object.fromEntries(Object.entries(bootstrapped.sync).filter(([key]) => key.startsWith('ai_') || key === 'interpreter_settings'));
+		throw new Error(`The v1 settings were not bootstrapped to v2: ${JSON.stringify({
+			local: {
+				ai_migration: bootstrapped.local.ai_migration,
+				ai_credentials: Object.keys(bootstrapped.local.ai_credentials || {})
+			},
+			sync: aiItems
+		})}`);
+	}
+
+	// AI section smoke: the migrated connection renders, a catalog connection can be added, and a
+	// task can be routed. None of it sends a model request.
+	const requestsBeforeSmoke = providerRequests.length;
+	await settings.send('Page.navigate', { url: `${settingsUrl}?section=ai` });
+	const migratedCard = await waitForValue(async () => evaluate(settings, `(() => {
+		const card = document.querySelector('[data-connection-id="e2e-provider"]');
+		const badge = card?.querySelector('.ai-status-badge');
+		const routing = document.querySelector('#ai-routing-translate');
+		if (!document.querySelector('#ai-section.active') || !badge || !routing) return null;
+		return {
+			text: card.textContent,
+			badge: badge.className,
+			routingOptions: Array.from(routing.options).map(option => option.value)
+		};
+	})()`), 'The AI section did not render the migrated connection.');
+	if (
+		!migratedCard.text.includes('E2E Mock')
+		|| !migratedCard.badge.includes('is-untested')
+		|| !migratedCard.routingOptions.includes('e2e-model')
+	) {
+		throw new Error(`Unexpected migrated connection card: ${JSON.stringify(migratedCard)}`);
+	}
+	await evaluate(settings, `document.querySelector('#ai-add-api-provider').click()`);
+	await waitForValue(async () => evaluate(settings, `(() => {
+		const option = document.querySelector('#ai-catalog-list [data-preset-id="openai"]');
+		if (!option) return false;
+		option.click();
+		return true;
+	})()`), 'The catalog picker did not list OpenAI.');
+	const catalogBaseUrl = await waitForValue(async () => evaluate(settings, `(() => {
+		const baseUrl = document.querySelector('#ai-connection-base-url')?.value;
+		const apiKey = document.querySelector('#ai-connection-api-key');
+		if (!baseUrl || !apiKey) return null;
+		apiKey.value = 'sk-openai-e2e';
+		document.querySelector('.ai-connection-confirm-btn').click();
+		return baseUrl;
+	})()`), 'The connection dialog did not open with the catalog base URL.');
+	const addedConnection = await waitForValue(async () => {
+		const stored = await syncAndLocal();
+		const added = stored.sync.ai_connections?.items?.find(item => item.id !== 'e2e-provider');
+		// The key is written to local storage right after the sync item.
+		return stored.sync.ai_connections.items.length === 2 && added?.presetId === 'openai' && stored.local.ai_credentials?.[added.id]
+			? { added, credential: stored.local.ai_credentials[added.id] }
+			: undefined;
+	}, 'Adding the OpenAI connection did not persist a second ai_connections item and its key.');
+	if (
+		addedConnection.added.baseUrl !== catalogBaseUrl
+		|| addedConnection.added.kind !== 'openai-compatible'
+		|| 'apiKey' in addedConnection.added
+		|| addedConnection.credential !== 'sk-openai-e2e'
+	) {
+		throw new Error(`Unexpected added connection: ${JSON.stringify({ ...addedConnection, credential: Boolean(addedConnection.credential) })}`);
+	}
+	await evaluate(settings, `(() => {
+		const select = document.querySelector('#ai-routing-translate');
+		select.value = 'e2e-model';
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+	})()`);
+	await waitForValue(async () => (
+		(await syncAndLocal()).sync.ai_routing?.taskProfiles?.translate === 'e2e-model'
+	), 'The translate routing select did not persist ai_routing.taskProfiles.translate.');
+	if (providerRequests.length !== requestsBeforeSmoke) {
+		throw new Error('The AI section sent a model request without a Test click.');
 	}
 	// Durable transcript jobs. The page drives the `ai` Port the way src/ai/job-client.ts does:
 	// `start-job` once, keepalive pings, and reconnect + `attach` (never a new start) on disconnect.
@@ -846,6 +951,8 @@ try {
 	console.log('Reader restored bilingual subtitles and Japanese readings without starting a model request.');
 	console.log(`Reader lazy chunks: ${loadedChunkUrls.join(', ')}`);
 	console.log(`AI gateway streamed a mock provider response: ${gatewayRun.messages.join(' → ')}`);
+	console.log('v1 settings bootstrapped to v2 (key moved to local storage, interpreter_settings unchanged); '
+		+ 'the AI section added an OpenAI connection and routed translate without a model request.');
 	console.log(`Stopped the worker (version ${runningVersion.versionId}) after ${firstGroup.length} of ${stopSegments.length} segments; `
 		+ `${stopRequests.filter(record => record.aborted).length} of ${inFlightBeforeStop - 1} in-flight group request(s) aborted, `
 		+ `${afterStop.length} resumed after reconnect + attach, `

@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "Hoạt động"
 	},
-	"addModel": {
-		"message": "+ Thêm mô hình"
-	},
-	"addModelTitle": {
-		"message": "Thêm mô hình"
-	},
 	"addProperty": {
 		"message": "+ Thêm thuộc tính"
-	},
-	"addProvider": {
-		"message": "+ Thêm nhà cung cấp"
-	},
-	"addProviderTitle": {
-		"message": "Thêm nhà cung cấp"
 	},
 	"addToObsidian": {
 		"message": "Thêm vào Obsidian"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "Hiển thị các đánh dấu đã lưu khi tải trang. Tắt để chỉ hiển thị đánh dấu khi chế độ đánh dấu được kích hoạt."
-	},
-	"apiKeyMissing": {
-		"message": "Không có khóa API"
 	},
 	"apiKeysWarning": {
 		"message": "Bằng cách sử dụng nhà cung cấp bên ngoài, bạn đồng ý với điều khoản và chính sách bảo mật của họ. Các yêu cầu thông dịch được gửi trực tiếp đến nhà cung cấp bạn chọn. Obsidian không thu thập hoặc lưu trữ bất kỳ dữ liệu nào về các yêu cầu của bạn."
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "Hủy"
-	},
-	"cannotDeleteProvider": {
-		"message": "Không thể xóa nhà cung cấp \"$1\" vì đang được sử dụng bởi $2 mô hình."
 	},
 	"changelog": {
 		"message": "Nhật ký thay đổi"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "Xóa tất cả đoạn tô sáng cho trang này?"
 	},
-	"deleteModelConfirm": {
-		"message": "Bạn có chắc chắn muốn xóa mô hình này?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Bạn có chắc chắn muốn xóa nhà cung cấp này?"
-	},
 	"disableHighlighter": {
 		"message": "Tắt đánh dấu"
 	},
@@ -226,26 +202,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Đánh dấu nội dung trên trang web mà bạn có thể lưu vào Obsidian."
-	},
-	"enableInterpreter": {
-		"message": "Bật thông dịch"
-	},
-	"enableInterpreterDescription": {
-		"message": "Sử dụng ngôn ngữ tự nhiên để trích xuất dữ liệu từ trang. Ví dụ, bạn có thể sử dụng cú pháp mẫu $strong_start${{\"tóm tắt trang\"}}$strong_end$. Yêu cầu khóa API hoặc mô hình tùy chỉnh được cấu hình bên dưới. $link_start$Tìm hiểu thêm$link_end$.",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Mở chế độ đọc"
@@ -329,9 +285,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Không thể lưu tệp"
-	},
-	"failedToSaveProvider": {
-		"message": "Không thể lưu nhà cung cấp. Vui lòng thử lại."
 	},
 	"feedback": {
 		"message": "Phản hồi"
@@ -478,23 +431,11 @@
 	"modelName": {
 		"message": "Tên hiển thị"
 	},
-	"modelNameDescription": {
-		"message": "Tên của mô hình bạn muốn hiển thị trong giao diện."
-	},
 	"modelProvider": {
 		"message": "Nhà cung cấp"
 	},
-	"modelProviderDescription": {
-		"message": "Chọn nhà cung cấp cho mô hình này."
-	},
 	"modelProviderPlaceholder": {
 		"message": "Nhà cung cấp"
-	},
-	"modelRequiredFields": {
-		"message": "Tên mô hình, Nhà cung cấp và ID mô hình là bắt buộc."
-	},
-	"models": {
-		"message": "Mô hình"
 	},
 	"modelsListFor": {
 		"message": "Danh sách mô hình cho $1"
@@ -600,12 +541,6 @@
 	"pleaseReload": {
 		"message": "Vui lòng thử tải lại trang."
 	},
-	"popularModels": {
-		"message": "Mô hình phổ biến"
-	},
-	"popularModelsDescription": {
-		"message": "Chọn từ các mô hình thường được sử dụng hoặc nhập chi tiết mô hình tùy chỉnh."
-	},
 	"popup": {
 		"message": "Popup"
 	},
@@ -651,47 +586,20 @@
 	"propertyValue": {
 		"message": "Giá trị thuộc tính"
 	},
-	"provider": {
-		"message": "Nhà cung cấp"
-	},
 	"providerApiKey": {
 		"message": "Khóa API"
-	},
-	"providerApiKeyDescription": {
-		"message": "Khóa API của bạn cho nhà cung cấp này."
 	},
 	"providerBaseUrl": {
 		"message": "URL cơ sở"
 	},
-	"providerBaseUrlDescription": {
-		"message": "URL điểm cuối API cho nhà cung cấp này."
-	},
 	"providerModelId": {
 		"message": "ID mô hình"
-	},
-	"providerModelIdDescription": {
-		"message": "Định danh của mô hình từ nhà cung cấp của bạn. Thường là một tên ngắn không có dấu cách."
 	},
 	"providerModelIdPlaceholder": {
 		"message": "ID mô hình"
 	},
-	"providerName": {
-		"message": "Tên nhà cung cấp"
-	},
-	"providerNameDescription": {
-		"message": "Tên hiển thị cho nhà cung cấp này."
-	},
 	"providerPreset": {
 		"message": "Cài đặt trước"
-	},
-	"providerPresetDescription": {
-		"message": "Chọn một nhà cung cấp hoặc tạo một nhà cung cấp tùy chỉnh."
-	},
-	"providerRequiredFields": {
-		"message": "Tên nhà cung cấp và URL cơ sở là bắt buộc."
-	},
-	"providers": {
-		"message": "Nhà cung cấp"
 	},
 	"rateExtensionDescription": {
 		"message": "Bạn thích Web Clipper? Hãy giúp chúng tôi bằng cách đánh giá nó."
@@ -849,9 +757,6 @@
 	"readerViewFullSize": {
 		"message": "Xem kích thước đầy đủ"
 	},
-	"recommended": {
-		"message": "được đề xuất"
-	},
 	"refresh": {
 		"message": "Làm mới"
 	},
@@ -905,9 +810,6 @@
 	},
 	"searchVariables": {
 		"message": "Tìm kiếm biến..."
-	},
-	"selectProvider": {
-		"message": "Chọn nhà cung cấp"
 	},
 	"selectTemplateToExport": {
 		"message": "Chọn mẫu để xuất."
@@ -1028,9 +930,6 @@
 	},
 	"thinking": {
 		"message": "đang suy nghĩ"
-	},
-	"unknownProvider": {
-		"message": "Nhà cung cấp không xác định"
 	},
 	"updateAvailable": {
 		"message": "Có bản cập nhật mới."

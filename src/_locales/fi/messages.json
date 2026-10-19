@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "Toiminta"
 	},
-	"addModel": {
-		"message": "+ Lisää malli"
-	},
-	"addModelTitle": {
-		"message": "Lisää malli"
-	},
 	"addProperty": {
 		"message": "+ Lisää ominaisuus"
-	},
-	"addProvider": {
-		"message": "+ Lisää palveluntarjoaja"
-	},
-	"addProviderTitle": {
-		"message": "Lisää palveluntarjoaja"
 	},
 	"addToObsidian": {
 		"message": "Lisää Obsidianiin"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "Näytä tallennetut korostukset sivun latautuessa. Poista käytöstä näyttääksesi korostukset vain kun korostustila on aktivoitu."
-	},
-	"apiKeyMissing": {
-		"message": "Ei API-avainta"
 	},
 	"apiKeysWarning": {
 		"message": "Käyttämällä ulkoista palveluntarjoajaa hyväksyt heidän käyttöehtonsa ja tietosuojakäytäntönsä. Tulkin pyynnöt lähetetään suoraan valitsemallesi palveluntarjoajalle. Obsidian ei kerää tai tallenna mitään tietoja pyynnöistäsi."
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "Peruuta"
-	},
-	"cannotDeleteProvider": {
-		"message": "Palveluntarjoajaa \"$1\" ei voi poistaa, koska sitä käyttää $2 malli(a)."
 	},
 	"changelog": {
 		"message": "Muutosloki"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "Poistetaanko kaikki tämän sivun korostukset?"
 	},
-	"deleteModelConfirm": {
-		"message": "Haluatko varmasti poistaa tämän mallin?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Haluatko varmasti poistaa tämän palveluntarjoajan?"
-	},
 	"disableHighlighter": {
 		"message": "Poista korostus käytöstä"
 	},
@@ -226,26 +202,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Korosta verkkosivujen sisältöä, jonka voit tallentaa Obsidianiin"
-	},
-	"enableInterpreter": {
-		"message": "Ota tulkki käyttöön"
-	},
-	"enableInterpreterDescription": {
-		"message": "Käytä luonnollista kieltä tietojen poimimiseen sivuilta. Voit esimerkiksi käyttää mallisyntaksia $strong_start${{\"sivun yhteenveto\"}}$strong_end$. Vaatii API-avaimen tai mukautetun mallin määrittämisen alla. $link_start$Lue lisää$link_end$.",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Avaa lukunäkymä"
@@ -329,9 +285,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Tiedoston tallennus epäonnistui"
-	},
-	"failedToSaveProvider": {
-		"message": "Palveluntarjoajan tallennus epäonnistui. Yritä uudelleen."
 	},
 	"feedback": {
 		"message": "Palaute"
@@ -478,23 +431,11 @@
 	"modelName": {
 		"message": "Mallin nimi"
 	},
-	"modelNameDescription": {
-		"message": "Mallin nimi, jonka haluat näyttää käyttöliittymässä."
-	},
 	"modelProvider": {
 		"message": "Tarjoaja"
 	},
-	"modelProviderDescription": {
-		"message": "Valitse tämän mallin tarjoaja."
-	},
 	"modelProviderPlaceholder": {
 		"message": "Tarjoaja"
-	},
-	"modelRequiredFields": {
-		"message": "Mallin nimi, tarjoaja ja mallin tunnus ovat pakollisia."
-	},
-	"models": {
-		"message": "Mallit"
 	},
 	"modelsListFor": {
 		"message": "Malliluettelo $1"
@@ -600,12 +541,6 @@
 	"pleaseReload": {
 		"message": "Yritä ladata sivu uudelleen."
 	},
-	"popularModels": {
-		"message": "Suositut mallit"
-	},
-	"popularModelsDescription": {
-		"message": "Valitse yleisesti käytettyjä malleja tai syötä mukautetut mallin tiedot."
-	},
 	"popup": {
 		"message": "Ponnahdusikkuna"
 	},
@@ -651,55 +586,20 @@
 	"propertyValue": {
 		"message": "Ominaisuuden arvo"
 	},
-	"provider": {
-		"message": "Palveluntarjoaja"
-	},
 	"providerApiKey": {
 		"message": "API-avain"
-	},
-	"providerApiKeyDescription": {
-		"message": "API-avaimesi tälle tarjoajalle."
 	},
 	"providerBaseUrl": {
 		"message": "Perus-URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "API:n perus-URL. Käytä $strong_start${model}$strong_end$ -muuttujaa mallin tunnuksen lisäämiseen.",
-		"placeholders": {
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
-	},
 	"providerModelId": {
 		"message": "Mallin tunnus"
-	},
-	"providerModelIdDescription": {
-		"message": "Mallin tunniste tarjoajaltasi. Tyypillisesti lyhyt nimi ilman välilyöntejä."
 	},
 	"providerModelIdPlaceholder": {
 		"message": "Mallin tunnus"
 	},
-	"providerName": {
-		"message": "Palveluntarjoajan nimi"
-	},
-	"providerNameDescription": {
-		"message": "Näyttönimi tälle palveluntarjoajalle."
-	},
 	"providerPreset": {
 		"message": "Esiasetus"
-	},
-	"providerPresetDescription": {
-		"message": "Valitse palveluntarjoaja tai luo mukautettu palveluntarjoaja."
-	},
-	"providerRequiredFields": {
-		"message": "Palveluntarjoajan nimi ja perus-URL ovat pakollisia."
-	},
-	"providers": {
-		"message": "Palveluntarjoajat"
 	},
 	"rateExtensionDescription": {
 		"message": "Pidätkö Web Clipperista? Auta meitä antamalla sille arvostelu."
@@ -857,9 +757,6 @@
 	"readerViewFullSize": {
 		"message": "Näytä täysikokoisena"
 	},
-	"recommended": {
-		"message": "suositeltu"
-	},
 	"refresh": {
 		"message": "Päivitä"
 	},
@@ -913,9 +810,6 @@
 	},
 	"searchVariables": {
 		"message": "Etsi muuttujia..."
-	},
-	"selectProvider": {
-		"message": "Valitse tarjoaja"
 	},
 	"selectTemplateToExport": {
 		"message": "Valitse vietävä malli."
@@ -1036,9 +930,6 @@
 	},
 	"thinking": {
 		"message": "ajattelee"
-	},
-	"unknownProvider": {
-		"message": "Tuntematon palveluntarjoaja"
 	},
 	"updateAvailable": {
 		"message": "Päivitys saatavilla"

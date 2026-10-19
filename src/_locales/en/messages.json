@@ -5,20 +5,8 @@
 	"activity": {
 		"message": "Activity"
 	},
-	"addModel": {
-		"message": "+ Add model"
-	},
-	"addModelTitle": {
-		"message": "Add model"
-	},
 	"addProperty": {
 		"message": "+ Add property"
-	},
-	"addProvider": {
-		"message": "+ Add provider"
-	},
-	"addProviderTitle": {
-		"message": "Add provider"
 	},
 	"addToObsidian": {
 		"message": "Add to Obsidian"
@@ -74,14 +62,11 @@
 	"aiRequestCancelled": {
 		"message": "AI request cancelled."
 	},
-	"aiLanguageToolsRequireInterpreter": {
-		"message": "Enable Interpreter and configure a model before using AI language tools."
-	},
 	"aiErrorNotConfiguredTitle": {
 		"message": "AI isn't set up"
 	},
 	"aiErrorNotConfiguredBody": {
-		"message": "Enable interpreter and choose a model in Settings."
+		"message": "Enable AI features and choose a model in the AI section of Settings."
 	},
 	"aiErrorCredentialMissingTitle": {
 		"message": "API key missing"
@@ -178,9 +163,6 @@
 	},
 	"aiErrorProviderErrorBody": {
 		"message": "The provider returned an error. Try again later, or check the details."
-	},
-	"aiLanguageToolsRequireModel": {
-		"message": "Enable an Interpreter model before using AI language tools."
 	},
 	"aiSettings": {
 		"message": "AI"
@@ -479,9 +461,6 @@
 	"alwaysShowHighlightsDescription": {
 		"message": "Display your saved highlights when you load a page. Turn off to only display highlights when highlighter mode is activated."
 	},
-	"apiKeyMissing": {
-		"message": "No API key"
-	},
 	"apiKeysWarning": {
 		"message": "By using an external provider you agree to their terms and privacy policy. Interpreter requests are sent directly to the provider you choose. Obsidian does not gather or store any data about your requests."
 	},
@@ -511,9 +490,6 @@
 	},
 	"cancel": {
 		"message": "Cancel"
-	},
-	"cannotDeleteProvider": {
-		"message": "Cannot delete provider \"$1\" because it is being used by $2 model(s)."
 	},
 	"changelog": {
 		"message": "Changelog"
@@ -612,12 +588,6 @@
 	"deleteHighlightsForPage": {
 		"message": "Delete all highlights for this page?"
 	},
-	"deleteModelConfirm": {
-		"message": "Are you sure you want to delete this model?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Are you sure you want to delete this provider?"
-	},
 	"disableHighlighter": {
 		"message": "Turn off highlighter"
 	},
@@ -667,26 +637,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Highlight content on web pages that you can save to Obsidian."
-	},
-	"enableInterpreter": {
-		"message": "Enable interpreter"
-	},
-	"enableInterpreterDescription": {
-		"message": "Use natural language to extract data from pages. For example, you can use the template syntax $strong_start${{\"a summary of the page\"}}$strong_end$. Requires an API key or custom model configured below.  $link_start$Learn more$link_end$.",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Open reading view"
@@ -770,9 +720,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Failed to save file"
-	},
-	"failedToSaveProvider": {
-		"message": "Failed to save provider. Please try again."
 	},
 	"feedback": {
 		"message": "Feedback"
@@ -878,24 +825,6 @@
 	"interpreter": {
 		"message": "Interpreter"
 	},
-	"interpreterCodexModel": {
-		"message": "Codex model"
-	},
-	"interpreterCodexReasoningEffort": {
-		"message": "Codex reasoning effort"
-	},
-	"interpreterCodexReasoningEffortDefault": {
-		"message": "Use Codex CLI default"
-	},
-	"interpreterCodexReasoningEffortDescription": {
-		"message": "Override reasoning effort for every Codex CLI action. Higher effort can take longer and use more tokens. Unsupported model and effort combinations fail without fallback."
-	},
-	"interpreterCodexModelDescription": {
-		"message": "Override the model for every Codex CLI action. Leave empty to use the Codex CLI default."
-	},
-	"interpreterCodexModelPlaceholder": {
-		"message": "Use Codex CLI default"
-	},
 	"interpreterExecutionMode": {
 		"message": "Execution mode"
 	},
@@ -904,9 +833,6 @@
 	},
 	"interpreterExecutionModeCodex": {
 		"message": "Codex CLI"
-	},
-	"interpreterExecutionModeDescription": {
-		"message": "Use an API provider, or a locally installed Grok/Codex CLI through Chrome Native Messaging. The CLI modes require a one-time host installation."
 	},
 	"interpreterExecutionModeGrok": {
 		"message": "Grok CLI"
@@ -924,13 +850,13 @@
 		"message": "The model answered $1 of $2 prompts. The unanswered prompts below stay as placeholders in the note. Fill them in, or add the note to Obsidian as it is. To interpret again, reopen Web Clipper."
 	},
 	"interpreterContextDescription": {
-		"message": "The context used to interpret prompt variables. Overrides the default context defined in $link_start$Interpreter settings$link_end$. Variables can be used here.",
+		"message": "The context used to interpret prompt variables. Overrides the default context defined in $link_start$AI settings$link_end$. Variables can be used here.",
 		"placeholders": {
 			"link_end": {
 				"content": "</a>"
 			},
 			"link_start": {
-				"content": "<a href=\"?section=interpreter\">"
+				"content": "<a href=\"?section=ai\">"
 			}
 		}
 	},
@@ -948,27 +874,6 @@
 	},
 	"nativeCliFailed": {
 		"message": "The local CLI request failed. Check the CLI output and Native Messaging Host installation."
-	},
-	"nativeCliHealth": {
-		"message": "Local CLI connection"
-	},
-	"nativeCliHealthCheck": {
-		"message": "Check connection"
-	},
-	"nativeCliHealthChecking": {
-		"message": "Checking the Native Messaging Host and selected CLI…"
-	},
-	"nativeCliHealthDescription": {
-		"message": "Check the Native Messaging Host and selected CLI without sending page content."
-	},
-	"nativeCliHealthFailed": {
-		"message": "Connection check failed ($1): $2"
-	},
-	"nativeCliHealthLastRun": {
-		"message": "Last run: $1 at $2."
-	},
-	"nativeCliHealthReady": {
-		"message": "Connected to $1 (protocol $2)."
 	},
 	"nativeCliInstallCopied": {
 		"message": "Install command copied. Run it once in Terminal, reload the extension, then check the connection."
@@ -1015,23 +920,11 @@
 	"modelName": {
 		"message": "Display name"
 	},
-	"modelNameDescription": {
-		"message": "The name of the model you want to display in the interface."
-	},
 	"modelProvider": {
 		"message": "Provider"
 	},
-	"modelProviderDescription": {
-		"message": "Select the provider for this model."
-	},
 	"modelProviderPlaceholder": {
 		"message": "Provider"
-	},
-	"modelRequiredFields": {
-		"message": "Model name, Provider, and Model ID are required."
-	},
-	"models": {
-		"message": "Models"
 	},
 	"modelsListFor": {
 		"message": "Models list for $1"
@@ -1137,12 +1030,6 @@
 	"pleaseReload": {
 		"message": "Please try reloading the page."
 	},
-	"popularModels": {
-		"message": "Popular models"
-	},
-	"popularModelsDescription": {
-		"message": "Choose from commonly used models or enter custom model details."
-	},
 	"popup": {
 		"message": "Popup"
 	},
@@ -1188,47 +1075,20 @@
 	"propertyValue": {
 		"message": "Property value"
 	},
-	"provider": {
-		"message": "Provider"
-	},
 	"providerApiKey": {
 		"message": "API key"
-	},
-	"providerApiKeyDescription": {
-		"message": "Your API key for this provider."
 	},
 	"providerBaseUrl": {
 		"message": "Base URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "The API endpoint URL for this provider."
-	},
 	"providerModelId": {
 		"message": "Model ID"
-	},
-	"providerModelIdDescription": {
-		"message": "The identifier of the model from your provider. Typically a short name without spaces."
 	},
 	"providerModelIdPlaceholder": {
 		"message": "Model ID"
 	},
-	"providerName": {
-		"message": "Provider name"
-	},
-	"providerNameDescription": {
-		"message": "Display name for this provider."
-	},
 	"providerPreset": {
 		"message": "Preset"
-	},
-	"providerPresetDescription": {
-		"message": "Choose a provider or create a custom one."
-	},
-	"providerRequiredFields": {
-		"message": "Provider name and Base URL are required."
-	},
-	"providers": {
-		"message": "Providers"
 	},
 	"rateExtensionDescription": {
 		"message": "Are you enjoying Web Clipper? Help us by giving it a rating."
@@ -1578,9 +1438,6 @@
 	"readerViewFullSize": {
 		"message": "View full size"
 	},
-	"recommended": {
-		"message": "recommended"
-	},
 	"refresh": {
 		"message": "Refresh"
 	},
@@ -1634,9 +1491,6 @@
 	},
 	"searchVariables": {
 		"message": "Search variables..."
-	},
-	"selectProvider": {
-		"message": "Select a provider"
 	},
 	"selectTemplateToExport": {
 		"message": "Please select a template to export."
@@ -1758,9 +1612,6 @@
 	"thinking": {
 		"message": "thinking"
 	},
-	"unknownProvider": {
-		"message": "Unknown provider"
-	},
 	"updateAvailable": {
 		"message": "An update is available."
 	},
@@ -1804,9 +1655,6 @@
 	"languageLearningReadinessApiReady": {
 		"message": "API model is ready"
 	},
-	"languageLearningReadinessBrowserLanguage": {
-		"message": "Response language uses your browser language"
-	},
 	"languageLearningReadinessCliFailed": {
 		"message": "Local CLI connection needs attention"
 	},
@@ -1816,35 +1664,11 @@
 	"languageLearningReadinessCliUnchecked": {
 		"message": "Check the selected local CLI connection"
 	},
-	"languageLearningReadinessDescription": {
-		"message": "Complete these checks before using translation, explanations, or Japanese readings in Reader."
-	},
 	"languageLearningReadinessEnable": {
 		"message": "Enable Interpreter"
 	},
 	"languageLearningReadinessEnabled": {
 		"message": "Interpreter is enabled"
-	},
-	"languageLearningReadinessIncomplete": {
-		"message": "Complete the items above, then run the check again."
-	},
-	"languageLearningReadinessLanguage": {
-		"message": "Response language: $1"
-	},
-	"languageLearningReadinessReaderSettings": {
-		"message": "Reader settings"
-	},
-	"languageLearningReadinessReady": {
-		"message": "Language learning is ready"
-	},
-	"languageLearningReadinessReadyDescription": {
-		"message": "You can use language-learning actions directly in Reader."
-	},
-	"languageLearningReadinessReview": {
-		"message": "Review setup"
-	},
-	"languageLearningReadinessTitle": {
-		"message": "Set up language learning"
 	},
 	"readerAutoPause": {
 		"message": "Pause after each sentence"

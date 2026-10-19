@@ -10,7 +10,7 @@ const lazyChunks = [
 	'reader-language-learning.js',
 	'reader-markdown.js',
 	'reader-syntax-highlighting.js',
-	'settings-interpreter.js',
+	'settings-ai.js',
 	'src_utils_language-learning-runtime_ts.js',
 	'vendors-node_modules_defuddle_dist_index_full_js.js'
 ];

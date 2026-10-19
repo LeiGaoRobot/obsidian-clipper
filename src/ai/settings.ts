@@ -54,10 +54,10 @@ export type AiStorageKey = AiSyncKey | AiLocalKey | AiSessionKey;
 export type AiStorageAreaName = 'sync' | 'local' | 'session';
 
 /**
- * Whether `load()` bootstraps v2 from v1 when no `ai_connections` item exists. Off in 5a, so every
- * reader can move to the store with no behavior change; the 5b switch commit turns it on.
+ * Whether `load()` bootstraps v2 from v1 when no `ai_connections` item exists. It was off in 5a, so
+ * every reader could move to the store with no behavior change; the 5b switch commit turned it on.
  */
-export const AI_V2_BOOTSTRAP = false;
+export const AI_V2_BOOTSTRAP = true;
 
 /** `chrome.storage.sync.QUOTA_BYTES_PER_ITEM`; Firefox enforces the same limit. */
 export const SYNC_QUOTA_BYTES_PER_ITEM = 8192;
@@ -405,6 +405,23 @@ export function encodeAiSettingsSync(view: AiSettingsView): AiSyncItems {
 	};
 }
 
+/**
+ * The five sync items of a fresh v2 configuration, from `AI_SETTINGS_DEFAULTS`. A response
+ * language (the v1 Reader setting, which can exist without any other v1 AI item) is kept.
+ */
+export function defaultAiSyncItems(responseLanguage?: string): AiSyncItems {
+	return {
+		[AI_CONNECTIONS_KEY]: encodeConnections(AI_SETTINGS_DEFAULTS.connections),
+		[AI_PROFILES_KEY]: encodeProfiles(AI_SETTINGS_DEFAULTS.profiles),
+		[AI_ROUTING_KEY]: encodeRouting({
+			taskProfiles: { ...AI_SETTINGS_DEFAULTS.taskProfiles },
+			...(responseLanguage ? { responseLanguage } : {})
+		}),
+		[AI_INTERPRETER_KEY]: encodeInterpreter({ enabled: AI_SETTINGS_DEFAULTS.enabled, autoRun: AI_SETTINGS_DEFAULTS.autoRun }),
+		[AI_PROMPT_CONTEXT_KEY]: encodePromptContext(AI_SETTINGS_DEFAULTS.defaultPromptContext)
+	};
+}
+
 // --- Quota ---------------------------------------------------------------------------------------
 
 export type AiSettingsStorageErrorReason = 'item-too-large' | 'total-quota' | 'write-rate';
@@ -554,6 +571,14 @@ export function sanitizeV1AiSettings(interpreterSettings: unknown, readerSetting
 	};
 }
 
+/** The trimmed v1 Reader response language, as the migration copies it to `ai_routing`. */
+function v1ResponseLanguage(readerSettings: unknown): string | undefined {
+	const language = isRecord(readerSettings) && typeof readerSettings.learningResponseLanguage === 'string'
+		? readerSettings.learningResponseLanguage.trim()
+		: '';
+	return language || undefined;
+}
+
 // --- Store ---------------------------------------------------------------------------------------
 
 /** Pure planner for the v1 → v2 bootstrap (implemented in `migrate.ts`). */
@@ -601,7 +626,10 @@ export interface AiSettingsStoreOptions {
 
 export interface AiSettingsSnapshot {
 	view: AiSettingsView;
-	/** `stored` when sync has `ai_connections`; `derived` when the view is computed from v1. */
+	/**
+	 * `stored` when sync has `ai_connections`; `derived` when it does not, and the view is computed
+	 * from v1 (or is the defaults when no v1 item exists either).
+	 */
 	mode: 'stored' | 'derived';
 	connectionStatus: Record<string, ConnectionStatus>;
 	/** Why the bootstrap writes failed; the view then reflects only what is actually stored. */
@@ -624,6 +652,14 @@ export interface AiSettingsStore {
 	setCredential(connectionId: string, apiKey: string): Promise<boolean>;
 	deleteCredential(connectionId: string): Promise<boolean>;
 	deleteConnectionStatus(connectionIds: string | readonly string[]): Promise<boolean>;
+	/**
+	 * Makes sure v2 exists before a Settings write, for a user action only. Resolves `true` when
+	 * `ai_connections` is stored afterwards. A pending v1 migration runs first (its failure
+	 * rejects); only when neither v1 nor v2 exists (a fresh install) does it write the sync items
+	 * that are absent, from `AI_SETTINGS_DEFAULTS`, in one `set`. It never overwrites a stored item,
+	 * and a store without the bootstrapper (Popup, Reader) never creates v2 and resolves `false`.
+	 */
+	ensureV2(): Promise<boolean>;
 	/** Reports which AI keys changed, per area. Returns the unsubscribe function. */
 	observe(listener: (change: AiSettingsChange) => void): () => void;
 }
@@ -693,6 +729,11 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 		if (syncState[AI_CONNECTIONS_KEY] !== undefined) {
 			return { view: decodeAiSettings(syncState, localState, support), mode: 'stored', connectionStatus, ...errorField };
 		}
+		if (!isRecord(syncState[V1_INTERPRETER_SETTINGS_KEY])) {
+			// Neither v2 nor v1 AI settings: a fresh install. Show what `ensureV2` would create, not
+			// the legacy CLI connections a derived view always lists.
+			return { view: freshView(syncState, localState, support), mode: 'derived', connectionStatus, ...errorField };
+		}
 		const v1 = sanitizeV1AiSettings(syncState[V1_INTERPRETER_SETTINGS_KEY], syncState[V1_READER_SETTINGS_KEY]);
 		return {
 			// deriveAiSettings reads only the fields in V1AiSettings.
@@ -757,6 +798,43 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 		return connectionId;
 	}
 
+	function freshView(
+		syncState: Record<string, unknown>,
+		localState: Record<string, unknown>,
+		support: NativeMessagingSupport
+	): AiSettingsView {
+		const view = decodeAiSettings(syncState, localState, support);
+		const language = v1ResponseLanguage(syncState[V1_READER_SETTINGS_KEY]);
+		if (syncState[AI_ROUTING_KEY] !== undefined || !language) return view;
+		return { ...view, routing: { ...view.routing, responseLanguage: language } };
+	}
+
+	function ensureV2(): Promise<boolean> {
+		if (!bootstrapper) return Promise.resolve(false);
+		const run = async (): Promise<boolean> => {
+			// Runs the v1 migration when v1 exists, so a fresh v2 can never skip it.
+			const snapshot = await readSnapshot();
+			if (snapshot.mode === 'stored') return true;
+			if (snapshot.bootstrapError !== undefined) throw snapshot.bootstrapError;
+			const raw = await sync.get(SYNC_READ_KEYS);
+			if (raw[AI_CONNECTIONS_KEY] !== undefined) return true;
+			// v1 that the bootstrapper did not migrate is left to it; nothing is created over it.
+			if (isRecord(raw[V1_INTERPRETER_SETTINGS_KEY])) return false;
+			const writes: Record<string, unknown> = {};
+			const defaults = defaultAiSyncItems(v1ResponseLanguage(raw[V1_READER_SETTINGS_KEY]));
+			for (const [key, value] of Object.entries(defaults)) {
+				if (raw[key] === undefined) writes[key] = value;
+			}
+			for (const [key, value] of Object.entries(writes)) assertSyncItemSize(key, value);
+			await setMapped(sync, writes);
+			return true;
+		};
+		// Queued with bootstrap loads, so a concurrent load cannot interleave with the writes.
+		const result = loadQueue.then(run);
+		loadQueue = result.catch(() => undefined);
+		return result;
+	}
+
 	async function deleteCredential(connectionId: string): Promise<boolean> {
 		const id = requireId(connectionId);
 		return updateLocal(AI_CREDENTIALS_KEY, decodeCredentials, current => {
@@ -796,6 +874,7 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 			));
 		},
 		deleteCredential,
+		ensureV2,
 		async deleteConnectionStatus(connectionIds) {
 			const ids = (typeof connectionIds === 'string' ? [connectionIds] : [...connectionIds]).map(requireId);
 			return updateLocal(AI_CONNECTION_STATUS_KEY, decodeConnectionStatus, current => {

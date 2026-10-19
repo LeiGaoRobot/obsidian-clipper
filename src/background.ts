@@ -487,8 +487,8 @@ browser.runtime.onMessage.addListener((request: unknown) => {
 // a browser restart. Without it (Safari < 16.4) records last only as long as this worker.
 const aiJobSession = (browser.storage as unknown as { session?: StorageAreaLike }).session;
 
-// The background's own v2 AI settings store, wired like the UI one in `utils/ai-settings.ts`. Until
-// the Phase 5b switch (`AI_V2_BOOTSTRAP`), the view is derived from the v1 items on every load.
+// The background's own v2 AI settings store, wired like the UI one in `utils/ai-settings.ts`. It
+// runs the v1 → v2 bootstrap (`AI_V2_BOOTSTRAP`) on load; the Popup and Reader stores never do.
 const aiSettingsStore = createAiSettingsStore({
 	sync: browser.storage.sync as unknown as StorageAreaLike,
 	local: browser.storage.local as unknown as StorageAreaLike,
@@ -518,6 +518,13 @@ browser.runtime.onConnect.addListener(port => aiGateway.handlePort(port));
 // Resumes jobs the user started that were running when the previous worker stopped.
 aiGateway.init().catch(error => {
 	console.error('Could not resume AI jobs:', error);
+});
+// Storage work only, never a model request: migrates v1 AI settings (and imports this device's
+// v1 keys) when the worker starts, so the Popup and Reader, whose stores never bootstrap, find v2.
+aiSettingsStore.loadSnapshot().then(snapshot => {
+	if (snapshot.bootstrapError !== undefined) console.error('Could not set up AI settings:', snapshot.bootstrapError);
+}, error => {
+	console.error('Could not load AI settings:', error);
 });
 
 browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void): true | undefined => {

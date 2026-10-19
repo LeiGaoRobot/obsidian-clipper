@@ -1,6 +1,6 @@
 import { runAiTask } from '../ai/client';
 import { describeAiError } from '../ai/error-messages';
-import { toAiError, type AiErrorCode } from '../ai/errors';
+import { AiError, toAiError, type AiErrorCode } from '../ai/errors';
 import {
 	clearTranscriptCheckpoint,
 	loadTranscriptCheckpoint,
@@ -27,7 +27,6 @@ import {
 import { getMessage } from './i18n';
 import type { NativeCliErrorCode } from './native-cli-contract';
 import { RequestCancelledError, throwIfRequestAborted } from './request-cancellation';
-import { saveSettings } from './storage-utils';
 import { loadAiSettings } from './ai-settings';
 import {
 	executionModeOfKind,
@@ -151,6 +150,14 @@ async function loadResponseLanguage(): Promise<string> {
 }
 
 /**
+ * The language Reader asks the model to answer in: `ai_routing.responseLanguage` (or, before v2
+ * exists, the v1 Reader setting it is derived from), then the browser language. Storage only.
+ */
+export function loadConfiguredResponseLanguage(): Promise<string> {
+	return loadResponseLanguage();
+}
+
+/**
  * The profile routing names for a task and its connection kind, from profile → connection. The
  * Reader is a content script whose view reports no Native Messaging, so this deliberately skips
  * `resolveProfile`'s availability checks: the background decides whether a CLI can run.
@@ -171,16 +178,18 @@ function requestContext(view: AiSettingsView, task: AiTask): RequestContext {
 
 async function loadConfiguredAssistant() {
 	const view = await loadAiSettings();
-	// These pre-checks keep the Reader's own copy, which `not-configured` from the resolver does not
-	// match (decision 6 drops them in Task 9 once the copy is reconciled). The model check is per
-	// task: in derived mode a task has a profile exactly when v1 is in a CLI mode or has an enabled
-	// model, as the former `api && !defaultProfileId` check required.
-	if (!view.enabled) {
-		throw new Error(getMessage('aiLanguageToolsRequireInterpreter'));
-	}
+	// The view-local half of the resolver's checks, with its `not-configured` error and copy, so a
+	// disabled or unrouted task fails here without a round trip. Availability (credentials, Native
+	// Messaging) is left to the background, which this content script cannot see.
 	const requireProfile = (task: AiTask): RequestContext => {
-		if (!routedProfileId(view, task)) throw new Error(getMessage('aiLanguageToolsRequireModel'));
-		return requestContext(view, task);
+		const context = requestContext(view, task);
+		if (!view.enabled) {
+			throw toLanguageLearningError(new AiError('not-configured', { reason: 'disabled' }), context);
+		}
+		if (!routedProfileId(view, task)) {
+			throw toLanguageLearningError(new AiError('not-configured', { reason: 'no-profile' }), context);
+		}
+		return context;
 	};
 
 	const responseLanguage = responseLanguageOf(view);
@@ -303,19 +312,14 @@ export const configuredLanguageLearning = {
 		})));
 	},
 
-	/** Routes a Reader task to a profile (the error card's Switch and retry). */
+	/**
+	 * Routes a Reader task to a profile (the error card's Switch and retry). The Reader's store
+	 * never creates v2, so before the background has bootstrapped this device the switch rejects,
+	 * and the card reports the failure instead of retrying on the old profile.
+	 */
 	async setTaskProfile(task: ReaderAiTask, profileId: string): Promise<void> {
-		const { written, view } = await saveTaskProfile(task, profileId);
-		if (written) return;
-		// DERIVED-MODE FALLBACK — delete in Phase 5 Task 9 (the AI_V2_BOOTSTRAP switch), with the
-		// `saveSettings` import. Until v2 is stored the store write is a no-op, so the switch keeps
-		// its v1 effect, which is global rather than per task: a CLI profile sets
-		// `interpreterExecutionMode` (as `setExecutionMode` did) and an API profile sets the `api`
-		// mode with that profile as `interpreterModel` (its id is the v1 model id).
-		const mode = executionModeOfKind(findProfileConnection(view, profileId)?.connection.kind);
-		await saveSettings(mode === 'api'
-			? { interpreterExecutionMode: 'api', interpreterModel: profileId }
-			: { interpreterExecutionMode: mode });
+		const { written } = await saveTaskProfile(task, profileId);
+		if (!written) throw new Error('AI settings are not set up on this device yet.');
 	},
 
 	async loadTranscriptTranslations(segments: string[]): Promise<string[] | undefined> {

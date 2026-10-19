@@ -113,7 +113,8 @@ interface TranscriptSettings {
 	compactPlayer?: boolean;
 	bilingualSubtitles?: boolean;
 	japaneseReadings?: boolean;
-	learningResponseLanguage?: string;
+	/** From the AI settings (`ai_routing.responseLanguage`), not from the Reader settings. */
+	responseLanguage?: string;
 }
 
 type TranscriptSettingChange = <K extends keyof TranscriptSettings>(
@@ -460,7 +461,7 @@ export function wireTranscript(
 				segments,
 				controls: learningControls.items,
 				tools: languageLearning,
-				responseLanguage: settings.learningResponseLanguage,
+				responseLanguage: settings.responseLanguage,
 				restoreBilingualSubtitles: settings.bilingualSubtitles,
 				restoreJapaneseReadings: settings.japaneseReadings,
 				onPreferenceChange: (key, value) => onSettingChange?.(key, value),

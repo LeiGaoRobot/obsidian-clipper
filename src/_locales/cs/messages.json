@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "Aktivita"
 	},
-	"addModel": {
-		"message": "+ Přidat model"
-	},
-	"addModelTitle": {
-		"message": "Přidat model"
-	},
 	"addProperty": {
 		"message": "+ Přidat vlastnost"
-	},
-	"addProvider": {
-		"message": "+ Přidat poskytovatele"
-	},
-	"addProviderTitle": {
-		"message": "Přidat poskytovatele"
 	},
 	"addToObsidian": {
 		"message": "Přidat do Obsidianu"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "Zobrazit uložená zvýraznění při načtení stránky. Vypněte pro zobrazení zvýraznění pouze při aktivním režimu zvýrazňování."
-	},
-	"apiKeyMissing": {
-		"message": "Chybí API klíč"
 	},
 	"apiKeysWarning": {
 		"message": "Používáním externího poskytovatele souhlasíte s jejich podmínkami a zásadami ochrany osobních údajů. Požadavky překladače jsou odesílány přímo vašemu vybranému poskytovateli. Obsidian neshromažďuje ani neukládá žádné informace o vašich požadavcích."
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "Zrušit"
-	},
-	"cannotDeleteProvider": {
-		"message": "Nelze smazat poskytovatele \"$1\", protože je používán $2 modely."
 	},
 	"changelog": {
 		"message": "Seznam změn"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "Smazat všechny zvýrazněné pasáže pro tuto stránku?"
 	},
-	"deleteModelConfirm": {
-		"message": "Opravdu chcete smazat tento model?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Opravdu chcete smazat tohoto poskytovatele?"
-	},
 	"disableHighlighter": {
 		"message": "Deaktivovat zvýrazňovač"
 	},
@@ -226,26 +202,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Zvýrazněte obsah na webových stránkách, který můžete uložit do Obsidian."
-	},
-	"enableInterpreter": {
-		"message": "Povolit překladač"
-	},
-	"enableInterpreterDescription": {
-		"message": "Použijte přirozený jazyk k extrakci dat ze stránek. Například můžete použít syntaxi šablony $strong_start${{\"shrnutí stránky\"}}$strong_end$. Vyžaduje klíč API nebo vlastní model nakonfigurovaný níže. $link_start$Zjistěte více$link_end$.",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Otevřít čtecí zobrazení"
@@ -329,9 +285,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Nepodařilo se uložit soubor"
-	},
-	"failedToSaveProvider": {
-		"message": "Nepodařilo se uložit poskytovatele. Zkuste to prosím znovu."
 	},
 	"feedback": {
 		"message": "Zpětná vazba"
@@ -478,23 +431,11 @@
 	"modelName": {
 		"message": "Název modelu"
 	},
-	"modelNameDescription": {
-		"message": "Název zobrazený v rozbalovací nabídce modelu"
-	},
 	"modelProvider": {
 		"message": "Poskytovatel"
 	},
-	"modelProviderDescription": {
-		"message": "Vyberte poskytovatele pro tento model."
-	},
 	"modelProviderPlaceholder": {
 		"message": "Poskytovatel"
-	},
-	"modelRequiredFields": {
-		"message": "Název modelu, Poskytovatel a ID modelu jsou povinné."
-	},
-	"models": {
-		"message": "Modely"
 	},
 	"modelsListFor": {
 		"message": "Seznam modelů pro $1"
@@ -592,12 +533,6 @@
 	"pleaseReload": {
 		"message": "Zkuste prosím znovu načíst stránku."
 	},
-	"popularModels": {
-		"message": "Populární modely"
-	},
-	"popularModelsDescription": {
-		"message": "Vyberte z běžně používaných modelů nebo zadejte detaily vlastního modelu."
-	},
 	"popup": {
 		"message": "Vyskakovací okno"
 	},
@@ -643,47 +578,20 @@
 	"propertyValue": {
 		"message": "Hodnota vlastnosti"
 	},
-	"provider": {
-		"message": "Poskytovatel"
-	},
 	"providerApiKey": {
 		"message": "API klíč"
-	},
-	"providerApiKeyDescription": {
-		"message": "Váš API klíč pro tohoto poskytovatele."
 	},
 	"providerBaseUrl": {
 		"message": "Základní URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "URL koncového bodu API pro tohoto poskytovatele."
-	},
 	"providerModelId": {
 		"message": "ID modelu"
-	},
-	"providerModelIdDescription": {
-		"message": "Identifikátor modelu od vašeho poskytovatele. Obvykle krátký název bez mezer."
 	},
 	"providerModelIdPlaceholder": {
 		"message": "ID modelu"
 	},
-	"providerName": {
-		"message": "Název poskytovatele"
-	},
-	"providerNameDescription": {
-		"message": "Zobrazovaný název tohoto poskytovatele."
-	},
 	"providerPreset": {
 		"message": "Přednastavení"
-	},
-	"providerPresetDescription": {
-		"message": "Vyberte poskytovatele nebo vytvořte vlastního."
-	},
-	"providerRequiredFields": {
-		"message": "Název poskytovatele a základní URL jsou povinná pole."
-	},
-	"providers": {
-		"message": "Poskytovatelé"
 	},
 	"rateExtensionDescription": {
 		"message": "Líbí se vám Web Clipper? Pomozte nám jeho ohodnocením."
@@ -841,9 +749,6 @@
 	"readerViewFullSize": {
 		"message": "Zobrazit v plné velikosti"
 	},
-	"recommended": {
-		"message": "doporučeno"
-	},
 	"refresh": {
 		"message": "Obnovit"
 	},
@@ -897,9 +802,6 @@
 	},
 	"searchVariables": {
 		"message": "Hledat proměnné..."
-	},
-	"selectProvider": {
-		"message": "Vyberte poskytovatele"
 	},
 	"selectTemplateToExport": {
 		"message": "Vyberte prosím šablonu k exportu."
@@ -1020,9 +922,6 @@
 	},
 	"thinking": {
 		"message": "přemýšlím"
-	},
-	"unknownProvider": {
-		"message": "Neznámý poskytovatel"
 	},
 	"updateAvailable": {
 		"message": "Je k dispozici aktualizace."

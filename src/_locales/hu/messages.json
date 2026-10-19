@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "Tevékenység"
 	},
-	"addModel": {
-		"message": "+ Modell hozzáadása"
-	},
-	"addModelTitle": {
-		"message": "Modell hozzáadása"
-	},
 	"addProperty": {
 		"message": "+ Tulajdonság hozzáadása"
-	},
-	"addProvider": {
-		"message": "+ Szolgáltató hozzáadása"
-	},
-	"addProviderTitle": {
-		"message": "Szolgáltató hozzáadása"
 	},
 	"addToObsidian": {
 		"message": "Hozzáadás az Obsidianhoz"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "A mentett kiemelések megjelenítése az oldal betöltésekor. Kapcsold ki, ha csak akkor szeretnéd megjeleníteni a kiemeléseket, amikor a kiemelő mód aktiválva van."
-	},
-	"apiKeyMissing": {
-		"message": "Nincs API-kulcs"
 	},
 	"apiKeysWarning": {
 		"message": "Külső szolgáltató használatával elfogadod annak feltételeit és adatvédelmi irányelveit. Az interpreter kérései közvetlenül a választott szolgáltatóhoz kerülnek elküldésre. Az Obsidian nem gyűjt és nem tárol semmilyen adatot a kéréseidről."
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "Mégse"
-	},
-	"cannotDeleteProvider": {
-		"message": "Nem lehet törölni a(z) „$1” szolgáltatót, mert $2 modell használja."
 	},
 	"changelog": {
 		"message": "Változásnapló"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "Törlöd az összes kiemelést ehhez az oldalhoz?"
 	},
-	"deleteModelConfirm": {
-		"message": "Biztosan törölni szeretnéd ezt a modellt?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Biztosan törölni szeretnéd ezt a szolgáltatót?"
-	},
 	"disableHighlighter": {
 		"message": "Kiemelő kikapcsolása"
 	},
@@ -226,26 +202,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Kiemelheted a weboldalakon a tartalmat, amit elmenthetsz az Obsidianba."
-	},
-	"enableInterpreter": {
-		"message": "Interpreter engedélyezése"
-	},
-	"enableInterpreterDescription": {
-		"message": "Használj természetes nyelvet az oldalakból való adatkinyeréshez. Például használhatod a sablonszintaxist: $strong_start${{\"a summary of the page\"}}$strong_end$. Ehhez API-kulcs vagy egy alább beállított egyéni modell szükséges. $link_start$További információ$link_end$.",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Olvasó nézet megnyitása"
@@ -329,9 +285,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Nem sikerült menteni a fájlt"
-	},
-	"failedToSaveProvider": {
-		"message": "Nem sikerült menteni a szolgáltatót. Kérjük, próbáld újra."
 	},
 	"feedback": {
 		"message": "Visszajelzés"
@@ -478,23 +431,11 @@
 	"modelName": {
 		"message": "Megjelenített név"
 	},
-	"modelNameDescription": {
-		"message": "A modell neve, amelyet a felületen szeretnél megjeleníteni."
-	},
 	"modelProvider": {
 		"message": "Szolgáltató"
 	},
-	"modelProviderDescription": {
-		"message": "Válaszd ki a szolgáltatót ehhez a modellhez."
-	},
 	"modelProviderPlaceholder": {
 		"message": "Szolgáltató"
-	},
-	"modelRequiredFields": {
-		"message": "A modell neve, a szolgáltató és a modellazonosító megadása kötelező."
-	},
-	"models": {
-		"message": "Modellek"
 	},
 	"modelsListFor": {
 		"message": "Modellek listája ehhez: $1"
@@ -600,12 +541,6 @@
 	"pleaseReload": {
 		"message": "Kérjük, próbáld meg újratölteni az oldalt."
 	},
-	"popularModels": {
-		"message": "Népszerű modellek"
-	},
-	"popularModelsDescription": {
-		"message": "Válassz a gyakran használt modellek közül, vagy add meg egy egyéni modell adatait."
-	},
 	"popup": {
 		"message": "Felugró ablak"
 	},
@@ -651,47 +586,20 @@
 	"propertyValue": {
 		"message": "Tulajdonság értéke"
 	},
-	"provider": {
-		"message": "Szolgáltató"
-	},
 	"providerApiKey": {
 		"message": "API-kulcs"
-	},
-	"providerApiKeyDescription": {
-		"message": "Az API-kulcsod ehhez a szolgáltatóhoz."
 	},
 	"providerBaseUrl": {
 		"message": "Alap URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "A szolgáltató API-végpontjának URL-je."
-	},
 	"providerModelId": {
 		"message": "Modellazonosító"
-	},
-	"providerModelIdDescription": {
-		"message": "A szolgáltatódnál lévő modell azonosítója. Általában egy rövid, szóközök nélküli név."
 	},
 	"providerModelIdPlaceholder": {
 		"message": "Modellazonosító"
 	},
-	"providerName": {
-		"message": "Szolgáltató neve"
-	},
-	"providerNameDescription": {
-		"message": "A szolgáltató megjelenített neve."
-	},
 	"providerPreset": {
 		"message": "Előbeállítás"
-	},
-	"providerPresetDescription": {
-		"message": "Válassz egy szolgáltatót, vagy hozz létre egy egyénit."
-	},
-	"providerRequiredFields": {
-		"message": "A szolgáltató neve és az alap URL megadása kötelező."
-	},
-	"providers": {
-		"message": "Szolgáltatók"
 	},
 	"rateExtensionDescription": {
 		"message": "Tetszik a Web Clipper? Segíts nekünk azzal, hogy értékeled."
@@ -849,9 +757,6 @@
 	"readerViewFullSize": {
 		"message": "Megtekintés teljes méretben"
 	},
-	"recommended": {
-		"message": "ajánlott"
-	},
 	"refresh": {
 		"message": "Frissítés"
 	},
@@ -905,9 +810,6 @@
 	},
 	"searchVariables": {
 		"message": "Változók keresése..."
-	},
-	"selectProvider": {
-		"message": "Szolgáltató kiválasztása"
 	},
 	"selectTemplateToExport": {
 		"message": "Kérjük, válassz ki egy exportálandó sablont."
@@ -1028,9 +930,6 @@
 	},
 	"thinking": {
 		"message": "gondolkodás"
-	},
-	"unknownProvider": {
-		"message": "Ismeretlen szolgáltató"
 	},
 	"updateAvailable": {
 		"message": "Frissítés érhető el."

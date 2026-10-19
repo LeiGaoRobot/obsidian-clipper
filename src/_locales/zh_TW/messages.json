@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "活動"
 	},
-	"addModel": {
-		"message": "+ 新增模型"
-	},
-	"addModelTitle": {
-		"message": "新增模型"
-	},
 	"addProperty": {
 		"message": "+ 新增屬性"
-	},
-	"addProvider": {
-		"message": "+ 新增提供者"
-	},
-	"addProviderTitle": {
-		"message": "新增提供者"
 	},
 	"addToObsidian": {
 		"message": "新增到 Obsidian"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "載入頁面時顯示已儲存的標記。關閉此選項則僅在啟用標記模式時顯示標記。"
-	},
-	"apiKeyMissing": {
-		"message": "無 API 金鑰"
 	},
 	"apiKeysWarning": {
 		"message": "使用外部提供者即表示您同意其條款和隐私政策。解譯器請求直接發送給您選擇的提供者。Obsidian 不會收集或儲存任何關於您請求的資料。"
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "取消"
-	},
-	"cannotDeleteProvider": {
-		"message": "無法刪除提供者 \"$1\"，因為它正在被 $2 個模型使用。"
 	},
 	"changelog": {
 		"message": "更新日誌"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "要刪除此頁面的所有螢光標記嗎？"
 	},
-	"deleteModelConfirm": {
-		"message": "您確定要刪除此模型嗎？"
-	},
-	"deleteProviderConfirm": {
-		"message": "您確定要刪除此提供者嗎？"
-	},
 	"disableHighlighter": {
 		"message": "停用標記"
 	},
@@ -226,26 +202,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "在網頁上標記內容，您可以將其儲存到 Obsidian。"
-	},
-	"enableInterpreter": {
-		"message": "啟用解譯器"
-	},
-	"enableInterpreterDescription": {
-		"message": "使用自然語言從頁面提取資料。例如，您可以使用範本語法 $strong_start${{\"頁面摘要\"}}$strong_end$。需要 API 金鑰或下面配置的自定義模型。$link_start$了解更多$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "開啟閱讀視圖"
@@ -329,9 +285,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "儲存檔案失敗"
-	},
-	"failedToSaveProvider": {
-		"message": "儲存提供者失敗。請再試一次。"
 	},
 	"feedback": {
 		"message": "反饋"
@@ -478,23 +431,11 @@
 	"modelName": {
 		"message": "模型名稱"
 	},
-	"modelNameDescription": {
-		"message": "您想要在介面中顯示的模型名稱。"
-	},
 	"modelProvider": {
 		"message": "提供者"
 	},
-	"modelProviderDescription": {
-		"message": "模型提供者，例如 Ollama、OpenRouter、Google 等。"
-	},
 	"modelProviderPlaceholder": {
 		"message": "提供者"
-	},
-	"modelRequiredFields": {
-		"message": "模型名稱、提供者和模型 ID 是必填的。"
-	},
-	"models": {
-		"message": "模型"
 	},
 	"modelsListFor": {
 		"message": "$1 的模型列表"
@@ -600,12 +541,6 @@
 	"pleaseReload": {
 		"message": "請嘗試重新載入頁面。"
 	},
-	"popularModels": {
-		"message": "熱門模型"
-	},
-	"popularModelsDescription": {
-		"message": "選擇常用模型或輸入自定義模型詳情。"
-	},
 	"popup": {
 		"message": "彈出視窗"
 	},
@@ -651,47 +586,20 @@
 	"propertyValue": {
 		"message": "屬性值"
 	},
-	"provider": {
-		"message": "提供者"
-	},
 	"providerApiKey": {
 		"message": "API 金鑰"
-	},
-	"providerApiKeyDescription": {
-		"message": "這是您的提供者 API 金鑰。"
 	},
 	"providerBaseUrl": {
 		"message": "基礎 URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "這是此提供者的 API 端點 URL。"
-	},
 	"providerModelId": {
 		"message": "模型 ID"
-	},
-	"providerModelIdDescription": {
-		"message": "來自您提供者的模型識別碼。通常是一個不含空格的簡短名稱。"
 	},
 	"providerModelIdPlaceholder": {
 		"message": "模型 ID"
 	},
-	"providerName": {
-		"message": "提供者名稱"
-	},
-	"providerNameDescription": {
-		"message": "此提供者的顯示名稱。"
-	},
 	"providerPreset": {
 		"message": "預設"
-	},
-	"providerPresetDescription": {
-		"message": "選擇一個提供者或創建一個自訂的。"
-	},
-	"providerRequiredFields": {
-		"message": "提供者名稱和基礎 URL 是必填的。"
-	},
-	"providers": {
-		"message": "提供者"
 	},
 	"rateExtensionDescription": {
 		"message": "您喜歡Web Clipper嗎？請幫助我們給它評分。"
@@ -849,9 +757,6 @@
 	"readerViewFullSize": {
 		"message": "檢視原始大小"
 	},
-	"recommended": {
-		"message": "推薦"
-	},
 	"refresh": {
 		"message": "重新整理"
 	},
@@ -905,9 +810,6 @@
 	},
 	"searchVariables": {
 		"message": "搜尋變數..."
-	},
-	"selectProvider": {
-		"message": "選擇一個提供者"
 	},
 	"selectTemplateToExport": {
 		"message": "請選擇一個要匯出的模板。"
@@ -1028,9 +930,6 @@
 	},
 	"thinking": {
 		"message": "思考中"
-	},
-	"unknownProvider": {
-		"message": "未知的提供者"
 	},
 	"updateAvailable": {
 		"message": "有可用更新。"

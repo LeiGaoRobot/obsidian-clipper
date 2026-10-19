@@ -73,7 +73,7 @@ The Chrome extension can use the same local CLI modes through Native Messaging. 
 npm run build:chrome
 ```
 
-In Web Clipper **Settings → Interpreter**, enable Interpreter and choose **Grok CLI** or **Codex CLI** under **Execution mode**. Select **Copy install command**; local unpacked builds insert the current extension ID and source path, so the command works from any Terminal directory. Run it once, reload the extension, and then select **Check connection**. The check verifies the Native Messaging protocol and executable path without sending page content. Chrome cannot install a Native Messaging Host silently from an extension page, so this one-time system installation remains an explicit user action. Packaged release ZIPs exclude the local source path and use the separately distributed Native Messaging Host companion.
+In Web Clipper **Settings → AI**, select **Add Grok CLI** or **Add Codex CLI** under **Add local CLI**, then choose its model for each task in **Task routing** and turn on **Enable AI features**. Select **Copy install command**; local unpacked builds insert the current extension ID and source path, so the command works from any Terminal directory. Run it once and reload the extension. Chrome cannot install a Native Messaging Host silently from an extension page, so this one-time system installation remains an explicit user action. Packaged release ZIPs exclude the local source path and use the separately distributed Native Messaging Host companion.
 
 The installer records the detected `grok` and `codex` executable paths, so the host does not depend on Chrome's shell `PATH`. The local CLI must already be installed and authenticated. The installer currently supports Google Chrome on macOS and Linux.
 

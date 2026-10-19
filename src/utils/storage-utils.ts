@@ -273,11 +273,8 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 	if (settings) {
 		generalSettings = { ...generalSettings, ...settings };
 	}
-	generalSettings.interpreterCodexModel = normalizeCodexModel(generalSettings.interpreterCodexModel);
-	generalSettings.interpreterCodexReasoningEffort = normalizeCodexReasoningEffort(
-		generalSettings.interpreterCodexReasoningEffort
-	);
-
+	// AI settings are written only by the v2 store (`ai_*` keys). `interpreter_settings` is left as
+	// it is in sync storage, for older builds and the per-device key import.
 	await browser.storage.sync.set({
 		vaults: generalSettings.vaults,
 		general_settings: {
@@ -292,21 +289,6 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 			highlighterEnabled: generalSettings.highlighterEnabled,
 			alwaysShowHighlights: generalSettings.alwaysShowHighlights,
 			highlightBehavior: generalSettings.highlightBehavior
-		},
-		interpreter_settings: {
-			interpreterModel: generalSettings.interpreterModel,
-			models: generalSettings.models,
-			providers: generalSettings.providers,
-			interpreterEnabled: generalSettings.interpreterEnabled,
-			interpreterAutoRun: generalSettings.interpreterAutoRun,
-			interpreterExecutionMode: generalSettings.interpreterExecutionMode ?? 'api',
-			...(generalSettings.interpreterCodexModel
-				? { interpreterCodexModel: generalSettings.interpreterCodexModel }
-				: {}),
-			...(generalSettings.interpreterCodexReasoningEffort
-				? { interpreterCodexReasoningEffort: generalSettings.interpreterCodexReasoningEffort }
-				: {}),
-			defaultPromptContext: generalSettings.defaultPromptContext
 		},
 		property_types: generalSettings.propertyTypes,
 		reader_settings: {

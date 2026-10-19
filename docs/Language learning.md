@@ -4,19 +4,22 @@ aliases:
   - Language learning with Web Clipper
 description: Use AI to revise clipped text, translate YouTube and Bilibili transcripts, and explain words or sentences.
 ---
-The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clipper]] use your configured [[Interpret web pages|Interpreter]] model to revise clipped content, display bilingual YouTube and Bilibili transcripts, and explain selected language in context.
+The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clipper]] use the models you set up in **Settings → AI** (see [[Interpret web pages|Interpreter]]) to revise clipped content, display bilingual YouTube and Bilibili transcripts, and explain selected language in context.
 
 > [!warning] Model usage and privacy
 > Each AI action sends the relevant clipped text or transcript context to the model provider you configured. The provider may charge for the request. Web Clipper does not run these actions automatically.
 
 ## Set up language learning
 
-1. Open Web Clipper **Settings**.
-2. In **Interpreter**, open the language-learning setup assistant. Enable Interpreter and either configure at least one enabled provider and model, or choose a local **Grok CLI**/**Codex CLI** execution mode. In Codex CLI mode, optional **Codex model** and **Codex reasoning effort** overrides apply independently to every Interpreter and language-learning action; leave either at its default to use the CLI default. Reasoning effort choices are `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`, and availability depends on the selected model. An unsupported model and effort combination is shown as a retryable CLI failure, with no fallback to another model. Higher effort can take longer and use more tokens. For a local source build, select **Copy install command**, run the generated command once from any Terminal directory, and reload the extension. For details, see [[Interpret web pages#Local Grok and Codex CLI modes|Local Grok and Codex CLI modes]].
-3. Run the readiness check. For a local CLI, it verifies the Native Messaging Host and selected executable without sending page content. A successful check confirms connectivity, but does not validate Codex model or reasoning-effort compatibility; those are validated only when you run an explicit action.
-4. In **Reader** → **Transcripts**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`. You can also set the default compact-player, bilingual-subtitle, and Japanese-reading visibility, and choose the Obsidian vault and folder used for learning notes.
+1. Open Web Clipper **Settings** and go to **AI**.
+2. Under **Connections**, add an API provider with **Add API provider**, or, on Chrome, a local CLI with **Add local CLI**. API keys are stored only on this device, in the browser's local extension storage as plain text, and do not sync to your other devices. For a local source build, select **Copy install command**, run the generated command once from any Terminal directory, and reload the extension. For details, see [[Interpret web pages#Local Grok and Codex CLI connections|Local Grok and Codex CLI connections]].
+3. Under **Models**, add and enable at least one model. A Codex CLI model has an optional model ID and **Reasoning effort**; leave either at its default to use the CLI default. Reasoning effort choices are `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`, and availability depends on the selected model. An unsupported model and effort combination is shown as a retryable CLI failure, with no fallback to another model. Higher effort can take longer and use more tokens.
+4. Under **Task routing**, choose the **Default model**. Optionally choose a different model for **AI edit**, **Subtitle translation**, **Japanese readings**, or **Explanations**; each row shows the status of the connection its model uses.
+5. Under **Language**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`.
+6. Under **Interpreter**, turn on **Enable AI features**.
+7. In **Reader** → **Transcripts**, optionally set the default compact-player, bilingual-subtitle, and Japanese-reading visibility, and choose the Obsidian vault and folder used for learning notes.
 
-If the response-language field is empty, Web Clipper uses your browser language. The setting controls transcript translations, word and sentence explanations, and presets that use a response language.
+If the response-language field is empty, Web Clipper uses your browser language. The setting controls transcript translations, word and sentence explanations, and presets that use a response language. It moved from the Reader settings to **Settings → AI → Language**; a language you set there before is carried over once.
 
 Word and sentence explanations instruct the model to use this language for all explanation text, labels, and translations.
 
@@ -24,7 +27,7 @@ On Firefox, the install or update prompt discloses website-content transmission 
 
 ## Revise clipped content with AI
 
-The AI editing controls appear in the extension popup and side panel when Interpreter is enabled and either an API model or a configured local CLI mode is available.
+The AI editing controls appear in the extension popup and side panel when AI features are enabled and **Task routing** names a model for **AI edit** (its own choice or the default model). When that model's key is missing on this device, or it is a local CLI this browser cannot reach, the controls still appear and the error card explains what to set up.
 
 1. Capture a page normally.
 2. In the note-content field, select the text you want to change. Leave the selection empty to process the entire clipping.
@@ -78,7 +81,7 @@ The job runs in the extension background, not in the Reader page. Closing or rel
 After readings load—even for **Current segment** or **Next 5 minutes**—select **Edit readings**, edit a reading directly above its kanji, then select **Done editing**. Select **Regenerate readings** when the model chose the wrong reading; this explicitly reruns reading generation for the selected range while preserving readings outside that range. Corrections are stored with the transcript's session result and in your persistent personal reading dictionary. Known words are reused in later transcripts, and a segment whose kanji are all covered by the dictionary is annotated locally without an AI request.
 
 > [!note] Session results
-> Transcript translations, Japanese readings, and manual corrections are stored in extension session storage, not in the webpage. Reader reads and saves them through the extension background, so the host page cannot access them. They survive closing or reloading the Reader and extension background restarts in supported Chromium and Firefox versions, but are cleared when the browser session ends. Web Clipper keeps up to 20 recent transcript results and removes the oldest first. Browsers without extension session storage keep results in memory only while the extension background runs. Restoring a saved result and saving corrections never send a request and work even while Interpreter is disabled. These results are not automatically added to the clipping.
+> Transcript translations, Japanese readings, and manual corrections are stored in extension session storage, not in the webpage. Reader reads and saves them through the extension background, so the host page cannot access them. They survive closing or reloading the Reader and extension background restarts in supported Chromium and Firefox versions, but are cleared when the browser session ends. Web Clipper keeps up to 20 recent transcript results and removes the oldest first. Browsers without extension session storage keep results in memory only while the extension background runs. Restoring a saved result and saving corrections never send a request and work even while AI features are disabled. These results are not automatically added to the clipping.
 
 ## Explain a word
 
@@ -105,9 +108,9 @@ The selection action also works with touch selection on mobile browsers that sup
 
 ## Model selection and requests
 
-Language-learning tools use the selected Interpreter model in API mode. In Grok CLI or Codex CLI mode, requests are sent to the selected local CLI through the background service worker and do not require an Interpreter API model. In Codex CLI mode, optional model and reasoning-effort overrides apply independently to each request; leave either at its default to use the CLI default. Effort availability depends on the selected model, and higher effort can take longer and use more tokens.
+Each language-learning task uses the model **Settings → AI → Task routing** names for it: **AI edit** for AI edits, **Subtitle translation** for bilingual transcripts, **Japanese readings** for readings (and the Japanese translation before them), and **Explanations** for word and sentence explanations. A task set to **Use default** uses the default model. When a Reader request fails, the error card lists your enabled models; **Switch and retry** routes the task that failed to the chosen model and runs it again. A Codex CLI model's model ID and reasoning effort apply to each of its requests; effort availability depends on the selected model, and higher effort can take longer and use more tokens.
 
-All provider and local CLI requests run in the extension background. API keys are not inserted into the page or transcript DOM. Local CLI mode sends the relevant content to the local Native Messaging Host and then to the selected CLI.
+All provider and local CLI requests run in the extension background. API keys are not inserted into the page or transcript DOM. A local CLI connection sends the relevant content to the local Native Messaging Host and then to the selected CLI.
 
 The following actions can create model-provider usage:
 
@@ -127,9 +130,9 @@ Cancelling a Reader request stops the extension from waiting for or applying tha
 
 ### AI editing controls are missing
 
-Confirm that Interpreter is enabled. In API mode, at least one Interpreter model must be enabled; in CLI mode, confirm that the Native Messaging Host is installed and the selected CLI is installed and authenticated. Reload the popup after changing Interpreter settings.
+Confirm that **Enable AI features** is on in **Settings → AI**, and that **Task routing** names an enabled model for **AI edit** or as the default model. For a local CLI, confirm that the Native Messaging Host is installed and the CLI is installed and authenticated. Reload the popup after changing AI settings.
 
-For CLI mode, open **Settings** → **Interpreter** and select **Check connection**. A protocol mismatch means the extension was rebuilt without reinstalling the Host. A configuration error means the selected executable was not detected at install time or no longer exists.
+For a local CLI, a protocol mismatch error means the extension was rebuilt without reinstalling the Host. A configuration error means the CLI's executable was not detected at install time or no longer exists.
 
 ### Transcript language controls are missing
 
@@ -137,7 +140,7 @@ The controls are available only when Reader detects a supported YouTube or Bilib
 
 ### A translation is incomplete or stops partway
 
-Select **Continue remaining**. Completed lines are kept, and only missing segments are sent. If the task bar shows *Provider busy, retrying*, the provider is rate limiting requests; wait for the retry or select **Cancel** and try again later. If the problem continues, choose **Current segment** or **Next 5 minutes**, switch execution mode from the error card, or use a model with a larger context window.
+Select **Continue remaining**. Completed lines are kept, and only missing segments are sent. If the task bar shows *Provider busy, retrying*, the provider is rate limiting requests; wait for the retry or select **Cancel** and try again later. If the problem continues, choose **Current segment** or **Next 5 minutes**, choose another model with **Switch and retry** on the error card, or use a model with a larger context window.
 
 ### Japanese readings time out in CLI mode
 
@@ -145,7 +148,7 @@ Rebuild and reload the Chromium extension, then rerun the Native Messaging insta
 
 ### The provider returns an error
 
-Check the provider URL, API key, enabled model, quota, local-model server, or Native Messaging Host installation as appropriate. For general setup and provider help, see [[Interpret web pages#Models|Interpreter models]] and [[Troubleshoot Web Clipper]].
+Check the connection's base URL and API key on this device, the routed model, quota, local-model server, or Native Messaging Host installation as appropriate. For general setup and provider help, see [[Interpret web pages#Models|Interpreter models]] and [[Troubleshoot Web Clipper]].
 
 ## Current limitations
 

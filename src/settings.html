@@ -20,7 +20,7 @@
 						<li data-section="general"><div class="nav-item-icon"><i data-lucide="paperclip"></i></div><span data-i18n="general">General</span></li>
 						<li data-section="reader"><div class="nav-item-icon"><i data-lucide="book-open"></i></div><span data-i18n="reader">Reader</span></li>
 						<li data-section="highlighter"><div class="nav-item-icon"><i data-lucide="highlighter"></i></div><span data-i18n="highlighter">Highlighter</span></li>
-						<li data-section="interpreter"><div class="nav-item-icon"><i data-lucide="quote"></i></div><span data-i18n="interpreter">Interpreter</span></li>
+						<li data-section="ai"><div class="nav-item-icon"><i data-lucide="quote"></i></div><span data-i18n="aiSettings">AI</span></li>
 						<li data-section="properties"><div class="nav-item-icon"><i data-lucide="archive"></i></div><span data-i18n="properties">Properties</span></li>
 						<li class="sidebar-heading" data-i18n="templatesHeading">Templates</li>
 					</ul>
@@ -507,26 +507,6 @@
 									</div>
 									<div class="setting-item mod-horizontal">
 										<div class="setting-item-info">
-											<label for="reader-learning-response-language" data-i18n="readerLearningResponseLanguage">AI response language</label>
-											<div class="setting-item-description" data-i18n="readerLearningResponseLanguageDescription">Language used for subtitle translations and AI explanations. Leave empty to use your browser language.</div>
-											<div id="reader-learning-response-language-effective" class="setting-item-description" aria-live="polite"></div>
-										</div>
-										<div class="setting-item-control">
-											<input type="text" id="reader-learning-response-language" list="reader-learning-response-language-options" aria-describedby="reader-learning-response-language-effective" data-i18n="readerLearningResponseLanguagePlaceholder" />
-											<datalist id="reader-learning-response-language-options">
-												<option value="English"></option>
-												<option value="Simplified Chinese"></option>
-												<option value="Traditional Chinese"></option>
-												<option value="Japanese"></option>
-												<option value="Korean"></option>
-												<option value="Spanish"></option>
-												<option value="French"></option>
-												<option value="German"></option>
-											</datalist>
-										</div>
-									</div>
-									<div class="setting-item mod-horizontal">
-										<div class="setting-item-info">
 											<label for="reader-learning-vault" data-i18n="readerLearningVault">Learning vault</label>
 											<div class="setting-item-description" data-i18n="readerLearningVaultDescription">Vault used when saving vocabulary to Obsidian. Leave empty to use the first configured vault.</div>
 										</div>
@@ -560,157 +540,7 @@
 						</form>
 					</div>
 
-					<div id="interpreter-section" class="settings-section">
-						<div class="settings-section-header">
-							<h2 data-i18n="interpreter">Interpreter</h2>
-						</div>
-						<form id="interpreter-settings-form">
-							<details id="language-learning-readiness" class="language-learning-readiness">
-								<summary data-i18n="languageLearningReadinessTitle">Set up language learning</summary>
-								<p data-i18n="languageLearningReadinessDescription">Complete these checks before using translation, explanations, or Japanese readings in Reader.</p>
-								<ol id="language-learning-readiness-steps"></ol>
-								<div class="language-learning-readiness-actions">
-									<button type="button" id="language-learning-readiness-check" data-i18n="languageLearningReadinessReview">Review setup</button>
-									<a class="btn" href="settings.html?section=reader" data-i18n="languageLearningReadinessReaderSettings">Reader settings</a>
-								</div>
-								<div id="language-learning-readiness-status" class="setting-item-description" role="status" aria-live="polite"></div>
-							</details>
-							<div class="setting-group">
-								<div class="setting-items">
-									<div class="setting-item mod-horizontal mod-toggle">
-										<div class="setting-item-info">
-											<label for="interpreter-toggle" data-i18n="enableInterpreter">Enable interpreter</label>
-											<div class="setting-item-description" data-i18n="enableInterpreterDescription">
-												Use natural language to extract data from pages. For example, you can use the template syntax <strong>{{"a summary of the page"}}</strong>. Requires an API key or custom model configured below. <a href="https://help.obsidian.md/web-clipper/interpreter" target="_blank">Learn more</a>.
-											</div>
-										</div>
-										<div class="setting-item-control">
-											<div class="checkbox-container">
-												<input type="checkbox" id="interpreter-toggle" />
-											</div>
-										</div>
-									</div>
-									<div class="setting-item mod-horizontal mod-toggle">
-										<div class="setting-item-info">
-											<label for="interpreter-auto-run-toggle" data-i18n="autoRunInterpreter">Automatically run</label>
-											<div class="setting-item-description" data-i18n="autoRunInterpreterDescription">Run prompt variables immediately if the template contains any. This will consume API credits with your model provider. Turn off if you only want to run interpreter manually.</div>
-										</div>
-										<div class="setting-item-control">
-											<div class="checkbox-container">
-												<input type="checkbox" id="interpreter-auto-run-toggle" />
-											</div>
-										</div>
-									</div>
-									<div class="setting-item mod-horizontal">
-										<div class="setting-item-info">
-											<label for="interpreter-execution-mode" data-i18n="interpreterExecutionMode">Execution mode</label>
-											<div class="setting-item-description" data-i18n="interpreterExecutionModeDescription">Use an API provider, or a locally installed Grok/Codex CLI through Chrome Native Messaging. The CLI modes require a one-time host installation.</div>
-										</div>
-										<div class="setting-item-control">
-											<select id="interpreter-execution-mode">
-												<option value="api" data-i18n="interpreterExecutionModeApi">API provider</option>
-												<option value="grok" data-i18n="interpreterExecutionModeGrok">Grok CLI</option>
-												<option value="codex" data-i18n="interpreterExecutionModeCodex">Codex CLI</option>
-											</select>
-										</div>
-									</div>
-									<div class="setting-item mod-horizontal" id="interpreter-codex-model-item" hidden>
-										<div class="setting-item-info">
-											<label for="interpreter-codex-model" data-i18n="interpreterCodexModel">Codex model</label>
-											<div class="setting-item-description" data-i18n="interpreterCodexModelDescription">Override the model for every Codex CLI action. Leave empty to use the Codex CLI default.</div>
-										</div>
-										<div class="setting-item-control">
-											<input type="text" id="interpreter-codex-model" list="interpreter-codex-model-options" maxlength="200" autocomplete="off" data-i18n="interpreterCodexModelPlaceholder" />
-											<datalist id="interpreter-codex-model-options">
-												<option value="gpt-5.6-sol"></option>
-												<option value="gpt-5.6-terra"></option>
-												<option value="gpt-5.6-luna"></option>
-											</datalist>
-										</div>
-									</div>
-									<div class="setting-item mod-horizontal" id="interpreter-codex-reasoning-effort-item" hidden>
-										<div class="setting-item-info">
-											<label for="interpreter-codex-reasoning-effort" data-i18n="interpreterCodexReasoningEffort">Codex reasoning effort</label>
-											<div class="setting-item-description" data-i18n="interpreterCodexReasoningEffortDescription">Override reasoning effort for every Codex CLI action. Higher effort can take longer and use more tokens. Unsupported model and effort combinations fail without fallback.</div>
-										</div>
-										<div class="setting-item-control">
-											<select id="interpreter-codex-reasoning-effort">
-												<option value="" data-i18n="interpreterCodexReasoningEffortDefault">Use Codex CLI default</option>
-												<option value="minimal">minimal</option>
-												<option value="low">low</option>
-												<option value="medium">medium</option>
-												<option value="high">high</option>
-												<option value="xhigh">xhigh</option>
-												<option value="max">max</option>
-												<option value="ultra">ultra</option>
-											</select>
-										</div>
-									</div>
-									<div class="setting-item mod-horizontal" id="native-cli-health-item" hidden>
-										<div class="setting-item-info">
-											<label for="native-cli-health-button" data-i18n="nativeCliHealth">Local CLI connection</label>
-											<div class="setting-item-description" data-i18n="nativeCliHealthDescription">Check the Native Messaging Host and selected CLI without sending page content.</div>
-											<div class="native-cli-install-guide">
-												<div class="setting-item-description" id="native-cli-install-description"></div>
-												<code class="native-cli-install-command" id="native-cli-install-command"></code>
-												<div class="setting-item-description native-cli-install-status" id="native-cli-install-status" role="status" aria-live="polite"></div>
-											</div>
-											<div class="setting-item-description native-cli-health-status" id="native-cli-health-status" role="status" aria-live="polite"></div>
-										</div>
-										<div class="setting-item-control native-cli-health-actions">
-											<button type="button" id="native-cli-install-copy" data-i18n="nativeCliInstallCopy">Copy install command</button>
-											<button type="button" id="native-cli-health-button" data-i18n="nativeCliHealthCheck">Check connection</button>
-										</div>
-									</div>
-								</div>
-							</div>
-							<div class="setting-group">
-								<div class="setting-item setting-item-heading">
-									<h3 data-i18n="providers">Providers</h3>
-									<div id="api-keys-warning-container" class="warning-container">
-										<div class="warning-icon">
-											<i data-lucide="alert-triangle"></i>
-										</div>
-										<div class="warning-text" data-i18n="apiKeysWarning">
-											By using an external provider you agree to their terms and privacy policy. Interpreter requests are sent directly to the provider you choose. Obsidian does not gather or store any data about your requests.
-										</div>
-									</div>
-								</div>
-								<div class="setting-items">
-								<div class="provider-list-container">
-									<div id="provider-list"></div>
-									<div class="add-btn">
-										<a id="add-provider-btn" data-i18n="addProvider">+ Add provider</a>
-									</div>
-								</div>
-								</div>
-							</div>
-							<div class="setting-group">
-								<div class="setting-item setting-item-heading"><h3 data-i18n="models">Models</h3></div>
-								<div class="setting-items">
-								<div class="model-list-container">
-									<div id="model-list"></div>
-									<div class="add-btn">
-										<a id="add-model-btn" data-i18n="addModel">+ Add model</a>
-									</div>
-								</div>
-								</div>
-							</div>
-							<div class="setting-group">
-								<div class="setting-item setting-item-heading"><h3 data-i18n="advanced">Advanced</h3></div>
-								<div class="setting-items">
-								<div class="setting-item">
-									<label for="default-prompt-context" data-i18n="defaultInterpreterContext">Default interpreter context</label>
-									<div class="setting-item-description" data-i18n="defaultInterpreterContextDescription">Override the context used to interpret prompt variables. Variables can be used here.</div>
-									<textarea id="default-prompt-context" rows="4" placeholder="{{fullHtml}}" spellcheck="false"></textarea>
-								</div>
-								
-								</div>
-							</div>
-						</form>
-					</div>
-
-					<div id="ai-section" class="settings-section" hidden inert>
+					<div id="ai-section" class="settings-section">
 						<div class="settings-section-header">
 							<h2 data-i18n="aiSettings">AI</h2>
 						</div>
@@ -944,7 +774,7 @@
 									<div class="setting-items">
 										<div class="setting-item" id="prompt-context-container">
 											<label for="prompt-context" data-i18n="interpreterContext">Interpreter context</label>
-											<div class="setting-item-description" data-i18n="interpreterContextDescription">The context used to interpret prompt variables. Overrides the default context defined in Interpreter settings. Variables can be used here.</div>
+											<div class="setting-item-description" data-i18n="interpreterContextDescription">The context used to interpret prompt variables. Overrides the default context defined in AI settings. Variables can be used here.</div>
 											<textarea id="prompt-context" rows="4" spellcheck="false"></textarea>
 										</div>
 									</div>
@@ -974,122 +804,6 @@
 				<div class="modal-button-container">
 					<button class="import-confirm-btn mod-cta" data-i18n="import">Import</button>
 					<button class="import-cancel-btn" data-i18n="cancel">Cancel</button>
-				</div>
-			</div>
-		</div>
-
-		<div id="model-modal" class="modal-container">
-			<div class="modal-bg"></div>
-			<div class="modal">
-				<div class="modal-header">
-					<div class="modal-title" data-i18n="addModelTitle"></div>
-				</div>
-				<div class="modal-content">
-					<form id="model-form">
-						<div class="setting-item">
-							<div class="setting-item-info">
-								<label for="model-provider" data-i18n="provider">Provider</label>
-								<div class="setting-item-description" data-i18n="modelProviderDescription">Select the provider for this model.</div>
-							</div>
-							<div class="setting-item-control">
-								<select id="model-provider" name="providerId" required>
-									<option value="" data-i18n="selectProvider">Select a provider</option>
-								</select>
-							</div>
-						</div>
-						<div class="setting-item model-selection-container" style="display: none;">
-							<div class="setting-item-info">
-								<label data-i18n="popularModels">Popular models</label>
-								<div class="setting-item-description" data-i18n="popularModelsDescription">Choose from commonly used models or enter custom model details.</div>
-							</div>
-							<div class="setting-item-control">
-								<div class="radio-container" id="model-selection-radios">
-								</div>
-							</div>
-						</div>
-						<div class="setting-item">
-							<div class="setting-item-info">
-								<label for="model-name">
-									<span data-i18n="modelName">Display name</span>
-								</label>
-								<div class="setting-item-description" data-i18n="modelNameDescription">A name for this model.</div>
-							</div>
-							<div class="setting-item-control">
-								<input type="text" id="model-name" name="name" data-i18n="modelName" placeholder="Model name" required>
-							</div>
-						</div>
-						<div class="setting-item">
-							<div class="setting-item-info">
-								<label for="provider-model-id" data-i18n="providerModelId">Model ID</label>
-								<div class="setting-item-description" data-i18n="providerModelIdDescription">The model identifier from your provider.</div>
-							</div>
-							<div class="setting-item-control">
-								<input type="text" id="provider-model-id" name="providerModelId" data-i18n="providerModelId" placeholder="Model ID" required>
-							</div>
-						</div>
-						
-					</form>
-				</div>
-				<div class="modal-button-container">
-					<button class="model-confirm-btn mod-cta" data-i18n="save">Save</button>
-					<button class="model-cancel-btn" data-i18n="cancel">Cancel</button>
-				</div>
-			</div>
-		</div>
-
-		<div id="provider-modal" class="modal-container">
-			<div class="modal-bg"></div>
-			<div class="modal">
-				<div class="modal-header">
-					<div class="modal-title" data-i18n="addProviderTitle"></div>
-				</div>
-				<div class="modal-content">
-					<form id="provider-form">
-						<div class="setting-item">
-							<div class="setting-item-info">
-								<label for="provider-preset">
-									<span data-i18n="provider">Provider</span>
-								</label>
-								<div class="setting-item-description" data-i18n="providerPresetDescription">Choose a Provider or add a custom one.</div>
-							</div>
-							<div class="setting-item-control">
-								<select id="provider-preset" name="preset">
-									<option value="">Custom</option>
-								</select>
-							</div>
-						</div>
-						<div class="setting-item">
-							<div class="setting-item-info">
-								<label for="provider-name" data-i18n="providerName">Provider name</label>
-								<div class="setting-item-description" data-i18n="providerNameDescription">Display name for this provider.</div>
-							</div>
-							<div class="setting-item-control">
-								<input type="text" id="provider-name" name="name" data-i18n="providerName" placeholder="Provider name" required>
-							</div>
-						</div>
-						<div class="setting-item">
-							<div class="setting-item-info">
-								<label for="provider-base-url" data-i18n="providerBaseUrl">Base URL</label>
-								<div class="setting-item-description" data-i18n="providerBaseUrlDescription">The API endpoint URL for this provider.</div>
-							</div>
-							<div class="setting-item-control">
-								<input type="text" id="provider-base-url" name="baseUrl" data-i18n="providerBaseUrl" placeholder="Base URL" required>
-							</div>
-						</div>
-						<div class="setting-item">
-							<div class="setting-item-info">
-								<label for="provider-api-key" data-i18n="providerApiKey">API key</label>
-								<div class="setting-item-description" data-i18n="providerApiKeyDescription">Your API key for this provider.</div>
-							</div>
-							<div class="setting-item-control">
-								<input type="text" id="provider-api-key" name="apiKey" data-i18n="providerApiKey" placeholder="API key">
-							</div>
-						</div>
-					</form>
-				</div>
-				<div class="modal-button-container">
-					<button class="provider-confirm-btn mod-cta" data-i18n="save">Save</button>
-					<button class="provider-cancel-btn" data-i18n="cancel">Cancel</button>
 				</div>
 			</div>
 		</div>

@@ -200,7 +200,10 @@ export class Reader {
 			import(/* webpackChunkName: 'reader-language-learning' */ './reader-transcript'),
 			import(/* webpackChunkName: 'reader-language-learning' */ './language-learning-runtime')
 		]);
-		transcriptModule.wireTranscript(doc, article, this.settings, {
+		// The response language is an AI setting. A failed read falls back to the browser language
+		// in the transcript UI.
+		const responseLanguage = await languageLearningModule.loadConfiguredResponseLanguage().catch(() => '');
+		transcriptModule.wireTranscript(doc, article, { ...this.settings, responseLanguage }, {
 			getStickyOffset: () => this.getStickyOffset(),
 			scrollTo: (y) => this.scrollTo(y),
 			programmaticScroll: () => this.programmaticScroll,

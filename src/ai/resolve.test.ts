@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import type { Settings } from '../types/types';
-import { assessLanguageLearningReadiness } from '../utils/language-learning-readiness';
 import { deriveAiSettings, LEGACY_CODEX_PROFILE_ID } from './settings-view';
 import { resolveProfile, resolveResponseLanguage } from './resolve';
 import type { AiSettingsView } from './types';
@@ -114,26 +113,6 @@ describe('v1 parity', () => {
 			...overrides
 		} as unknown as Settings;
 	}
-
-	const model = (id: string, providerId: string, enabled = true) => ({
-		id, providerId, providerModelId: id, name: id, enabled
-	});
-
-	test.each([
-		['a keyed model', { models: [model('m', 'p-key')] }],
-		['a model missing its key', { models: [model('m', 'p-nokey')] }],
-		['a keyless local model', { models: [model('m', 'p-local')] }],
-		['a model without a base URL', { models: [model('m', 'p-nourl')] }],
-		['a model on a deleted provider', { models: [model('m', 'gone')] }],
-		['no enabled model', { models: [model('m', 'p-key', false)] }],
-		['a stale selection', { interpreterModel: 'old', models: [model('m', 'p-nokey'), model('n', 'p-key')] }],
-		['a valid selection', { interpreterModel: 'n', models: [model('m', 'p-nokey'), model('n', 'p-key')] }],
-		['disabled Interpreter', { interpreterEnabled: false, models: [model('m', 'p-key')] }]
-	])('matches API readiness for %s', (_label, overrides) => {
-		const settings = v1(overrides as Partial<Settings>);
-		const resolved = resolveProfile(deriveAiSettings(settings, { nativeMessaging: 'port' }), 'translate');
-		expect(resolved.ok).toBe(assessLanguageLearningReadiness(settings).ready);
-	});
 
 	test('resolves the Grok profile in Grok mode on Safari-style Native Messaging', () => {
 		const settings = v1({ interpreterExecutionMode: 'grok' });

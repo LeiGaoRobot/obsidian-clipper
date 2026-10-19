@@ -68,8 +68,7 @@ export function createNativeCliPanel(options: NativeCliPanelOptions): NativeCliP
 		control.appendChild(button);
 	}
 
-	// The guide markup lives here (not in settings.html) so its ids stay unique while the old
-	// Interpreter section still carries the same ids.
+	// The guide markup lives here (not in settings.html), so it exists only where the control does.
 	const guide = createElement(doc, 'div', 'native-cli-install-guide');
 	const description = createElement(doc, 'div', 'setting-item-description');
 	description.id = 'native-cli-install-description';

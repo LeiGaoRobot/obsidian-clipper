@@ -384,31 +384,6 @@ export async function initializeReaderSettings() {
 		saveSettings({ ...generalSettings, readerSettings: { ...generalSettings.readerSettings, japaneseReadings: checked } });
 	});
 
-	const learningResponseLanguageInput = document.getElementById('reader-learning-response-language') as HTMLInputElement;
-	const learningResponseLanguageEffective = document.getElementById('reader-learning-response-language-effective');
-	if (learningResponseLanguageInput) {
-		learningResponseLanguageInput.value = generalSettings.readerSettings.learningResponseLanguage;
-		const updateLearningResponseLanguageEffective = () => {
-			if (!learningResponseLanguageEffective) return;
-			const language = learningResponseLanguageInput.value.trim();
-			learningResponseLanguageEffective.textContent = language
-				? getMessage('readerLearningResponseLanguageEffective', language)
-				: getMessage('readerLearningResponseLanguageBrowser');
-		};
-		updateLearningResponseLanguageEffective();
-		learningResponseLanguageInput.addEventListener('input', updateLearningResponseLanguageEffective);
-		learningResponseLanguageInput.addEventListener('change', () => {
-			updateLearningResponseLanguageEffective();
-			saveSettings({
-				...generalSettings,
-				readerSettings: {
-					...generalSettings.readerSettings,
-					learningResponseLanguage: learningResponseLanguageInput.value.trim()
-				}
-			});
-		});
-	}
-
 	const learningVaultSelect = document.getElementById('reader-learning-vault') as HTMLSelectElement;
 	if (learningVaultSelect) {
 		learningVaultSelect.replaceChildren();

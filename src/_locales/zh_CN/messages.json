@@ -5,20 +5,8 @@
 	"activity": {
 		"message": "活动"
 	},
-	"addModel": {
-		"message": "+ 添加模型"
-	},
-	"addModelTitle": {
-		"message": "添加模型"
-	},
 	"addProperty": {
 		"message": "+ 添加属性"
-	},
-	"addProvider": {
-		"message": "+ 添加提供商"
-	},
-	"addProviderTitle": {
-		"message": "添加提供商"
 	},
 	"addToObsidian": {
 		"message": "添加到 Obsidian"
@@ -74,14 +62,11 @@
 	"aiRequestCancelled": {
 		"message": "AI 请求已取消。"
 	},
-	"aiLanguageToolsRequireInterpreter": {
-		"message": "请先启用解释器并配置模型，再使用 AI 语言学习工具。"
-	},
 	"aiErrorNotConfiguredTitle": {
 		"message": "AI 尚未配置"
 	},
 	"aiErrorNotConfiguredBody": {
-		"message": "请在设置中启用解释器，并选择一个模型。"
+		"message": "请在设置的 AI 部分启用 AI 功能，并选择一个模型。"
 	},
 	"aiErrorCredentialMissingTitle": {
 		"message": "缺少 API 密钥"
@@ -178,9 +163,6 @@
 	},
 	"aiErrorProviderErrorBody": {
 		"message": "提供商返回了错误。请稍后重试，或查看详情。"
-	},
-	"aiLanguageToolsRequireModel": {
-		"message": "请先启用一个解释器模型，再使用 AI 语言学习工具。"
 	},
 	"aiSettings": {
 		"message": "AI"
@@ -479,9 +461,6 @@
 	"alwaysShowHighlightsDescription": {
 		"message": "加载页面时显示已保存的高亮内容。关闭此选项则仅在高亮模式激活时显示高亮。"
 	},
-	"apiKeyMissing": {
-		"message": "无 API 密钥"
-	},
 	"apiKeysWarning": {
 		"message": "使用外部提供商即表示您同意其条款和隐私政策。解释器请求直接发送给您选择的提供商。Obsidian 不会收集或存储任何关于您请求的数据。"
 	},
@@ -511,9 +490,6 @@
 	},
 	"cancel": {
 		"message": "取消"
-	},
-	"cannotDeleteProvider": {
-		"message": "无法删除提供商 \"$1\"，因为它正在被 $2 个模型使用。"
 	},
 	"changelog": {
 		"message": "更新日志"
@@ -612,12 +588,6 @@
 	"deleteHighlightsForPage": {
 		"message": "删除此页面的所有高亮？"
 	},
-	"deleteModelConfirm": {
-		"message": "您确定要删除此模型吗？"
-	},
-	"deleteProviderConfirm": {
-		"message": "您确定要删除此提供商吗？"
-	},
 	"disableHighlighter": {
 		"message": "禁用高亮"
 	},
@@ -667,26 +637,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "在网页上高亮内容并保存到 Obsidian。"
-	},
-	"enableInterpreter": {
-		"message": "启用解释器"
-	},
-	"enableInterpreterDescription": {
-		"message": "使用自然语言从页面提取数据。例如，您可以使用模板语法 $strong_start${{\"页面摘要\"}}$strong_end$。需要 API 密钥或下面配置的自定义模型。$link_start$了解更多$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "打开阅读视图"
@@ -770,9 +720,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "保存文件失败"
-	},
-	"failedToSaveProvider": {
-		"message": "无法保存提供商。请再试一次。"
 	},
 	"feedback": {
 		"message": "反馈"
@@ -878,24 +825,6 @@
 	"interpreter": {
 		"message": "解释器"
 	},
-	"interpreterCodexModel": {
-		"message": "Codex 模型"
-	},
-	"interpreterCodexReasoningEffort": {
-		"message": "Codex 推理强度"
-	},
-	"interpreterCodexReasoningEffortDefault": {
-		"message": "使用 Codex CLI 默认值"
-	},
-	"interpreterCodexReasoningEffortDescription": {
-		"message": "覆盖所有 Codex CLI 操作使用的推理强度。更高的强度可能耗时更长并使用更多 token；模型不支持所选强度时会直接失败，不会自动降级。"
-	},
-	"interpreterCodexModelDescription": {
-		"message": "覆盖所有 Codex CLI 操作使用的模型。留空则使用 Codex CLI 默认模型。"
-	},
-	"interpreterCodexModelPlaceholder": {
-		"message": "使用 Codex CLI 默认模型"
-	},
 	"interpreterExecutionMode": {
 		"message": "执行模式"
 	},
@@ -904,9 +833,6 @@
 	},
 	"interpreterExecutionModeCodex": {
 		"message": "Codex CLI"
-	},
-	"interpreterExecutionModeDescription": {
-		"message": "使用 API 提供商，或通过 Chrome Native Messaging 调用本机安装的 Grok/Codex CLI。CLI 模式需要一次性安装 Host。"
 	},
 	"interpreterExecutionModeGrok": {
 		"message": "Grok CLI"
@@ -924,13 +850,13 @@
 		"message": "模型回答了 $2 个提示词中的 $1 个。下面未回答的提示词会以占位符形式保留在笔记中。你可以手动补全，也可以直接按现状添加到 Obsidian。如需重新解读，请重新打开 Web Clipper。"
 	},
 	"interpreterContextDescription": {
-		"message": "用于解释提示变量的上下文。覆盖$link_start$解释器设置$link_end$中定义的默认上下文。此处可以使用变量。",
+		"message": "用于解释提示变量的上下文。覆盖$link_start$AI 设置$link_end$中定义的默认上下文。此处可以使用变量。",
 		"placeholders": {
 			"link_end": {
 				"content": "</a>"
 			},
 			"link_start": {
-				"content": "<a href=\"?section=interpreter\">"
+				"content": "<a href=\"?section=ai\">"
 			}
 		}
 	},
@@ -948,27 +874,6 @@
 	},
 	"nativeCliFailed": {
 		"message": "本机 CLI 请求失败。请检查 CLI 输出和 Native Messaging Host 安装。"
-	},
-	"nativeCliHealth": {
-		"message": "本机 CLI 连接"
-	},
-	"nativeCliHealthCheck": {
-		"message": "检查连接"
-	},
-	"nativeCliHealthChecking": {
-		"message": "正在检查 Native Messaging Host 和所选 CLI…"
-	},
-	"nativeCliHealthDescription": {
-		"message": "检查 Native Messaging Host 和所选 CLI，不会发送网页内容。"
-	},
-	"nativeCliHealthFailed": {
-		"message": "连接检查失败（$1）：$2"
-	},
-	"nativeCliHealthLastRun": {
-		"message": "上次运行：$1，时间 $2。"
-	},
-	"nativeCliHealthReady": {
-		"message": "已连接到 $1（协议版本 $2）。"
 	},
 	"nativeCliInstallCopied": {
 		"message": "安装命令已复制。请在终端运行一次，重新加载扩展，然后检查连接。"
@@ -1015,23 +920,11 @@
 	"modelName": {
 		"message": "模型名称"
 	},
-	"modelNameDescription": {
-		"message": "您想在界面中显示的模型名称。"
-	},
 	"modelProvider": {
 		"message": "提供商"
 	},
-	"modelProviderDescription": {
-		"message": "模型提供商，例如 Ollama、OpenRouter、Google 等。"
-	},
 	"modelProviderPlaceholder": {
 		"message": "提供商"
-	},
-	"modelRequiredFields": {
-		"message": "模型名称、提供商和模型 ID 是必需的。"
-	},
-	"models": {
-		"message": "模型"
 	},
 	"modelsListFor": {
 		"message": "$1的模型列表"
@@ -1137,12 +1030,6 @@
 	"pleaseReload": {
 		"message": "请尝试重新加载页面。"
 	},
-	"popularModels": {
-		"message": "热门模型"
-	},
-	"popularModelsDescription": {
-		"message": "从常用模型中选择，或输入自定义模型详细信息。"
-	},
 	"popup": {
 		"message": "弹出窗口"
 	},
@@ -1188,47 +1075,20 @@
 	"propertyValue": {
 		"message": "属性值"
 	},
-	"provider": {
-		"message": "提供商"
-	},
 	"providerApiKey": {
 		"message": "API 密钥"
-	},
-	"providerApiKeyDescription": {
-		"message": "此提供商的 API 密钥。"
 	},
 	"providerBaseUrl": {
 		"message": "基础 URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "此提供商的 API 端点 URL。"
-	},
 	"providerModelId": {
 		"message": "模型 ID"
-	},
-	"providerModelIdDescription": {
-		"message": "来自提供商的模型标识符。通常是一个不含空格的简短名称。"
 	},
 	"providerModelIdPlaceholder": {
 		"message": "模型 ID"
 	},
-	"providerName": {
-		"message": "提供商名称"
-	},
-	"providerNameDescription": {
-		"message": "此提供商的显示名称。"
-	},
 	"providerPreset": {
 		"message": "预设"
-	},
-	"providerPresetDescription": {
-		"message": "选择一个提供商或创建一个自定义的。"
-	},
-	"providerRequiredFields": {
-		"message": "提供商名称和基础 URL 是必需的。"
-	},
-	"providers": {
-		"message": "提供商"
 	},
 	"rateExtensionDescription": {
 		"message": "您喜欢使用Web Clipper吗？请帮助我们给它评分。"
@@ -1578,9 +1438,6 @@
 	"readerViewFullSize": {
 		"message": "查看原始大小"
 	},
-	"recommended": {
-		"message": "推荐"
-	},
 	"refresh": {
 		"message": "刷新"
 	},
@@ -1634,9 +1491,6 @@
 	},
 	"searchVariables": {
 		"message": "搜索变量..."
-	},
-	"selectProvider": {
-		"message": "选择一个提供商"
 	},
 	"selectTemplateToExport": {
 		"message": "请选择要导出的模板。"
@@ -1758,9 +1612,6 @@
 	"thinking": {
 		"message": "思考中"
 	},
-	"unknownProvider": {
-		"message": "未知的提供商"
-	},
 	"updateAvailable": {
 		"message": "有可用更新。"
 	},
@@ -1804,9 +1655,6 @@
 	"languageLearningReadinessApiReady": {
 		"message": "API 模型已就绪"
 	},
-	"languageLearningReadinessBrowserLanguage": {
-		"message": "回答语言使用浏览器语言"
-	},
 	"languageLearningReadinessCliFailed": {
 		"message": "本地 CLI 连接需要处理"
 	},
@@ -1816,35 +1664,11 @@
 	"languageLearningReadinessCliUnchecked": {
 		"message": "检查所选本地 CLI 的连接"
 	},
-	"languageLearningReadinessDescription": {
-		"message": "完成这些检查后，即可在阅读器中使用翻译、解释和日语读音。"
-	},
 	"languageLearningReadinessEnable": {
 		"message": "启用解释器"
 	},
 	"languageLearningReadinessEnabled": {
 		"message": "解释器已启用"
-	},
-	"languageLearningReadinessIncomplete": {
-		"message": "完成上面的项目，然后重新检查。"
-	},
-	"languageLearningReadinessLanguage": {
-		"message": "回答语言：$1"
-	},
-	"languageLearningReadinessReaderSettings": {
-		"message": "阅读器设置"
-	},
-	"languageLearningReadinessReady": {
-		"message": "语言学习功能已就绪"
-	},
-	"languageLearningReadinessReadyDescription": {
-		"message": "现在可以直接在阅读器中使用语言学习操作。"
-	},
-	"languageLearningReadinessReview": {
-		"message": "检查设置"
-	},
-	"languageLearningReadinessTitle": {
-		"message": "设置语言学习功能"
 	},
 	"readerAutoPause": {
 		"message": "每句结束后暂停"

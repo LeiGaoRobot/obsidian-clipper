@@ -17,6 +17,7 @@ import {
 	createAiSettingsStore,
 	decodeAiSettings,
 	decodeConnectionStatus,
+	defaultAiSyncItems,
 	encodeAiSettingsSync,
 	isAiSettingsStorageError,
 	syncItemBytes,
@@ -330,8 +331,8 @@ describe('toAiSettingsStorageError', () => {
 // --- Store: derived mode -------------------------------------------------------------------------
 
 describe('createAiSettingsStore in derived mode', () => {
-	test('AI_V2_BOOTSTRAP is off in 5a', () => {
-		expect(AI_V2_BOOTSTRAP).toBe(false);
+	test('AI_V2_BOOTSTRAP is on since the 5b switch', () => {
+		expect(AI_V2_BOOTSTRAP).toBe(true);
 	});
 
 	test.each([
@@ -377,13 +378,17 @@ describe('createAiSettingsStore in derived mode', () => {
 
 	test('loads defaults with no v1 item at all', async () => {
 		const { store } = derivedStore({});
-		const view = await store.load();
-		expect(view.enabled).toBe(false);
-		expect(view.routing.defaultProfileId).toBeUndefined();
+		const snapshot = await store.loadSnapshot();
+		expect(snapshot.mode).toBe('derived');
+		expect(snapshot.view.enabled).toBe(false);
+		expect(snapshot.view.routing.defaultProfileId).toBeUndefined();
+		// A fresh install shows what ensureV2 would create, without the derived legacy CLIs.
+		expect(snapshot.view).toEqual(decodeAiSettings({}, {}, 'port'));
 	});
 
 	test('writes are no-ops until v2 exists', async () => {
 		const { store, sync, local } = derivedStore({ interpreter_settings: v1Interpreter() });
+		await expect(store.ensureV2()).resolves.toBe(false);
 		await expect(store.saveRouting({ taskProfiles: { interpret: 'model-a' } })).resolves.toBe(false);
 		await expect(store.saveConnections([])).resolves.toBe(false);
 		await expect(store.setCredential('provider-anthropic', 'sk-new')).resolves.toBe(false);
@@ -526,6 +531,112 @@ describe('createAiSettingsStore bootstrap', () => {
 });
 
 // --- Store: writes -------------------------------------------------------------------------------
+
+describe('createAiSettingsStore ensureV2', () => {
+	function bootstrapping(sync: Record<string, unknown>, local: Record<string, unknown> = {}, bootstrapper?: AiSettingsBootstrapper) {
+		const areas = { sync: fakeArea(sync), local: fakeArea(local) };
+		const store = createAiSettingsStore({
+			...areas,
+			nativeMessaging: 'port',
+			bootstrap: true,
+			bootstrapper: bootstrapper ?? stubBootstrapper(undefined),
+			build: '1.2.3'
+		});
+		return { ...areas, store };
+	}
+
+	test('a fresh install gets the five default sync items in one set, and nothing local', async () => {
+		const { store, sync, local } = bootstrapping({});
+
+		await expect(store.ensureV2()).resolves.toBe(true);
+
+		expect(sync.sets).toEqual([defaultAiSyncItems()]);
+		expect(local.sets).toEqual([]);
+		expect(defaultAiSyncItems()).toEqual({
+			[AI_CONNECTIONS_KEY]: { v: 1, items: [] },
+			[AI_PROFILES_KEY]: { v: 1, items: [] },
+			[AI_ROUTING_KEY]: { v: 1, taskProfiles: {} },
+			[AI_INTERPRETER_KEY]: { v: 1, enabled: AI_SETTINGS_DEFAULTS.enabled, autoRun: AI_SETTINGS_DEFAULTS.autoRun },
+			[AI_PROMPT_CONTEXT_KEY]: { v: 1, text: AI_SETTINGS_DEFAULTS.defaultPromptContext }
+		});
+		const snapshot = await store.loadSnapshot();
+		expect(snapshot.mode).toBe('stored');
+		expect(snapshot.view).toEqual(decodeAiSettings({}, {}, 'port'));
+		// Then the store accepts writes.
+		await expect(store.saveRouting({ taskProfiles: { translate: 'p' } })).resolves.toBe(true);
+	});
+
+	test('never overwrites stored v2, and is a no-op once v2 exists', async () => {
+		const { store, sync } = bootstrapping(storedSync());
+		await expect(store.ensureV2()).resolves.toBe(true);
+		expect(sync.sets).toEqual([]);
+	});
+
+	test('keeps a sync item that arrived before ai_connections and writes only the absent ones', async () => {
+		const routing = { v: 1, defaultProfileId: 'p-gpt', taskProfiles: {} };
+		const { store, sync } = bootstrapping({ [AI_ROUTING_KEY]: routing });
+		await expect(store.ensureV2()).resolves.toBe(true);
+		expect(sync.sets).toHaveLength(1);
+		expect(sync.sets[0]).not.toHaveProperty(AI_ROUTING_KEY);
+		expect(Object.keys(sync.sets[0]).sort()).toEqual([AI_CONNECTIONS_KEY, AI_INTERPRETER_KEY, AI_PROFILES_KEY, AI_PROMPT_CONTEXT_KEY].sort());
+		expect(sync.data[AI_ROUTING_KEY]).toEqual(routing);
+	});
+
+	test('runs a pending v1 migration instead of writing defaults', async () => {
+		const bundle = storedSync();
+		const bootstrapper = stubBootstrapper({ sync: bundle });
+		const { store, sync } = bootstrapping({ interpreter_settings: v1Interpreter() }, {}, bootstrapper);
+
+		await expect(store.ensureV2()).resolves.toBe(true);
+
+		expect(bootstrapper.plan).toHaveBeenCalledTimes(1);
+		expect(sync.sets).toEqual([bundle]);
+		expect(sync.data.interpreter_settings).toEqual(v1Interpreter());
+	});
+
+	test('does not create v2 over v1 the bootstrapper declined to migrate', async () => {
+		const { store, sync } = bootstrapping({ interpreter_settings: v1Interpreter() }, {}, stubBootstrapper(undefined));
+		await expect(store.ensureV2()).resolves.toBe(false);
+		expect(sync.sets).toEqual([]);
+	});
+
+	test('rejects with the migration error and writes no defaults', async () => {
+		const { store, sync } = bootstrapping({ interpreter_settings: v1Interpreter() }, {}, stubBootstrapper({ sync: storedSync() }));
+		sync.failNextSet = new Error('QUOTA_BYTES quota exceeded');
+		await expect(store.ensureV2()).rejects.toMatchObject({ reason: 'total-quota' });
+		expect(sync.sets).toEqual([]);
+	});
+
+	test('maps a quota failure of the default write', async () => {
+		const { store, sync } = bootstrapping({});
+		sync.failNextSet = new Error('MAX_WRITE_OPERATIONS_PER_MINUTE quota exceeded');
+		await expect(store.ensureV2()).rejects.toMatchObject({ reason: 'write-rate' });
+		expect(sync.data).toEqual({});
+	});
+
+	test('keeps a v1 Reader response language that exists without other v1 AI settings', async () => {
+		const { store, sync } = bootstrapping({ reader_settings: { learningResponseLanguage: ' Japanese ', fontSize: 18 } });
+		expect((await store.load()).routing.responseLanguage).toBe('Japanese');
+
+		await expect(store.ensureV2()).resolves.toBe(true);
+
+		expect(sync.sets).toEqual([defaultAiSyncItems('Japanese')]);
+		expect(sync.data[AI_ROUTING_KEY]).toEqual({ v: 1, taskProfiles: {}, responseLanguage: 'Japanese' });
+		expect(sync.data.reader_settings).toEqual({ learningResponseLanguage: ' Japanese ', fontSize: 18 });
+	});
+
+	test('a store without the bootstrapper (Popup, Reader) never creates v2', async () => {
+		const { store, sync } = derivedStore({});
+		await expect(store.ensureV2()).resolves.toBe(false);
+		expect(sync.sets).toEqual([]);
+	});
+
+	test('concurrent calls write the defaults once', async () => {
+		const { store, sync } = bootstrapping({});
+		await expect(Promise.all([store.ensureV2(), store.ensureV2(), store.load()])).resolves.toHaveLength(3);
+		expect(sync.sets).toEqual([defaultAiSyncItems()]);
+	});
+});
 
 describe('createAiSettingsStore writes', () => {
 	function v2Store(local: Record<string, unknown> = storedLocal()) {

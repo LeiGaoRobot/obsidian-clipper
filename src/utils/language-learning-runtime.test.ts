@@ -371,19 +371,16 @@ describe('Configured language learning runtime', () => {
 		});
 	});
 
-	test('in derived mode a switch keeps its v1 effect', async () => {
+	test('before v2 exists a switch rejects instead of writing v1', async () => {
 		mocks.loadSettings.mockResolvedValue({
 			...settings,
 			providers: [{ id: 'provider-1', name: 'Provider', baseUrl: 'https://api.example.com/v1/chat/completions', apiKey: '' }]
 		});
 		mocks.saveRouting.mockResolvedValue(false);
 
-		await configuredLanguageLearning.setTaskProfile('translate', 'legacy-cli-codex-default');
-		expect(mocks.saveSettings).toHaveBeenLastCalledWith({ interpreterExecutionMode: 'codex' });
-
-		await configuredLanguageLearning.setTaskProfile('explain', 'model-1');
-		expect(mocks.saveSettings).toHaveBeenLastCalledWith({ interpreterExecutionMode: 'api', interpreterModel: 'model-1' });
-		expect(mocks.saveRouting).toHaveBeenCalledTimes(2);
+		await expect(configuredLanguageLearning.setTaskProfile('explain', 'model-1')).rejects.toThrow('not set up');
+		expect(mocks.saveRouting).toHaveBeenCalledTimes(1);
+		expect(mocks.saveSettings).not.toHaveBeenCalled();
 	});
 
 	test('rejects a switch to an unknown profile without writing', async () => {
@@ -436,7 +433,7 @@ describe('Configured language learning runtime', () => {
 
 		await expect(configuredLanguageLearning.translateTranscript(['Hello.'])).resolves.toEqual(['T0']);
 		await expect(configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' }))
-			.rejects.toThrow('aiLanguageToolsRequireModel');
+			.rejects.toMatchObject({ message: 'aiErrorNotConfiguredBody', details: { aiCode: 'not-configured', task: 'explain' } });
 		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
@@ -444,7 +441,7 @@ describe('Configured language learning runtime', () => {
 		mocks.loadAiSettings.mockResolvedValue({ ...storedView(), enabled: false });
 
 		await expect(configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' }))
-			.rejects.toThrow('aiLanguageToolsRequireInterpreter');
+			.rejects.toMatchObject({ message: 'aiErrorNotConfiguredBody', details: { aiCode: 'not-configured' } });
 		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
