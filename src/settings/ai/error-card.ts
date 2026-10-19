@@ -1,12 +1,14 @@
 import { describeAiError, type AiErrorAction } from '../../ai/error-messages';
+import { clearAiErrorCard, renderAiErrorCard } from '../../ai/ui/error-card';
 import type { AiError } from '../../ai/errors';
 import { isAiSettingsStorageError, type AiSettingsStorageError } from '../../ai/settings';
 import { getMessage } from '../../utils/i18n';
 import { AiSettingsBootstrapFailedError, AiSettingsItemMissingError, AiSettingsNotWritableError } from './controller';
-import { createElement, createIcon, createIconButton, createTextButton, finishRender } from './dom';
+import { createIcon, finishRender } from './dom';
 
 // The AI section's error card (decision 11): `describeAiError` for model and connection errors,
-// a quota message for refused storage writes, and a collapsed technical detail.
+// a quota message for refused storage writes, and a collapsed technical detail. The markup is the
+// shared card of `src/ai/ui/error-card.ts`, with Settings' handlers and Lucide icons.
 
 export interface SettingsErrorDescription {
 	title: string;
@@ -123,25 +125,6 @@ export function describeSettingsError(error: unknown): SettingsErrorDescription 
 	};
 }
 
-function actionButton(doc: Document, action: AiErrorAction, handlers: ErrorCardHandlers): HTMLButtonElement | undefined {
-	const handler = action === 'retry'
-		? handlers.retry
-		: action === 'copyInstallCommand'
-			? handlers.copyInstallCommand
-			: action === 'switchProfile'
-				? handlers.switchProfile
-				: undefined;
-	if (!handler) return undefined;
-	const label = action === 'retry'
-		? getMessage('aiErrorActionRetry')
-		: action === 'copyInstallCommand'
-			? getMessage('nativeCliInstallCopy')
-			: getMessage('aiErrorActionSwitchProfile');
-	const button = createTextButton(doc, label, 'ai-error-card-action');
-	button.addEventListener('click', handler);
-	return button;
-}
-
 export interface RenderErrorCardOptions {
 	handlers?: ErrorCardHandlers;
 	/** Shows a dismiss button that calls this. */
@@ -150,41 +133,21 @@ export interface RenderErrorCardOptions {
 
 /** Renders `error` into `container`, or empties and hides it when `error` is undefined. */
 export function renderErrorCard(container: HTMLElement, error: unknown, options: RenderErrorCardOptions = {}): void {
+	if (error === undefined) {
+		clearAiErrorCard(container);
+		return;
+	}
 	const doc = container.ownerDocument;
-	container.replaceChildren();
-	container.hidden = error === undefined;
-	if (error === undefined) return;
-
-	const description = describeSettingsError(error);
-	const card = createElement(doc, 'div', 'ai-error-card');
-	card.setAttribute('role', 'alert');
-	const iconContainer = createElement(doc, 'div', 'ai-error-card-icon');
-	iconContainer.appendChild(createIcon(doc, 'alert-triangle'));
-	const content = createElement(doc, 'div', 'ai-error-card-content');
-	content.append(
-		createElement(doc, 'div', 'ai-error-card-title', description.title),
-		createElement(doc, 'div', 'ai-error-card-body', description.body)
-	);
-	if (description.detail) {
-		const details = createElement(doc, 'details', 'ai-error-card-detail');
-		details.append(
-			createElement(doc, 'summary', undefined, getMessage('aiErrorTechnicalDetails')),
-			createElement(doc, 'code', undefined, description.detail)
-		);
-		content.appendChild(details);
-	}
-	const button = actionButton(doc, description.action, options.handlers ?? {});
-	if (button) {
-		const actions = createElement(doc, 'div', 'ai-error-card-actions');
-		actions.appendChild(button);
-		content.appendChild(actions);
-	}
-	card.append(iconContainer, content);
-	if (options.onDismiss) {
-		const dismiss = createIconButton(doc, 'x', getMessage('close'), 'ai-error-card-dismiss');
-		dismiss.addEventListener('click', options.onDismiss);
-		card.appendChild(dismiss);
-	}
-	container.appendChild(card);
+	const { retry, copyInstallCommand, switchProfile } = options.handlers ?? {};
+	renderAiErrorCard(container, describeSettingsError(error), {
+		doc,
+		handlers: {
+			...(retry ? { retry } : {}),
+			...(copyInstallCommand ? { copyInstallCommand } : {}),
+			...(switchProfile ? { switchProfile } : {})
+		},
+		...(options.onDismiss ? { onDismiss: options.onDismiss } : {}),
+		icon: name => createIcon(doc, name === 'alert' ? 'alert-triangle' : 'x')
+	});
 	finishRender(container);
 }

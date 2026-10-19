@@ -485,6 +485,12 @@
 	"aiErrorActionSwitchProfile": {
 		"message": "选择其他模型"
 	},
+	"aiErrorActionOpenSettings": {
+		"message": "打开 AI 设置"
+	},
+	"aiErrorSwitchProfileSelect": {
+		"message": "用于重试的模型"
+	},
 	"aiSettingsSaveFailedTitle": {
 		"message": "无法保存 AI 设置"
 	},

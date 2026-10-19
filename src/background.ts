@@ -733,7 +733,16 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 
 		if (typedRequest.action === "openOptionsPage") {
 			try {
-				if (typeof browser.runtime.openOptionsPage === 'function') {
+				// A section (the AI error card's Open AI settings sends `ai`) needs a query, which
+				// openOptionsPage() cannot take, so it opens Settings in a tab of its own.
+				const section = typeof typedRequest.section === 'string' && /^[a-z-]{1,40}$/.test(typedRequest.section)
+					? typedRequest.section
+					: undefined;
+				if (section) {
+					browser.tabs.create({
+						url: browser.runtime.getURL(`settings.html?section=${encodeURIComponent(section)}`)
+					});
+				} else if (typeof browser.runtime.openOptionsPage === 'function') {
 					// Chrome way
 					browser.runtime.openOptionsPage();
 				} else {

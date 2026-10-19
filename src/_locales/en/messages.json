@@ -485,6 +485,12 @@
 	"aiErrorActionSwitchProfile": {
 		"message": "Choose another model"
 	},
+	"aiErrorActionOpenSettings": {
+		"message": "Open AI settings"
+	},
+	"aiErrorSwitchProfileSelect": {
+		"message": "Model to retry with"
+	},
 	"aiSettingsSaveFailedTitle": {
 		"message": "Couldn't save AI settings"
 	},
