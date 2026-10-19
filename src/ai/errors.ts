@@ -138,7 +138,11 @@ export function withAiErrorContext(error: AiError, context: { task?: AiTask; pro
 	return copy;
 }
 
-const MAX_DETAIL_CHARS = 2000;
+/** The longest provider or reply sample kept as `AiError.detail`. */
+export const MAX_DETAIL_CHARS = 2000;
+
+/** Provider statuses classified as transient and retryable. 429 is classified as `rate-limited` or `quota`. */
+export const RETRYABLE_PROVIDER_STATUSES: readonly number[] = [500, 502, 503, 504, 529];
 
 export function isAiError(value: unknown): value is AiError {
 	return value instanceof AiError;
@@ -233,7 +237,7 @@ export function classifyHttpStatus(
 	if (status === 429) {
 		return new AiError(QUOTA_PATTERN.test(body) ? 'quota' : 'rate-limited', options);
 	}
-	if ([500, 502, 503, 504, 529].includes(status)) {
+	if (RETRYABLE_PROVIDER_STATUSES.includes(status)) {
 		return new AiError('provider-error', { ...options, retryable: true });
 	}
 	return new AiError('provider-error', options);

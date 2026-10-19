@@ -11,7 +11,7 @@ import type {
 	TranscriptJobResult
 } from '../ai/job-client';
 import type { TranscriptJobIdentity, TranscriptJobTask } from '../ai/job-identity';
-import { isEmptySourceSegment } from '../ai/job-runner';
+import { isEmptySourceSegment } from '../ai/job-limits';
 import type { AiTask } from '../ai/types';
 import { throwIfRequestAborted } from './request-cancellation';
 

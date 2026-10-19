@@ -1,3 +1,4 @@
+import { isCliKind } from '../connection-kind';
 import { AiError, classifyHttpStatus, toAiError } from '../errors';
 import type { ApiConnectionKind, Connection } from '../types';
 
@@ -39,7 +40,7 @@ function parseUrl(baseUrl: string | undefined): URL | undefined {
 }
 
 function isApiKind(kind: Connection['kind']): kind is ApiConnectionKind {
-	return !kind.startsWith('cli-');
+	return !isCliKind(kind);
 }
 
 /**

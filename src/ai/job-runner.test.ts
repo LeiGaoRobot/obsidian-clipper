@@ -1,17 +1,15 @@
 import { describe, expect, test, vi } from 'vitest';
 import type { TranscriptSegment } from './contracts';
-import { AiError } from './errors';
+import { AiError, RETRYABLE_PROVIDER_STATUSES } from './errors';
 import { hashSegments, transcriptJobId, type TranscriptJobTask } from './job-identity';
 import {
 	buildTranscriptPromptGroups,
 	createJobRunner,
-	isEmptySourceSegment,
+	isRetryableGroupError,
 	jobRetryBudget,
-	maxConcurrencyFor,
 	readingMaxTokens,
 	retryDelayMs,
 	RESUME_WINDOW_MS,
-	transcriptGroupBudget,
 	transcriptGroupMaxTokens,
 	translationMaxTokens,
 	type JobRunnerDeps,
@@ -254,29 +252,14 @@ async function seed(harness: ReturnType<typeof setup>, record: AiJobRecord, text
 // Policy and planning
 
 describe('job runner policy', () => {
-	test('group budgets by connection kind and task', () => {
-		for (const kind of ['openai-compatible', 'anthropic', 'ollama', 'azure-openai'] as ConnectionKind[]) {
-			expect(transcriptGroupBudget(kind, 'translate')).toBe(6000);
-			expect(transcriptGroupBudget(kind, 'reading')).toBe(2500);
-			// Splits apply to CLIs only.
-			expect(transcriptGroupBudget(kind, 'reading', 600)).toBe(2500);
+	test('retries rate limits and the shared transient provider statuses only', () => {
+		for (const status of RETRYABLE_PROVIDER_STATUSES) {
+			expect(isRetryableGroupError(new AiError('provider-error', { status }))).toBe(true);
 		}
-		expect(transcriptGroupBudget('cli-codex', 'translate')).toBe(6000);
-		expect(transcriptGroupBudget('cli-codex', 'reading')).toBe(2500);
-		expect(transcriptGroupBudget('cli-grok', 'translate')).toBe(6000);
-		expect(transcriptGroupBudget('cli-grok', 'reading')).toBe(1600);
-		expect(transcriptGroupBudget('cli-grok', 'reading', 800)).toBe(800);
-	});
-
-	test('concurrency defaults and the connection override', () => {
-		expect(maxConcurrencyFor({ kind: 'openai-compatible' })).toBe(3);
-		expect(maxConcurrencyFor({ kind: 'anthropic' })).toBe(3);
-		expect(maxConcurrencyFor({ kind: 'ollama' })).toBe(1);
-		expect(maxConcurrencyFor({ kind: 'cli-codex' })).toBe(1);
-		expect(maxConcurrencyFor({ kind: 'cli-grok' })).toBe(1);
-		expect(maxConcurrencyFor({ kind: 'ollama', maxConcurrency: 2 })).toBe(2);
-		expect(maxConcurrencyFor({ kind: 'openai-compatible', maxConcurrency: 0 })).toBe(3);
-		expect(maxConcurrencyFor({ kind: 'openai-compatible', maxConcurrency: 1.5 })).toBe(3);
+		expect(isRetryableGroupError(new AiError('provider-error', { status: 400 }))).toBe(false);
+		expect(isRetryableGroupError(new AiError('provider-error'))).toBe(false);
+		expect(isRetryableGroupError(new AiError('rate-limited', { status: 429 }))).toBe(true);
+		expect(isRetryableGroupError(new AiError('quota', { status: 429 }))).toBe(false);
 	});
 
 	test('retry budget and delays', () => {
@@ -310,15 +293,6 @@ describe('job runner policy', () => {
 		const groups = buildTranscriptPromptGroups(['a', 'b'.repeat(50), 'c', 'd'], 'Do.', 40, id => id !== 3);
 		expect(groups.map(group => group.segments.map(segment => segment.id))).toEqual([[0], [1], [2]]);
 		expect(groups[1].sourceChars).toBe(50);
-	});
-
-	test('empty sources need no request', () => {
-		expect(isEmptySourceSegment('translate', '')).toBe(true);
-		expect(isEmptySourceSegment('translate', '  ')).toBe(true);
-		expect(isEmptySourceSegment('reading', '')).toBe(true);
-		// A whitespace reading must still reproduce its source, so it is requested as today.
-		expect(isEmptySourceSegment('reading', ' ')).toBe(false);
-		expect(isEmptySourceSegment('translate', 'a')).toBe(false);
 	});
 });
 

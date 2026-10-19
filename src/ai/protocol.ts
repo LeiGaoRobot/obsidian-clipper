@@ -14,7 +14,10 @@ import { AI_TASKS, type AiTask, type AiTestResult, type AiTestStep, type Connect
 
 export const AI_PORT_NAME = 'ai';
 
-/** Clients ping this often while a job is pending; Port traffic keeps the service worker alive. */
+/**
+ * Clients ping this often while a job is pending, and the gateway keeps the runtime alive at the same
+ * interval while a job is unfinished; Port traffic keeps the service worker alive.
+ */
 export const AI_KEEPALIVE_INTERVAL_MS = 20_000;
 
 // The Native Messaging Host's prompt limit. All input text together stays under it; the contract's

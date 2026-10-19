@@ -12,7 +12,7 @@ import {
 	type StorageAreaLike
 } from './job-store';
 import { RESUME_WINDOW_MS } from './job-runner';
-import type { AiGatewayMessage } from './protocol';
+import { AI_KEEPALIVE_INTERVAL_MS, type AiGatewayMessage } from './protocol';
 import { createConnectionStatusStore } from './settings';
 import { deriveAiSettings } from './settings-view';
 import type { AiSettingsView, NativeMessagingSupport } from './types';
@@ -528,6 +528,26 @@ describe('AI gateway', () => {
 		await vi.advanceTimersByTimeAsync(0);
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(keepAlive).toHaveBeenCalledTimes(3);
+	});
+
+	test('pings the runtime at the shared keepalive interval by default', async () => {
+		vi.useFakeTimers();
+		const keepAlive = vi.fn();
+		const pending = deferred<string>();
+		const { port } = setup({ keepAlive, executeApi: vi.fn(() => pending.promise) });
+		port.send({ type: 'start', jobId: 'job-1', task: 'translate', input: segmentInput });
+		port.disconnect();
+		await vi.advanceTimersByTimeAsync(AI_KEEPALIVE_INTERVAL_MS - 1);
+		expect(keepAlive).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(keepAlive).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(AI_KEEPALIVE_INTERVAL_MS);
+		expect(keepAlive).toHaveBeenCalledTimes(2);
+
+		pending.resolve(translationReply);
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(AI_KEEPALIVE_INTERVAL_MS * 3);
+		expect(keepAlive).toHaveBeenCalledTimes(2);
 	});
 
 	test('sends attach progress only to the attaching port', async () => {

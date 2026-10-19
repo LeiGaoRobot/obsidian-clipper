@@ -14,9 +14,9 @@ import {
 import { createAiDiagnostics, type AiDiagnostics } from './diagnostics';
 import { AiError, toAiError, withAiErrorContext } from './errors';
 import { hashSegments, parseJobId, transcriptJobId, type TranscriptJobTask } from './job-identity';
+import { isEmptySourceSegment } from './job-limits';
 import {
 	createJobRunner,
-	isEmptySourceSegment,
 	type JobConnection,
 	type JobDetach,
 	type JobListener,
@@ -24,6 +24,7 @@ import {
 } from './job-runner';
 import { createAiJobStore, type AiJobRecord, type AiJobStore } from './job-store';
 import {
+	AI_KEEPALIVE_INTERVAL_MS,
 	AI_PORT_NAME,
 	isAiClientMessage,
 	sanitizeCheckpointPut,
@@ -101,7 +102,6 @@ export interface AiExecuteOptions {
 const CANCEL_ON_DETACH: ReadonlySet<AiTask> = new Set<AiTask>(['interpret', 'edit', 'explain']);
 const RECEIVE_PROGRESS_INTERVAL_MS = 500;
 const DEFAULT_RETAIN_MS = 60_000;
-const DEFAULT_KEEPALIVE_INTERVAL_MS = 20_000;
 
 type Outcome = Extract<AiGatewayMessage, { type: 'result' | 'error' }>;
 
@@ -201,7 +201,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 				} catch {
 					// Best effort; the next tick tries again.
 				}
-			}, deps.keepAliveIntervalMs ?? DEFAULT_KEEPALIVE_INTERVAL_MS);
+			}, deps.keepAliveIntervalMs ?? AI_KEEPALIVE_INTERVAL_MS);
 		} else if (keepAliveTimer) {
 			clearInterval(keepAliveTimer);
 			keepAliveTimer = undefined;

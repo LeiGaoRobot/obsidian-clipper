@@ -1,7 +1,14 @@
 import type { AiTaskInput, AiTaskOutput, ReadingToken, TranscriptSegment } from './contracts';
 import { isCliKind } from './connection-kind';
-import { AiError, toAiError } from './errors';
+import { AiError, RETRYABLE_PROVIDER_STATUSES, toAiError } from './errors';
 import { hashSegments, type TranscriptJobTask } from './job-identity';
+import {
+	CLI_GROUP_BUDGET_FLOORS,
+	isEmptySourceSegment,
+	maxConcurrencyFor,
+	TRANSCRIPT_GROUP_BUDGETS,
+	transcriptGroupBudget
+} from './job-limits';
 import { isAiJobUnstorableError, type AiJobRecord, type AiJobStatus, type AiJobStore, type AiJobStoredInput } from './job-store';
 import {
 	serializeAiError,
@@ -11,7 +18,7 @@ import {
 	type AiJobStateMessage,
 	type JobResultItem
 } from './protocol';
-import type { AiDiagnosticEntry, CliConnectionKind, ConnectionKind } from './types';
+import type { AiDiagnosticEntry, ConnectionKind } from './types';
 
 // Durable transcript jobs: one job runs a whole transcript task as groups in a bounded pool,
 // checkpoints every finished group through serialized store writes, retries rate limits and
@@ -20,16 +27,8 @@ import type { AiDiagnosticEntry, CliConnectionKind, ConnectionKind } from './typ
 // injected, so the module is DOM-free and safe in an MV3 service worker.
 
 // ---------------------------------------------------------------------------------------------
-// Policy
+// Policy (group budgets, budget floors, and concurrency defaults are in job-limits.ts)
 
-/** Group prompt budgets in characters, by connection kind and task. All API kinds share one row. */
-export const TRANSCRIPT_GROUP_BUDGETS: Readonly<Record<'api' | CliConnectionKind, Readonly<Record<TranscriptJobTask, number>>>> = {
-	api: { translate: 6000, reading: 2500 },
-	'cli-codex': { translate: 6000, reading: 2500 },
-	'cli-grok': { translate: 6000, reading: 1600 }
-};
-/** A CLI timeout split never shrinks a group budget below these. */
-export const CLI_GROUP_BUDGET_FLOORS: Readonly<Record<TranscriptJobTask, number>> = { translate: 1200, reading: 600 };
 /** CLI timeout splits per run. */
 export const MAX_SPLITS = 3;
 /** Retries of one group. */
@@ -40,24 +39,14 @@ export const RETRY_BASE_DELAY_MS = 1000;
 export const RETRY_MAX_BACKOFF_MS = 30_000;
 /** A `Retry-After` longer than this is not waited out; the job fails with that error. */
 export const RETRY_AFTER_MAX_MS = 60_000;
-/** Provider statuses retried as transient. 429 arrives as `rate-limited`. */
-export const RETRYABLE_PROVIDER_STATUSES: readonly number[] = [500, 502, 503, 504, 529];
 /** On gateway init, `running` records updated within this window resume; older ones end `incomplete`. */
 export const RESUME_WINDOW_MS = 10 * 60_000;
 /** How often a running job refreshes its record's `updatedAt`. */
 export const JOB_HEARTBEAT_MS = 20_000;
-/** Groups in flight when a connection sets no `maxConcurrency`. */
-export const DEFAULT_MAX_CONCURRENCY = { hosted: 3, ollama: 1, cli: 1 } as const;
 
 /** Retries a run may spend across all its groups: `min(8, 2 + floor(groups / 2))`. */
 export function jobRetryBudget(groups: number): number {
 	return Math.min(MAX_JOB_RETRIES, 2 + Math.floor(groups / 2));
-}
-
-/** The prompt budget of one group. CLI kinds use the split-reduced budget when one is stored. */
-export function transcriptGroupBudget(kind: ConnectionKind, task: TranscriptJobTask, cliPromptChars?: number): number {
-	if (!isCliKind(kind)) return TRANSCRIPT_GROUP_BUDGETS.api[task];
-	return cliPromptChars ?? TRANSCRIPT_GROUP_BUDGETS[kind][task];
 }
 
 export interface JobConnection {
@@ -66,13 +55,6 @@ export interface JobConnection {
 	id?: string;
 	/** `Connection.maxConcurrency`; defaults apply when absent or not a positive integer. */
 	maxConcurrency?: number;
-}
-
-export function maxConcurrencyFor(connection: JobConnection): number {
-	const { kind, maxConcurrency } = connection;
-	if (Number.isInteger(maxConcurrency) && (maxConcurrency as number) > 0) return maxConcurrency as number;
-	if (isCliKind(kind)) return DEFAULT_MAX_CONCURRENCY.cli;
-	return kind === 'ollama' ? DEFAULT_MAX_CONCURRENCY.ollama : DEFAULT_MAX_CONCURRENCY.hosted;
 }
 
 /** `rate-limited` (never `quota`), and `provider-error` with a transient status. */
@@ -137,17 +119,6 @@ export function readingMaxTokens(group: TranscriptPromptGroup): number {
 
 export function transcriptGroupMaxTokens(task: TranscriptJobTask, group: TranscriptPromptGroup): number {
 	return task === 'translate' ? translationMaxTokens(group) : readingMaxTokens(group);
-}
-
-/**
- * A segment whose answer is known without a request: an empty reading (`[]`) is already complete
- * for an empty source, as `isCompleteTranscriptReadingSegment` has it, and a blank source has no
- * translation (`''`), which the translate contract would reject as an answer. Such segments count
- * as complete, are never requested, and carry no result item; clients fill the gap with the
- * empty value.
- */
-export function isEmptySourceSegment(task: TranscriptJobTask, text: string): boolean {
-	return task === 'reading' ? text === '' : text.trim() === '';
 }
 
 // ---------------------------------------------------------------------------------------------

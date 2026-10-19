@@ -5,7 +5,7 @@ import { AI_ERROR_CODES } from './errors';
 import type { AiErrorCode } from './errors';
 import type { StorageAreaLike } from './job-store';
 import { deriveAiSettings } from './settings-view';
-import { AI_TASKS } from './types';
+import { AI_TASKS, CONNECTION_KINDS } from './types';
 import type {
 	AiRouting,
 	AiSettingsView,
@@ -105,17 +105,6 @@ export const AI_SETTINGS_DEFAULTS: {
 
 // --- Sanitizers ----------------------------------------------------------------------------------
 
-const CONNECTION_KINDS: Record<ConnectionKind, true> = {
-	'openai-compatible': true,
-	'azure-openai': true,
-	anthropic: true,
-	ollama: true,
-	huggingface: true,
-	perplexity: true,
-	'cli-codex': true,
-	'cli-grok': true
-};
-
 const STRUCTURED_OUTPUT_VALUES: readonly StructuredOutputSupport[] = ['json_schema', 'json_object', 'none', 'unknown'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -127,7 +116,7 @@ function isVersioned(value: unknown): value is Record<string, unknown> {
 }
 
 function isConnectionKind(value: unknown): value is ConnectionKind {
-	return typeof value === 'string' && Object.prototype.hasOwnProperty.call(CONNECTION_KINDS, value);
+	return typeof value === 'string' && (CONNECTION_KINDS as readonly string[]).includes(value);
 }
 
 function isId(value: unknown): value is string {

@@ -57,7 +57,7 @@ vi.mock('./i18n', () => ({ getMessage: (key: string) => key }));
 
 import { withJobAttempts } from '../ai/job-client';
 import { deriveAiSettings } from '../ai/settings-view';
-import { TRANSCRIPT_GROUP_BUDGETS } from '../ai/job-runner';
+import { TRANSCRIPT_GROUP_BUDGETS } from '../ai/job-limits';
 import type { AiSettingsView } from '../ai/types';
 import { configuredLanguageLearning } from './language-learning-runtime';
 import type { TranscriptReadingProgress } from './language-learning';

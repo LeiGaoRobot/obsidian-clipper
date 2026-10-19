@@ -1,4 +1,4 @@
-import { AiError } from './errors';
+import { AiError, MAX_DETAIL_CHARS } from './errors';
 import type { AiTask } from './types';
 
 // Output contracts: what each task returns, how the model is told, and how a reply is validated.
@@ -69,7 +69,6 @@ export interface StructuredOutputSpec {
 	schema: JsonSchema;
 }
 
-const MAX_DETAIL_CHARS = 2000;
 const JSON_ONLY = 'Return only the JSON object, with no code fence, explanation, or other text.';
 
 export function isTextTask(task: AiTask): task is 'edit' | 'explain' {

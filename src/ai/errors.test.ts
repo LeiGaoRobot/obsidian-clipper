@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'vitest';
-import { AI_ERROR_CODES, AiError, aiErrorOptions, classifyHttpStatus, isAiError, toAiError, withAiErrorContext } from './errors';
+import {
+	AI_ERROR_CODES,
+	AiError,
+	aiErrorOptions,
+	classifyHttpStatus,
+	isAiError,
+	MAX_DETAIL_CHARS,
+	RETRYABLE_PROVIDER_STATUSES,
+	toAiError,
+	withAiErrorContext
+} from './errors';
 
 function nativeError(name: string, code?: string, message = 'native failure') {
 	return Object.assign(new Error(message), { name, ...(code ? { code } : {}) });
@@ -153,6 +163,16 @@ describe('classifyHttpStatus', () => {
 		expect(error).toMatchObject({ code, retryable, status, connectionId: 'conn' });
 	});
 
+	test('classifies exactly the shared transient statuses as retryable provider errors', () => {
+		expect(RETRYABLE_PROVIDER_STATUSES).toEqual([500, 502, 503, 504, 529]);
+		for (const status of RETRYABLE_PROVIDER_STATUSES) {
+			expect(classifyHttpStatus(status)).toMatchObject({ code: 'provider-error', retryable: true, status });
+		}
+		for (const status of [400, 501, 505, 520]) {
+			expect(classifyHttpStatus(status)).toMatchObject({ code: 'provider-error', retryable: false, status });
+		}
+	});
+
 	test('treats an Ollama 403 as an origin problem, not a rejected key', () => {
 		expect(classifyHttpStatus(403, 'Forbidden', { kind: 'ollama' }).code).toBe('provider-error');
 		expect(classifyHttpStatus(403, 'Forbidden', { kind: 'openai-compatible' }).code).toBe('auth');
@@ -168,6 +188,6 @@ describe('classifyHttpStatus', () => {
 
 	test('bounds a large response body in the detail', () => {
 		const error = classifyHttpStatus(502, '<html>' + 'x'.repeat(10_000));
-		expect(error.detail!.length).toBeLessThanOrEqual(2001);
+		expect(error.detail!.length).toBeLessThanOrEqual(MAX_DETAIL_CHARS + 1);
 	});
 });

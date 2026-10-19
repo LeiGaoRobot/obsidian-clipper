@@ -1,5 +1,5 @@
 import { AI_CONNECTIONS_KEY, type AiStorageKey } from '../../ai/settings';
-import type { CliConnectionKind } from '../../ai/types';
+import { CLI_CONNECTION_KINDS, type CliConnectionKind } from '../../ai/types';
 import { getMessage } from '../../utils/i18n';
 import { wireNativeCliInstallGuide } from '../../utils/native-cli-install';
 import type { AiSettingsController, AiSettingsState } from './controller';
@@ -8,8 +8,6 @@ import type { AiSettingsPanel } from './panel';
 
 // "Add local CLI" (decision 8): one connection per CLI kind, plus the Native Messaging Host
 // install guide with its element ids unchanged. Hidden where the browser has no Native Messaging.
-
-export const CLI_KINDS: readonly CliConnectionKind[] = ['cli-codex', 'cli-grok'];
 
 /** What the install guide needs from the browser; resolved once by the section. */
 export interface NativeCliInstallEnvironment {
@@ -43,7 +41,7 @@ function cliName(kind: CliConnectionKind): string {
 export function nativeCliPanelState(state: AiSettingsState): unknown {
 	return {
 		supported: state.view.nativeMessaging !== 'none',
-		added: CLI_KINDS.filter(kind => state.view.connections.some(connection => connection.kind === kind))
+		added: CLI_CONNECTION_KINDS.filter(kind => state.view.connections.some(connection => connection.kind === kind))
 	};
 }
 
@@ -56,7 +54,7 @@ export function createNativeCliPanel(options: NativeCliPanelOptions): NativeCliP
 	item.classList.add('ai-native-cli-item');
 	control.classList.add('ai-native-cli-actions');
 	const buttons = new Map<CliConnectionKind, HTMLButtonElement>();
-	for (const kind of CLI_KINDS) {
+	for (const kind of CLI_CONNECTION_KINDS) {
 		const button = createTextButton(doc, '', 'ai-add-cli-button');
 		button.dataset.kind = kind;
 		button.append(createIcon(doc, 'terminal'), createElement(doc, 'span', undefined, getMessage('aiAddCli', cliName(kind))));

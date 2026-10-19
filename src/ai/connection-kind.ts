@@ -1,5 +1,5 @@
 import { PRESET_KINDS } from './preset-kinds';
-import type { CliConnectionKind, ConnectionKind } from './types';
+import { CLI_CONNECTION_KINDS, type CliConnectionKind, type ConnectionKind } from './types';
 
 export interface ConnectionKindSource {
 	// Optional because imported or legacy stored providers may omit them.
@@ -49,5 +49,5 @@ export function inferConnectionKind(source: ConnectionKindSource): ConnectionKin
 }
 
 export function isCliKind(kind: ConnectionKind): kind is CliConnectionKind {
-	return kind === 'cli-codex' || kind === 'cli-grok';
+	return (CLI_CONNECTION_KINDS as readonly string[]).includes(kind);
 }

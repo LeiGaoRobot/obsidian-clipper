@@ -1,7 +1,7 @@
 import { AI_ERROR_CODES, type AiErrorCode } from './errors';
 import type { StorageAreaLike } from './job-store';
 import { AI_DIAGNOSTICS_KEY } from './settings';
-import { AI_TASKS, type AiDiagnosticEntry, type ConnectionKind } from './types';
+import { AI_TASKS, CONNECTION_KINDS, type AiDiagnosticEntry, type ConnectionKind } from './types';
 
 // The redacted Diagnostics log (decision 12): a ring buffer of the last model runs and Tests in
 // `storage.session`, shown under Settings → AI → Diagnostics. Entries are built from a fixed field
@@ -23,9 +23,7 @@ export interface AiDiagnostics {
 	clear(): Promise<void>;
 }
 
-const KINDS: ReadonlySet<string> = new Set<ConnectionKind>([
-	'openai-compatible', 'azure-openai', 'anthropic', 'ollama', 'huggingface', 'perplexity', 'cli-codex', 'cli-grok'
-]);
+const KINDS: ReadonlySet<string> = new Set<string>(CONNECTION_KINDS);
 const TASKS: ReadonlySet<string> = new Set<string>([...AI_TASKS, 'test']);
 const OUTCOMES: ReadonlySet<string> = new Set(['ok', 'error', 'cancelled']);
 const MODES: ReadonlySet<string> = new Set(['json_schema', 'json_object', 'none']);

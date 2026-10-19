@@ -27,6 +27,7 @@ import {
 	type StorageChangedListener
 } from './settings';
 import { deriveAiSettings } from './settings-view';
+import { CONNECTION_KINDS } from './types';
 
 // --- Fakes ---------------------------------------------------------------------------------------
 
@@ -201,6 +202,20 @@ describe('decodeAiSettings', () => {
 		};
 		const view = decodeAiSettings(sync, {}, 'port');
 		expect(view.connections).toEqual([{ id: 'ok', kind: 'anthropic', label: 'A' }]);
+	});
+
+	test('accepts every kind in CONNECTION_KINDS and rejects any other', () => {
+		const sync = storedSync();
+		const known = CONNECTION_KINDS.map(kind => ({ id: `conn-${kind}`, kind, label: kind }));
+		sync[AI_CONNECTIONS_KEY] = {
+			v: 1,
+			items: [
+				...known,
+				...['cli-claude', 'OpenAI-Compatible', 'toString', 'constructor', ''].map(kind => ({ id: `bad-${kind}`, kind, label: '' }))
+			]
+		};
+		const view = decodeAiSettings(sync, {}, 'port');
+		expect(view.connections.map(connection => connection.kind)).toEqual([...CONNECTION_KINDS]);
 	});
 
 	test('keeps the first of duplicate ids', () => {

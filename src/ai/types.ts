@@ -2,17 +2,25 @@ import type { CodexReasoningEffort } from '../types/types';
 import type { AiErrorCode } from './errors';
 import type { SerializedAiError } from './protocol';
 
-export type ApiConnectionKind =
-	| 'openai-compatible'
-	| 'azure-openai'
-	| 'anthropic'
-	| 'ollama'
-	| 'huggingface'
-	| 'perplexity';
+/** The local CLI kinds, run through the Native Messaging Host. */
+export const CLI_CONNECTION_KINDS = ['cli-codex', 'cli-grok'] as const;
 
-export type CliConnectionKind = 'cli-codex' | 'cli-grok';
+/** Every connection kind: the HTTP API kinds, then the CLI kinds. */
+export const CONNECTION_KINDS = [
+	'openai-compatible',
+	'azure-openai',
+	'anthropic',
+	'ollama',
+	'huggingface',
+	'perplexity',
+	...CLI_CONNECTION_KINDS
+] as const;
 
-export type ConnectionKind = ApiConnectionKind | CliConnectionKind;
+export type ConnectionKind = typeof CONNECTION_KINDS[number];
+
+export type CliConnectionKind = typeof CLI_CONNECTION_KINDS[number];
+
+export type ApiConnectionKind = Exclude<ConnectionKind, CliConnectionKind>;
 
 export type StructuredOutputSupport = 'json_schema' | 'json_object' | 'none' | 'unknown';
 

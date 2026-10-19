@@ -10,7 +10,7 @@ import {
 } from '../ai/job-client';
 import type { TranscriptJobIdentity, TranscriptJobTask } from '../ai/job-identity';
 import { isCliKind } from '../ai/connection-kind';
-import { TRANSCRIPT_GROUP_BUDGETS } from '../ai/job-runner';
+import { TRANSCRIPT_GROUP_BUDGETS } from '../ai/job-limits';
 import {
 	JAPANESE_READING_JOB_IDENTITY,
 	LearningSelection,
