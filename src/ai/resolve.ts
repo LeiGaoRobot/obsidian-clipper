@@ -10,11 +10,22 @@ function fail(error: AiError): ResolvedProfile {
 	return { ok: false, error };
 }
 
+export interface ResolveProfileOptions {
+	/** An explicit choice for this run, such as the popup's model menu. Beats routing. */
+	profileId?: string;
+}
+
 /** The single place that decides which model profile serves a task. */
-export function resolveProfile(view: AiSettingsView, task: AiTask): ResolvedProfile {
+export function resolveProfile(
+	view: AiSettingsView,
+	task: AiTask,
+	options: ResolveProfileOptions = {}
+): ResolvedProfile {
 	if (!view.enabled) return fail(new AiError('not-configured', { reason: 'disabled' }));
 
-	const profileId = view.routing.taskProfiles[task] ?? view.routing.defaultProfileId;
+	const profileId = options.profileId
+		?? view.routing.taskProfiles[task]
+		?? view.routing.defaultProfileId;
 	if (!profileId) return fail(new AiError('not-configured', { reason: 'no-profile' }));
 
 	const profile = view.profiles.find(item => item.id === profileId);

@@ -50,6 +50,13 @@ describe('resolveProfile', () => {
 			.toMatchObject({ ok: true, profile: { id: 'claude' } });
 	});
 
+	test('lets an explicit profile beat routing', () => {
+		const result = resolveProfile(view(routed('claude', { interpret: 'codex-high' })), 'interpret', { profileId: 'llama' });
+		expect(result).toMatchObject({ ok: true, profile: { id: 'llama' } });
+		expect(resolveProfile(view(), 'interpret', { profileId: 'off' }))
+			.toMatchObject({ ok: false, error: { code: 'not-configured', reason: 'profile-unavailable' } });
+	});
+
 	test('does not require a credential for a keyless connection', () => {
 		const result = resolveProfile(view(routed('llama')), 'edit');
 		expect(result.ok).toBe(true);
