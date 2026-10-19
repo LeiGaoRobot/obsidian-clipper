@@ -51,6 +51,15 @@ describe('toAiError', () => {
 		expect(error.detail).toBe('CLI said no');
 	});
 
+	test('keeps the Host code and timeout limit from a Native Messaging error', () => {
+		const native = Object.assign(nativeError('NativeCliExecutionError', 'timeout', 'codex CLI timed out'), {
+			details: { mode: 'codex', timeoutSeconds: 120 }
+		});
+		expect(toAiError(native)).toMatchObject({ code: 'timeout', nativeCode: 'timeout', timeoutSeconds: 120 });
+		expect(toAiError(nativeError('NativeCliExecutionError', 'cli-failed', 'exit 1')))
+			.toMatchObject({ code: 'provider-error', nativeCode: 'cli-failed' });
+	});
+
 	test.each([
 		'Failed to fetch',
 		'NetworkError when attempting to fetch resource.',

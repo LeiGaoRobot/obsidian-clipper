@@ -81,7 +81,7 @@ interface PromptsInput { context: string; prompts: PromptVariable[]; maxTokens?:
 **Disconnect policy.** When the last listener disconnects:
 
 - `interpret`, `edit`, and `explain` jobs are aborted.
-- `translate` and `reading` jobs run to completion, as background `sendMessage` requests do today.
+- `translate` and `reading` jobs run to completion. A pending `fetch` does not reset Chrome's service-worker idle timer, so while any job is unfinished the gateway calls `runtime.getPlatformInfo()` every 20 s. No caller sends `attach` yet; the 60 s outcome retention is groundwork for Phase 4's durable reattach.
 
 ## Tasks (each commit green)
 

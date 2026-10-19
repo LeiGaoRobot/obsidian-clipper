@@ -167,7 +167,7 @@ A Codex run is up to 120 s of silence on the native port, because the Host repli
   - `classify → AiError`
   - `capabilities` (structured output, streaming, model listing)
   - Adapters are DOM-free and statically imported into the service worker (the MV3 invariant).
-- **Popup Interpreter on the gateway.** The Interpreter moves onto the gateway and gains cancel and structured errors. The existing 60 s cooldown stays, scoped to `interpret` with autoRun. It exists to stop a paid request on every popup open; it is not provider rate limiting.
+- **Popup Interpreter on the gateway.** The Interpreter moves onto the gateway and gains cancel and structured errors. The v1 60 s cooldown is removed (Phase 2 plan, decision 4): it was per-popup module state and the Interpret button is disabled after any result, so it never applied. autoRun remains an explicit opt-in setting.
 - **CLI argv** has one implementation, `native-host/cli-invocation.mjs`, which takes `command` as a parameter. The Host resolves the command from `config.json`, and `src/cli.ts` resolves it from `PATH`. `src/cli.ts` gains `--model` and `--effort`. Type checking needs a `.d.ts` for the `.mjs` (or `allowJs`). `cli-execution.ts` is deleted. The API build (`src/api.ts`) imports no AI code and is unaffected.
 - **Test (D3)** is an explicit click only:
   1. A free check comes first: model listing for OpenAI-compatible, Anthropic, Gemini, and Ollama validates the key and the model id.

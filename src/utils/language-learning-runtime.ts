@@ -126,19 +126,30 @@ const LEGACY_ERROR_CODES: Partial<Record<AiErrorCode, NativeCliErrorCode>> = {
 	'cli-missing': 'launch-failed'
 };
 
+const NATIVE_HOST_ERROR_CODES: ReadonlySet<string> = new Set<NativeCliErrorCode>([
+	'cli-failed',
+	'config',
+	'invalid',
+	'launch-failed',
+	'protocol-mismatch',
+	'response-too-large',
+	'timeout',
+	'unavailable'
+]);
+
 function toLanguageLearningError(error: unknown, mode: string): Error {
 	const aiError = toAiError(error);
 	if (aiError.code === 'cancelled') return new RequestCancelledError();
-	const timeoutSeconds = aiError.code === 'timeout'
-		? aiError.detail?.match(/(\d+)\s*seconds?/i)?.[1]
-		: undefined;
-	const code = timeoutSeconds ? 'timeout' : LEGACY_ERROR_CODES[aiError.code] ?? 'failed';
+	// Host codes keep their mode-specific Reader copy and the adaptive CLI timeout retry.
+	const code = aiError.nativeCode && NATIVE_HOST_ERROR_CODES.has(aiError.nativeCode)
+		? aiError.nativeCode as NativeCliErrorCode
+		: LEGACY_ERROR_CODES[aiError.code] ?? 'failed';
 	const description = describeAiError(aiError);
 	return new LanguageLearningRequestError(code, description.body, {
 		mode,
 		aiCode: aiError.code,
 		retryable: aiError.retryable,
-		...(timeoutSeconds ? { timeoutSeconds: Number(timeoutSeconds) } : {}),
+		...(aiError.timeoutSeconds !== undefined ? { timeoutSeconds: aiError.timeoutSeconds } : {}),
 		...(description.detail ? { technicalDetail: description.detail } : {})
 	});
 }

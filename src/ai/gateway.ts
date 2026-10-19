@@ -30,14 +30,22 @@ export interface AiGatewayDeps {
 	executeApi?: typeof executeApiCall;
 	executeCli?: typeof executeCliCall;
 	now?: () => number;
+	/**
+	 * Called while any job is unfinished. In Chrome, an extension API call resets the service
+	 * worker's idle timer; a pending fetch does not, so batch jobs need this once their caller is gone.
+	 */
+	keepAlive?: () => void;
+	keepAliveIntervalMs?: number;
 	/** How long a finished job's outcome stays available to `attach`. */
 	retainMs?: number;
 }
 
-// Interactive tasks are pointless once their UI is gone; batch tasks finish like v1 background requests did.
+// Interactive tasks are pointless once their UI is gone. Batch tasks finish so their outcome can be
+// replayed to an `attach` within the retention window (Phase 4 adds durable reattach).
 const CANCEL_ON_DETACH: ReadonlySet<AiTask> = new Set<AiTask>(['interpret', 'edit', 'explain']);
 const RECEIVE_PROGRESS_INTERVAL_MS = 500;
 const DEFAULT_RETAIN_MS = 60_000;
+const DEFAULT_KEEPALIVE_INTERVAL_MS = 20_000;
 
 type Outcome = Extract<AiGatewayMessage, { type: 'result' | 'error' }>;
 
@@ -70,6 +78,24 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 	const executeApi = deps.executeApi ?? executeApiCall;
 	const executeCli = deps.executeCli ?? executeCliCall;
 	const retainMs = deps.retainMs ?? DEFAULT_RETAIN_MS;
+	let keepAliveTimer: ReturnType<typeof setInterval> | undefined;
+
+	const hasUnfinishedJobs = () => Array.from(jobs.values()).some(job => !job.outcome);
+	const updateKeepAlive = () => {
+		if (!deps.keepAlive) return;
+		if (hasUnfinishedJobs()) {
+			keepAliveTimer ??= setInterval(() => {
+				try {
+					deps.keepAlive?.();
+				} catch {
+					// Best effort; the next tick tries again.
+				}
+			}, deps.keepAliveIntervalMs ?? DEFAULT_KEEPALIVE_INTERVAL_MS);
+		} else if (keepAliveTimer) {
+			clearInterval(keepAliveTimer);
+			keepAliveTimer = undefined;
+		}
+	};
 
 	const broadcast = (job: Job, message: AiGatewayMessage) => {
 		job.listeners.forEach(port => post(port, message));
@@ -90,6 +116,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		if (job.outcome) return;
 		job.outcome = outcome;
 		broadcast(job, outcome);
+		updateKeepAlive();
 		setTimeout(() => {
 			if (jobs.get(job.id) === job) jobs.delete(job.id);
 		}, retainMs);
@@ -173,8 +200,11 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 			startedAt: now()
 		};
 		jobs.set(jobId, job);
+		updateKeepAlive();
 		progress(job, 'started');
-		execute(job, input, profileId).then(
+		// Only the fields adapters use cross into provider requests.
+		const prompts = input.prompts.map(({ key, prompt }) => ({ key, prompt }));
+		execute(job, { ...input, prompts }, profileId).then(
 			result => finish(job, { type: 'result', jobId, ...result }),
 			error => {
 				const aiError = job.controller.signal.aborted ? new AiError('cancelled') : toAiError(error);
@@ -228,8 +258,12 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 							return;
 						}
 						job.listeners.add(port);
-						if (job.outcome) post(port, job.outcome);
-						else progress(job, 'started');
+						post(port, job.outcome ?? {
+							type: 'progress',
+							jobId: job.id,
+							phase: 'started',
+							elapsedMs: now() - job.startedAt
+						});
 						return;
 					}
 				}

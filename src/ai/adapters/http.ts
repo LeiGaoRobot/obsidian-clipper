@@ -221,6 +221,8 @@ function consumeLine(kind: ApiConnectionKind, format: StreamFormat, line: string
 		if (!trimmed.startsWith('data:')) return true;
 		const data = trimmed.slice(5).trim();
 		if (data === '[DONE]') return false;
+		// Proxies inject keepalive or comment-like events; skip anything that is not a JSON event.
+		if (!data.startsWith('{')) return true;
 		append(streamEventText(kind, parseJsonLine(data)));
 		return true;
 	}
@@ -277,24 +279,44 @@ export async function executeApiCall(call: ApiPromptCall, options: ApiCallOption
 		// Not every body stream errors on abort; cancelling the reader always ends read().
 		void activeReader?.cancel().catch(() => {});
 	};
-	const expire = (detail: string) => {
-		timeoutError = new AiError('timeout', { ...context, detail });
+	const expire = (detail: string, timeoutSeconds: number) => {
+		timeoutError = new AiError('timeout', { ...context, detail, timeoutSeconds });
 		stop();
 	};
 	const resetIdleTimer = () => {
 		if (idleTimer) clearTimeout(idleTimer);
 		idleTimer = setTimeout(
-			() => expire(`No response from the provider for ${Math.ceil(idleTimeoutMs / 1000)} seconds.`),
+			() => expire(
+				`No response from the provider for ${Math.ceil(idleTimeoutMs / 1000)} seconds.`,
+				Math.ceil(idleTimeoutMs / 1000)
+			),
 			idleTimeoutMs
 		);
 	};
 	const hardTimer = setTimeout(
-		() => expire(`The provider did not finish within ${Math.ceil(hardTimeoutMs / 1000)} seconds.`),
+		() => expire(
+			`The provider did not finish within ${Math.ceil(hardTimeoutMs / 1000)} seconds.`,
+			Math.ceil(hardTimeoutMs / 1000)
+		),
 		hardTimeoutMs
 	);
 	const abortFromCaller = () => stop();
 	options.signal?.addEventListener('abort', abortFromCaller, { once: true });
 	resetIdleTimer();
+
+	// Buffered bodies are still read chunk by chunk, so a slow but steady response keeps the idle timer alive.
+	const readBodyText = async (body: ReadableStream<Uint8Array>): Promise<string> => {
+		const reader = body.getReader();
+		activeReader = reader;
+		const decoder = new TextDecoder();
+		let text = '';
+		while (true) {
+			const { value, done } = await reader.read();
+			resetIdleTimer();
+			if (done) return text + decoder.decode();
+			text += decoder.decode(value, { stream: true });
+		}
+	};
 
 	const fail = (error: unknown): never => {
 		if (timeoutError) throw timeoutError;
@@ -324,8 +346,9 @@ export async function executeApiCall(call: ApiPromptCall, options: ApiCallOption
 
 		const format = formatFromContentType(response.headers.get('content-type') || '');
 		if (!response.body || format === undefined || format === 'json') {
-			const text = await response.text();
+			const text = response.body ? await readBodyText(response.body) : await response.text();
 			options.onReceive?.(text.length);
+			if (timeoutError || options.signal?.aborted) return fail(undefined);
 			return format === 'json'
 				? parseJsonBody(call.kind, text)
 				: parseBufferedBody(call.kind, text);

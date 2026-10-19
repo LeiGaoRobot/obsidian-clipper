@@ -266,6 +266,50 @@ describe('AI gateway', () => {
 		expect(second.last()).toMatchObject({ type: 'result' });
 	});
 
+	test('pings the runtime while a job is unfinished and stops afterwards', async () => {
+		vi.useFakeTimers();
+		const keepAlive = vi.fn();
+		const pending = deferred<string>();
+		const { port } = setup({ keepAlive, keepAliveIntervalMs: 1000, executeApi: vi.fn(() => pending.promise) });
+		port.send({ type: 'start', jobId: 'job-1', task: 'translate', input });
+		port.disconnect();
+		await vi.advanceTimersByTimeAsync(3500);
+		expect(keepAlive).toHaveBeenCalledTimes(3);
+
+		pending.resolve(envelope);
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(keepAlive).toHaveBeenCalledTimes(3);
+	});
+
+	test('sends attach progress only to the attaching port', async () => {
+		const pending = deferred<string>();
+		const { gateway, port } = setup({ executeApi: vi.fn(() => pending.promise) });
+		port.send({ type: 'start', jobId: 'job-1', task: 'reading', input });
+		await flush();
+		const before = port.posted.length;
+		const second = new FakePort();
+		gateway.handlePort(second);
+		second.send({ type: 'attach', jobId: 'job-1' });
+		expect(port.posted).toHaveLength(before);
+		expect(second.posted).toEqual([expect.objectContaining({ type: 'progress', phase: 'started' })]);
+	});
+
+	test('passes only prompt keys and text to adapters', async () => {
+		const { deps, port } = setup();
+		port.send({
+			type: 'start',
+			jobId: 'job-1',
+			task: 'interpret',
+			input: { context: 'Page text', prompts: [{ key: 'prompt_1', prompt: 'Summarize', filters: '|upper', extra: 'x' }], maxTokens: 900 }
+		});
+		await flush();
+		expect(deps.executeApi).toHaveBeenCalledWith(
+			expect.objectContaining({ prompts: [{ key: 'prompt_1', prompt: 'Summarize' }], maxTokens: 900 }),
+			expect.anything()
+		);
+	});
+
 	test('forgets finished jobs after the retention window', async () => {
 		vi.useFakeTimers();
 		const { gateway, port } = setup({ retainMs: 1000 });

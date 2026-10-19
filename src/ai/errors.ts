@@ -56,6 +56,10 @@ export interface AiErrorOptions {
 	status?: number;
 	reason?: AiNotConfiguredReason;
 	detail?: string;
+	/** The Native Messaging Host's own error code, kept for callers that still localize it. */
+	nativeCode?: string;
+	/** The limit that expired, for `timeout` errors. */
+	timeoutSeconds?: number;
 }
 
 export class AiError extends Error {
@@ -65,6 +69,8 @@ export class AiError extends Error {
 	readonly status?: number;
 	readonly reason?: AiNotConfiguredReason;
 	readonly detail?: string;
+	readonly nativeCode?: string;
+	readonly timeoutSeconds?: number;
 
 	constructor(code: AiErrorCode, options: AiErrorOptions = {}) {
 		super(options.detail || code);
@@ -75,6 +81,8 @@ export class AiError extends Error {
 		if (options.status !== undefined) this.status = options.status;
 		if (options.reason) this.reason = options.reason;
 		if (options.detail) this.detail = options.detail;
+		if (options.nativeCode) this.nativeCode = options.nativeCode;
+		if (options.timeoutSeconds !== undefined) this.timeoutSeconds = options.timeoutSeconds;
 	}
 }
 
@@ -122,9 +130,15 @@ export function toAiError(error: unknown, connectionId?: string): AiError {
 		return new AiError('host-missing', { ...context, detail });
 	}
 	if (NATIVE_ERROR_NAMES.has(error.name)) {
-		const nativeCode = (error as Error & { code?: unknown }).code;
-		const code = typeof nativeCode === 'string' ? NATIVE_CODE_MAP[nativeCode] : undefined;
-		return new AiError(code ?? 'provider-error', { ...context, detail });
+		const native = error as Error & { code?: unknown; details?: { timeoutSeconds?: unknown } };
+		const nativeCode = typeof native.code === 'string' ? native.code : undefined;
+		const timeoutSeconds = native.details?.timeoutSeconds;
+		return new AiError((nativeCode && NATIVE_CODE_MAP[nativeCode]) || 'provider-error', {
+			...context,
+			detail,
+			...(nativeCode ? { nativeCode } : {}),
+			...(typeof timeoutSeconds === 'number' ? { timeoutSeconds } : {})
+		});
 	}
 	// fetch() failures across Chrome, Firefox, and Safari; other TypeErrors are bugs, not network issues.
 	if (error instanceof TypeError && NETWORK_FAILURE_PATTERN.test(detail)) {

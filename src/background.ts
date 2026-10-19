@@ -548,6 +548,9 @@ function detectNativeMessaging(): NativeMessagingSupport {
 const aiGateway = createAiGateway({
 	loadSettings,
 	nativeMessaging: detectNativeMessaging,
+	keepAlive: () => {
+		void browser.runtime.getPlatformInfo();
+	},
 	app: () => {
 		const { name, homepageUrl } = getExtensionBranding();
 		return { name, homepageUrl };

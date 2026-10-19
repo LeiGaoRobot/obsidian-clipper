@@ -109,6 +109,15 @@ interface AiTaskInput {
 	maxTokens?: number;
 }
 
+// Mirrors what toAiError builds from a Host NativeCliExecutionError timeout.
+function cliTimeout(mode: string, seconds: number) {
+	return new AiError('timeout', {
+		detail: `${mode} CLI timed out after ${seconds} seconds.`,
+		nativeCode: 'timeout',
+		timeoutSeconds: seconds
+	});
+}
+
 describe('Configured language learning runtime', () => {
 	beforeEach(() => {
 		mocks.loadSettings.mockReset();
@@ -448,9 +457,7 @@ describe('Configured language learning runtime', () => {
 			requestedPrompts.push(prompt);
 			if (!timedOut && prompt.includes('0|||') && prompt.includes('1|||')) {
 				timedOut = true;
-				return Promise.reject(new AiError('timeout', {
-					detail: 'codex CLI timed out after 300 seconds.'
-				}));
+				return Promise.reject(cliTimeout('codex', 300));
 			}
 			const index = prompt.includes('0|||') ? 0 : 1;
 			return Promise.resolve(aiResult({ prompt_1: `${index}|||${index === 0 ? '第一段' : '第二段'}` }));
@@ -473,9 +480,7 @@ describe('Configured language learning runtime', () => {
 			...settings,
 			interpreterExecutionMode: 'codex'
 		});
-		mocks.runAiTask.mockRejectedValue(new AiError('timeout', {
-			detail: 'codex CLI timed out after 300 seconds.'
-		}));
+		mocks.runAiTask.mockRejectedValue(cliTimeout('codex', 300));
 
 		await expect(configuredLanguageLearning.translateTranscript(['always fails']))
 			.rejects.toMatchObject({
@@ -497,9 +502,7 @@ describe('Configured language learning runtime', () => {
 			const prompt = input.prompts[0].prompt;
 			requestedPrompts.push(prompt);
 			if (prompt.includes('0|||') && prompt.includes('1|||')) {
-				return Promise.reject(new AiError('timeout', {
-					detail: 'grok CLI timed out after 300 seconds.'
-				}));
+				return Promise.reject(cliTimeout('grok', 300));
 			}
 			const index = prompt.includes('0|||') ? 0 : 1;
 			return Promise.resolve(aiResult({ prompt_1: `${index}|||[["${segments[index]}","ひ"]]` }));
@@ -532,9 +535,7 @@ describe('Configured language learning runtime', () => {
 			const prompt = input.prompts[0].prompt;
 			requestedPrompts.push(prompt);
 			if (requestedPrompts.length === 2) {
-				return Promise.reject(new AiError('timeout', {
-					detail: 'grok CLI timed out after 300 seconds.'
-				}));
+				return Promise.reject(cliTimeout('grok', 300));
 			}
 			const ids = requestedPrompts.length === 3
 				? [0, 2]
@@ -646,9 +647,7 @@ describe('Configured language learning runtime', () => {
 			...settings,
 			interpreterExecutionMode: 'grok'
 		});
-		mocks.runAiTask.mockRejectedValue(new AiError('timeout', {
-			detail: 'grok CLI timed out after 120 seconds.'
-		}));
+		mocks.runAiTask.mockRejectedValue(cliTimeout('grok', 120));
 
 		await expect(configuredLanguageLearning.explainSelection({
 			kind: 'word',
@@ -657,7 +656,45 @@ describe('Configured language learning runtime', () => {
 		})).rejects.toMatchObject({
 			name: 'LanguageLearningRequestError',
 			code: 'timeout',
-			details: { mode: 'grok', timeoutSeconds: 120 }
+			details: expect.objectContaining({ mode: 'grok', timeoutSeconds: 120 })
+		});
+	});
+
+	test.each([
+		['cli-failed', 'provider-error'],
+		['config', 'cli-missing'],
+		['response-too-large', 'bad-response'],
+		['invalid', 'provider-error'],
+		['protocol-mismatch', 'host-outdated']
+	])('keeps the Host %s code for the Reader card', async (nativeCode, aiCode) => {
+		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterExecutionMode: 'codex' });
+		mocks.runAiTask.mockRejectedValue(new AiError(aiCode as never, { nativeCode, detail: 'Host said no' }));
+
+		await expect(configuredLanguageLearning.explainSelection({
+			kind: 'word',
+			text: '日本語',
+			context: '日本語を勉強します。'
+		})).rejects.toMatchObject({
+			name: 'LanguageLearningRequestError',
+			code: nativeCode,
+			details: expect.objectContaining({ mode: 'codex', aiCode, technicalDetail: 'Host said no' })
+		});
+	});
+
+	test('reports API timeouts with gateway copy instead of the CLI timeout card', async () => {
+		mocks.runAiTask.mockRejectedValue(new AiError('timeout', {
+			detail: 'No response from the provider for 60 seconds.',
+			timeoutSeconds: 60
+		}));
+
+		await expect(configuredLanguageLearning.explainSelection({
+			kind: 'word',
+			text: '日本語',
+			context: '日本語を勉強します。'
+		})).rejects.toMatchObject({
+			code: 'failed',
+			message: 'aiErrorTimeoutBody',
+			details: expect.objectContaining({ mode: 'api', aiCode: 'timeout', timeoutSeconds: 60 })
 		});
 	});
 });

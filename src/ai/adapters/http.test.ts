@@ -150,6 +150,14 @@ describe('executeApiCall', () => {
 		await expect(executeApiCall(call('openai-compatible'), { fetchImpl })).resolves.toBe('ok');
 	});
 
+	test('skips non-JSON SSE data such as proxy keepalives', async () => {
+		const fetchImpl = vi.fn().mockResolvedValue(streamResponse([
+			'data: \n\ndata: ping\n\n',
+			'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n'
+		], 'text/event-stream'));
+		await expect(executeApiCall(call('openai-compatible'), { fetchImpl })).resolves.toBe('ok');
+	});
+
 	test('surfaces an error event inside the stream', async () => {
 		const fetchImpl = vi.fn().mockResolvedValue(streamResponse([
 			'data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}\n\n'
@@ -216,6 +224,37 @@ describe('executeApiCall', () => {
 		}
 		close?.();
 		await expect(result).resolves.toBe('01234');
+	});
+
+	test('keeps a slow buffered body alive past the idle window', async () => {
+		vi.useFakeTimers();
+		let push: ((text: string) => void) | undefined;
+		let close: (() => void) | undefined;
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				push = text => controller.enqueue(encoder.encode(text));
+				close = () => controller.close();
+			}
+		});
+		const fetchImpl = vi.fn().mockResolvedValue(new Response(body, { headers: { 'content-type': 'application/json' } }));
+		const result = executeApiCall(call('openai-compatible'), { fetchImpl, idleTimeoutMs: 1000 });
+		const json = JSON.stringify({ choices: [{ message: { content: 'slow' } }] });
+		for (let index = 0; index < json.length; index += 10) {
+			await vi.advanceTimersByTimeAsync(800);
+			push?.(json.slice(index, index + 10));
+		}
+		close?.();
+		await expect(result).resolves.toBe('slow');
+	});
+
+	test('reports the expired limit on idle timeouts', async () => {
+		vi.useFakeTimers();
+		const body = new ReadableStream<Uint8Array>({ start() {} });
+		const fetchImpl = vi.fn().mockResolvedValue(new Response(body, { headers: { 'content-type': 'text/event-stream' } }));
+		const result = executeApiCall(call('openai-compatible'), { fetchImpl, idleTimeoutMs: 2000 });
+		const assertion = expect(result).rejects.toMatchObject({ code: 'timeout', timeoutSeconds: 2 });
+		await vi.advanceTimersByTimeAsync(2500);
+		await assertion;
 	});
 
 	test('enforces the hard cap even while bytes keep arriving', async () => {
