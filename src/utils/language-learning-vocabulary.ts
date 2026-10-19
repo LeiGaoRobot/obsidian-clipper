@@ -3,6 +3,8 @@ import type { LearningSelection, LearningVocabularyEntry } from './language-lear
 import { copyToClipboard } from './clipboard-utils';
 import { saveToObsidian } from './obsidian-note-creator';
 import { loadSettings } from './storage-utils';
+import { loadAiSettings } from './ai-settings';
+import { resolveResponseLanguage } from '../ai/resolve';
 import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from './language-learning-defaults';
 
 const MAX_VOCABULARY_ENTRIES = 500;
@@ -45,10 +47,7 @@ async function storeVocabulary(entries: LearningVocabularyEntry[]): Promise<void
 }
 
 async function getResponseLanguage(): Promise<string> {
-	const settings = await loadSettings();
-	return settings.readerSettings.learningResponseLanguage.trim()
-		|| navigator.language
-		|| 'English';
+	return resolveResponseLanguage(await loadAiSettings(), navigator.language);
 }
 
 export const configuredLanguageLearningVocabulary = {

@@ -12,7 +12,16 @@ import { loadTemplates, createDefaultTemplate } from '../managers/template-manag
 import browser from '../utils/browser-polyfill';
 import { addBrowserClassToHtml, detectBrowser } from '../utils/browser-detection';
 import { createElementWithClass } from '../utils/dom-utils';
-import { initializeInterpreter, handleInterpreterUI, collectPromptVariables } from '../utils/interpreter';
+import {
+	initializeInterpreter,
+	handleInterpreterUI,
+	collectPromptVariables,
+	findPopupModelProfile,
+	listPopupModelProfiles,
+	usesPopupModelSelect
+} from '../utils/interpreter';
+import { loadAiSettings } from '../utils/ai-settings';
+import type { AiSettingsView } from '../ai/types';
 import { adjustNoteNameHeight } from '../utils/ui-utils';
 import { debugLog } from '../utils/debug';
 import { showVariables, initializeVariablesPanel, updateVariablesPanel } from '../managers/inspect-variables';
@@ -32,6 +41,8 @@ interface ReaderModeResponse {
 }
 
 let loadedSettings: Settings;
+// The AI settings view, loaded alongside the v1 settings and refreshed with them.
+let aiSettings: AiSettingsView;
 let currentTemplate: Template | null = null;
 let templates: Template[] = [];
 let currentVariables: { [key: string]: string } = {};
@@ -286,7 +297,7 @@ function setupMessageListeners() {
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
-	loadedSettings = await loadSettings();
+	[loadedSettings, aiSettings] = await Promise.all([loadSettings(), loadAiSettings()]);
 	if (isIframe) {
 		document.documentElement.classList.add('is-embedded');
 	}
@@ -616,7 +627,7 @@ async function initializeLanguageLearningTools(): Promise<void> {
 	]);
 	const { initializeLanguageLearningPopup, isLanguageLearningPopupAvailable } = popupLanguageLearning;
 	initializeLanguageLearningPopup({
-		enabled: isLanguageLearningPopupAvailable(generalSettings),
+		enabled: isLanguageLearningPopupAvailable(aiSettings),
 		transformContent: configuredLanguageLearning.transformContent,
 		getMessage
 	});
@@ -882,24 +893,25 @@ function buildTemplateFieldsSkeleton(template: Template | null) {
 	// Show/hide interpreter section based on template prompt variables
 	const interpreterContainer = document.getElementById('interpreter');
 	const interpretBtn = document.getElementById('interpret-btn');
-	const hasPromptVars = generalSettings.interpreterEnabled && collectPromptVariables(template).length > 0;
+	const hasPromptVars = aiSettings.enabled && collectPromptVariables(template).length > 0;
 	if (interpreterContainer) interpreterContainer.style.display = hasPromptVars ? 'flex' : 'none';
 	if (interpretBtn) interpretBtn.style.display = hasPromptVars ? 'inline-block' : 'none';
 
-	// Populate model dropdown immediately (only needs generalSettings)
+	// Populate model dropdown immediately (only needs the loaded settings)
 	if (hasPromptVars) {
 		const modelSelect = document.getElementById('model-select') as HTMLSelectElement;
 		if (modelSelect) {
-			const enabledModels = generalSettings.models.filter(model => model.enabled);
+			const enabledModels = listPopupModelProfiles(aiSettings);
 			modelSelect.textContent = '';
 			enabledModels.forEach(model => {
 				const option = document.createElement('option');
 				option.value = model.id;
-				option.textContent = model.name;
+				option.textContent = model.label;
 				modelSelect.appendChild(option);
 			});
+			// The choice is still the v1 `interpreterModel`, which the select writes until it moves to routing.
 			modelSelect.value = generalSettings.interpreterModel || (enabledModels[0]?.id ?? '');
-			modelSelect.style.display = (generalSettings.interpreterExecutionMode ?? 'api') === 'api' ? 'inline-block' : 'none';
+			modelSelect.style.display = usesPopupModelSelect(aiSettings) ? 'inline-block' : 'none';
 		}
 	}
 }
@@ -960,21 +972,23 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 		noteContentField.value = template.noteContentFormat ? formattedContent : '';
 	}
 
-	if (generalSettings.interpreterEnabled) {
-		await initializeInterpreter(template, variables, currentTabId!, currentUrl);
+	if (aiSettings.enabled) {
+		const view = aiSettings;
+		await initializeInterpreter(template, variables, currentTabId!, currentUrl, view);
 
 		const promptVariables = collectPromptVariables(template);
 
-		if (generalSettings.interpreterAutoRun && promptVariables.length > 0) {
+		if (view.interpreter.autoRun && promptVariables.length > 0) {
 			try {
 				const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
 				const modelSelect = document.getElementById('model-select') as HTMLSelectElement;
 				const selectedModelId = modelSelect?.value || generalSettings.interpreterModel;
-				const modelConfig = generalSettings.models.find(m => m.id === selectedModelId);
-				if ((generalSettings.interpreterExecutionMode ?? 'api') === 'api' && !modelConfig) {
+				const profile = findPopupModelProfile(view, selectedModelId);
+				const useModelSelect = usesPopupModelSelect(view);
+				if (useModelSelect && !profile) {
 					throw new Error(`Model configuration not found for ${selectedModelId}`);
 				}
-				await handleInterpreterUI(template, variables, currentTabId!, currentUrl, modelConfig);
+				await handleInterpreterUI(template, variables, currentTabId!, currentUrl, useModelSelect ? profile : undefined);
 
 				if (interpretBtn && !interpretBtn.classList.contains('partial')) {
 					interpretBtn.classList.add('done');
@@ -1153,7 +1167,7 @@ async function checkHighlighterModeState(tabId: number) {
 
 		const isHighlighterMode = response.isActive;
 		
-		loadedSettings = await loadSettings();
+		[loadedSettings, aiSettings] = await Promise.all([loadSettings(), loadAiSettings()]);
 		
 		updateHighlighterModeUI(isHighlighterMode);
 	} catch (error) {
@@ -1348,7 +1362,7 @@ async function handleClipObsidian(): Promise<void> {
 
 	try {
 		// Handle interpreter if needed
-		if (generalSettings.interpreterEnabled && interpretBtn && collectPromptVariables(currentTemplate).length > 0) {
+		if (aiSettings.enabled && interpretBtn && collectPromptVariables(currentTemplate).length > 0) {
 			if (interpretBtn.classList.contains('processing')) {
 				await waitForInterpreter(interpretBtn);
 			} else if (!interpretBtn.classList.contains('done') && !interpretBtn.classList.contains('partial')) {

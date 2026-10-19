@@ -8,7 +8,8 @@ import { debugLog } from './utils/debug';
 import { createStructuredOutputCache } from './ai/capabilities';
 import { createAiGateway } from './ai/gateway';
 import { createAiJobStore, type StorageAreaLike } from './ai/job-store';
-import type { NativeMessagingSupport } from './ai/types';
+import { aiSettingsBootstrapper } from './ai/migrate';
+import { AI_V2_BOOTSTRAP, createAiSettingsStore, type StorageChangedEventLike } from './ai/settings';
 import { getExtensionBranding } from './utils/extension-branding';
 import { isCliExecutionMode } from './utils/native-cli-contract';
 import {
@@ -17,7 +18,7 @@ import {
 	NativeCliUnavailableError,
 	checkNativeCliHealth
 } from './utils/native-cli-service';
-import { loadSettings } from './utils/storage-utils';
+import { detectNativeMessaging } from './utils/native-messaging-support';
 import { fetchBilibiliTranscript } from './utils/bilibili-transcript';
 import { fetchBilibiliPageJson } from './utils/bilibili-page-fetch';
 import { fetchCurrentBilibiliPlayerJson } from './utils/bilibili-player-page';
@@ -482,21 +483,27 @@ browser.runtime.onMessage.addListener((request: unknown) => {
 		}));
 });
 
-function detectNativeMessaging(): NativeMessagingSupport {
-	const runtime = browser.runtime as unknown as { connectNative?: unknown; sendNativeMessage?: unknown };
-	if (typeof runtime.connectNative === 'function') return 'port';
-	return typeof runtime.sendNativeMessage === 'function' ? 'message' : 'none';
-}
-
 // Durable transcript jobs live in storage.session, which survives a service worker restart but not
 // a browser restart. Without it (Safari < 16.4) records last only as long as this worker.
 const aiJobSession = (browser.storage as unknown as { session?: StorageAreaLike }).session;
 
+// The background's own v2 AI settings store, wired like the UI one in `utils/ai-settings.ts`. Until
+// the Phase 5b switch (`AI_V2_BOOTSTRAP`), the view is derived from the v1 items on every load.
+const aiSettingsStore = createAiSettingsStore({
+	sync: browser.storage.sync as unknown as StorageAreaLike,
+	local: browser.storage.local as unknown as StorageAreaLike,
+	...(aiJobSession ? { session: aiJobSession } : {}),
+	onChanged: browser.storage.onChanged as unknown as StorageChangedEventLike,
+	nativeMessaging: detectNativeMessaging,
+	bootstrap: AI_V2_BOOTSTRAP,
+	bootstrapper: aiSettingsBootstrapper,
+	build: browser.runtime.getManifest().version
+});
+
 // Every model request runs here, never in Reader or page content scripts, so provider
 // credentials stay in extension storage and cross-origin requests avoid page CORS rules.
 const aiGateway = createAiGateway({
-	loadSettings,
-	nativeMessaging: detectNativeMessaging,
+	loadAiSettings: () => aiSettingsStore.load(),
 	structuredOutput: createStructuredOutputCache(browser.storage.local),
 	jobStore: createAiJobStore(aiJobSession),
 	keepAlive: () => {

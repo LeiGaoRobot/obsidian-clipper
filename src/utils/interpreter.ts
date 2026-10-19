@@ -1,5 +1,5 @@
 import { generalSettings, saveSettings } from './storage-utils';
-import { PromptVariable, Template, ModelConfig } from '../types/types';
+import { PromptVariable, Template } from '../types/types';
 import { compileTemplate } from './template-compiler';
 import { applyFilters } from './filters';
 import { formatDuration } from './string-utils';
@@ -10,6 +10,9 @@ import { updateTokenCount } from './token-counter';
 import { runAiTask } from '../ai/client';
 import { describeAiError } from '../ai/error-messages';
 import { isAiError } from '../ai/errors';
+import { isCliKind } from '../ai/connection-kind';
+import { legacyExecutionMode } from '../ai/settings-view';
+import type { AiSettingsView, ModelProfile } from '../ai/types';
 
 
 // Store event listeners for cleanup
@@ -55,7 +58,34 @@ export function collectPromptVariables(template: Template | null): PromptVariabl
 	return Array.from(promptMap.values());
 }
 
-export async function initializeInterpreter(template: Template, variables: { [key: string]: string }, tabId: number, currentUrl: string) {
+// Profiles on API connections; in derived mode these are the v1 models, in v1 order.
+function apiProfiles(view: AiSettingsView): ModelProfile[] {
+	const cliConnectionIds = new Set(view.connections.filter(item => isCliKind(item.kind)).map(item => item.id));
+	return view.profiles.filter(profile => !cliConnectionIds.has(profile.connectionId));
+}
+
+/** The profiles the popup model select lists: the enabled API profiles. */
+export function listPopupModelProfiles(view: AiSettingsView): ModelProfile[] {
+	return apiProfiles(view).filter(profile => profile.enabled);
+}
+
+/** The API profile a popup model select value names, enabled or not. */
+export function findPopupModelProfile(view: AiSettingsView, profileId: string | undefined): ModelProfile | undefined {
+	return apiProfiles(view).find(profile => profile.id === profileId);
+}
+
+/** The model select is shown, and its choice used, only when an API connection serves `interpret`. */
+export function usesPopupModelSelect(view: AiSettingsView): boolean {
+	return legacyExecutionMode(view, 'interpret') === 'api';
+}
+
+export async function initializeInterpreter(
+	template: Template,
+	variables: { [key: string]: string },
+	tabId: number,
+	currentUrl: string,
+	view: AiSettingsView
+) {
 	const interpreterContainer = document.getElementById('interpreter');
 	const interpretBtn = document.getElementById('interpret-btn');
 	const promptContextTextarea = document.getElementById('prompt-context') as HTMLTextAreaElement;
@@ -82,7 +112,7 @@ export async function initializeInterpreter(template: Template, variables: { [ke
 	const promptVariables = collectPromptVariables(template);
 
 	// Hide interpreter if it's disabled or there are no prompt variables
-	if (!generalSettings.interpreterEnabled || promptVariables.length === 0) {
+	if (!view.enabled || promptVariables.length === 0) {
 		if (interpreterContainer) interpreterContainer.style.display = 'none';
 		if (interpretBtn) interpretBtn.style.display = 'none';
 		return;
@@ -105,7 +135,7 @@ export async function initializeInterpreter(template: Template, variables: { [ke
 
 		let promptToDisplay =
 			template.context
-			|| generalSettings.defaultPromptContext
+			|| view.interpreter.defaultPromptContext
 			|| '{{fullHtml|remove_html:("#navbar,.footer,#footer,header,footer,style,script")|strip_tags:("script,h1,h2,h3,h4,h5,h6,meta,a,ol,ul,li,p,em,strong,i,b,s,strike,u,sup,sub,img,video,audio,math,table,cite,td,th,tr,caption")|strip_attr:("alt,src,href,id,content,property,name,datetime,title")}}';
 		promptToDisplay = await compileTemplate(tabId, promptToDisplay, variables, currentUrl);
 		promptContextTextarea.value = promptToDisplay;
@@ -118,14 +148,15 @@ export async function initializeInterpreter(template: Template, variables: { [ke
 
 	if (template) {
 		// Only add click listener if auto-run is disabled
-		if (interpretBtn && !generalSettings.interpreterAutoRun) {
+		if (interpretBtn && !view.interpreter.autoRun) {
 			const clickListener = async () => {
 				const selectedModelId = modelSelect.value;
-				const modelConfig = generalSettings.models.find(m => m.id === selectedModelId);
-				if ((generalSettings.interpreterExecutionMode ?? 'api') === 'api' && !modelConfig) {
+				const profile = findPopupModelProfile(view, selectedModelId);
+				const useModelSelect = usesPopupModelSelect(view);
+				if (useModelSelect && !profile) {
 					throw new Error(`Model configuration not found for ${selectedModelId}`);
 				}
-				await handleInterpreterUI(template, variables, tabId, currentUrl, modelConfig);
+				await handleInterpreterUI(template, variables, tabId, currentUrl, useModelSelect ? profile : undefined);
 			};
 			storeListener(interpretBtn, 'click', clickListener);
 		}
@@ -137,23 +168,24 @@ export async function initializeInterpreter(template: Template, variables: { [ke
 			};
 			storeListener(modelSelect, 'change', changeListener);
 
-			modelSelect.style.display = (generalSettings.interpreterExecutionMode ?? 'api') === 'api' ? 'inline-block' : 'none';
+			modelSelect.style.display = usesPopupModelSelect(view) ? 'inline-block' : 'none';
 
 			// Only repopulate if the skeleton hasn't already done it
 			if (modelSelect.options.length === 0) {
-				const enabledModels = generalSettings.models.filter(model => model.enabled);
+				const enabledModels = listPopupModelProfiles(view);
 				modelSelect.textContent = '';
 				enabledModels.forEach(model => {
 					const option = document.createElement('option');
 					option.value = model.id;
-					option.textContent = model.name;
+					option.textContent = model.label;
 					modelSelect.appendChild(option);
 				});
 				modelSelect.value = generalSettings.interpreterModel || (enabledModels[0]?.id ?? '');
 			}
 
-			// Validate that the selected model is still enabled
-			const enabledModels = generalSettings.models.filter(model => model.enabled);
+			// Validate that the selected model is still enabled. The choice is still the v1
+			// `interpreterModel`, which this select writes until it moves to task routing.
+			const enabledModels = listPopupModelProfiles(view);
 			const lastSelectedModel = enabledModels.find(model => model.id === generalSettings.interpreterModel);
 
 			if (!lastSelectedModel && enabledModels.length > 0) {
@@ -170,7 +202,7 @@ export async function handleInterpreterUI(
 	variables: { [key: string]: string },
 	tabId: number,
 	currentUrl: string,
-	modelConfig?: ModelConfig
+	profile?: ModelProfile
 ): Promise<void> {
 	const interpreterContainer = document.getElementById('interpreter');
 	const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
@@ -189,8 +221,6 @@ export async function handleInterpreterUI(
 		// Remove any previous done, partial, or error classes
 		interpreterContainer?.classList.remove('done', 'partial', 'error');
 		interpretBtn.classList.remove('done', 'partial', 'error');
-
-		const executionMode = generalSettings.interpreterExecutionMode ?? 'api';
 
 		const promptVariables = collectPromptVariables(template);
 
@@ -223,11 +253,12 @@ export async function handleInterpreterUI(
 			responseTimer.textContent = formatDuration(elapsedTime);
 		}, 10);
 
-		// The model select picks the profile for API runs; CLI modes use their own profile.
+		// Callers pass the model select's profile only when the select is in use (an API connection
+		// serves interpret); otherwise routing picks the profile.
 		const { output: { responses, missing } } = await runAiTask('interpret', {
 			context: contextToUse,
 			prompts: promptVariables
-		}, executionMode === 'api' && modelConfig ? { profileId: modelConfig.id } : {});
+		}, profile ? { profileId: profile.id } : {});
 		// Unanswered prompts get no response, so their placeholders stay in the fields.
 		const promptResponses = promptVariables
 			.filter(variable => Object.prototype.hasOwnProperty.call(responses, variable.key))

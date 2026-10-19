@@ -7,6 +7,7 @@ import { RequestCancelledError } from './request-cancellation';
 
 const mocks = vi.hoisted(() => ({
 	loadSettings: vi.fn(),
+	loadAiSettings: vi.fn(),
 	runAiTask: vi.fn(),
 	runTranscriptJob: vi.fn(),
 	loadTranscriptCheckpoint: vi.fn(),
@@ -45,11 +46,13 @@ vi.mock('./storage-utils', () => ({
 	loadSettings: mocks.loadSettings,
 	saveSettings: mocks.saveSettings
 }));
+vi.mock('./ai-settings', () => ({ loadAiSettings: mocks.loadAiSettings }));
 vi.mock('./clipboard-utils', () => ({ copyToClipboard: mocks.copyToClipboard }));
 vi.mock('./obsidian-note-creator', () => ({ saveToObsidian: mocks.saveToObsidian }));
 vi.mock('./i18n', () => ({ getMessage: (key: string) => key }));
 
 import { withJobAttempts } from '../ai/job-client';
+import { deriveAiSettings } from '../ai/settings-view';
 import { configuredLanguageLearning } from './language-learning-runtime';
 import type { TranscriptReadingProgress } from './language-learning';
 
@@ -246,6 +249,11 @@ describe('Configured language learning runtime', () => {
 		mocks.copyToClipboard.mockResolvedValue(true);
 		mocks.saveToObsidian.mockResolvedValue(undefined);
 		mocks.loadSettings.mockResolvedValue(settings);
+		// The runtime reads the AI settings view; in derived mode it is built from the v1 fixture.
+		mocks.loadAiSettings.mockReset().mockImplementation(async () => deriveAiSettings(
+			await mocks.loadSettings(),
+			{ nativeMessaging: 'port' }
+		));
 	});
 
 	test('reports the selected engine and can switch it explicitly', async () => {

@@ -1,4 +1,5 @@
-import type { Settings } from '../types/types';
+import { resolveProfile } from '../ai/resolve';
+import type { AiSettingsView } from '../ai/types';
 import { replaceTextSelection } from './language-learning';
 import { isRequestCancelled } from './request-cancellation';
 
@@ -16,12 +17,17 @@ const AI_EDIT_PRESET_MESSAGE_KEYS: Record<string, string> = {
 	'study-notes': 'aiEditInstructionStudyNotes'
 };
 
-export function isLanguageLearningPopupAvailable(
-	settings: Pick<Settings, 'interpreterEnabled' | 'interpreterExecutionMode' | 'models'>
-): boolean {
-	if (!settings.interpreterEnabled) return false;
-	return (settings.interpreterExecutionMode ?? 'api') !== 'api'
-		|| settings.models.some(model => model.enabled);
+/**
+ * Whether the popup shows the AI edit tools: AI is on and `edit` resolves to a profile, or fails
+ * only for a reason the tools' error card explains (a key missing on this device, or a CLI this
+ * browser cannot reach).
+ */
+export function isLanguageLearningPopupAvailable(view: AiSettingsView): boolean {
+	if (!view.enabled) return false;
+	const resolved = resolveProfile(view, 'edit');
+	return resolved.ok
+		|| resolved.error.code === 'credential-missing'
+		|| resolved.error.code === 'host-unsupported';
 }
 
 export function initializeLanguageLearningPopup({

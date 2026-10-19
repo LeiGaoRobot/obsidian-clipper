@@ -2,14 +2,13 @@
 
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { AiError } from '../ai/errors';
-import type { ModelConfig, Template } from '../types/types';
+import { deriveAiSettings } from '../ai/settings-view';
+import type { AiSettingsView } from '../ai/types';
+import type { Settings, Template } from '../types/types';
 
 const mocks = vi.hoisted(() => ({
 	runAiTask: vi.fn(),
-	generalSettings: {
-		interpreterExecutionMode: 'codex',
-		providers: []
-	} as Record<string, unknown>
+	generalSettings: {} as Record<string, unknown>
 }));
 
 vi.mock('./storage-utils', () => ({
@@ -20,7 +19,12 @@ vi.mock('../ai/client', () => ({ runAiTask: mocks.runAiTask }));
 vi.mock('./i18n', () => ({ getMessage: (key: string) => key }));
 vi.mock('./debug', () => ({ debugLog: vi.fn() }));
 
-import { handleInterpreterUI } from './interpreter';
+import {
+	findPopupModelProfile,
+	handleInterpreterUI,
+	listPopupModelProfiles,
+	usesPopupModelSelect
+} from './interpreter';
 
 const template: Template = {
 	id: 'template-1',
@@ -32,13 +36,23 @@ const template: Template = {
 	properties: []
 };
 
-const modelConfig: ModelConfig = {
-	id: 'model-b',
-	providerId: 'provider-1',
-	providerModelId: 'gpt-b',
-	name: 'B',
-	enabled: true
-};
+// Views are built from v1 settings exactly as the loader derives them until v2 is stored.
+function v1View(overrides: Partial<Settings> = {}): AiSettingsView {
+	return deriveAiSettings({
+		interpreterEnabled: true,
+		interpreterAutoRun: false,
+		interpreterExecutionMode: 'api',
+		interpreterModel: 'model-b',
+		defaultPromptContext: '',
+		providers: [{ id: 'provider-1', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', apiKey: 'sk', apiKeyRequired: true }],
+		models: [
+			{ id: 'model-a', providerId: 'provider-1', providerModelId: 'gpt-a', name: 'A', enabled: false },
+			{ id: 'model-b', providerId: 'provider-1', providerModelId: 'gpt-b', name: 'B', enabled: true }
+		],
+		readerSettings: {},
+		...overrides
+	} as Settings, { nativeMessaging: 'port' });
+}
 
 describe('Interpreter', () => {
 	beforeEach(() => {
@@ -51,7 +65,6 @@ describe('Interpreter', () => {
 			<button id="more-btn"></button>
 			<textarea id="prompt-context">Page context</textarea>
 		`;
-		mocks.generalSettings.interpreterExecutionMode = 'codex';
 		mocks.runAiTask.mockReset().mockResolvedValue({
 			output: { responses: { prompt_1: 'Done' }, missing: [] },
 			connectionKind: 'cli-codex'
@@ -114,10 +127,20 @@ describe('Interpreter', () => {
 	});
 
 	test('passes the selected model as the profile in API mode', async () => {
-		mocks.generalSettings.interpreterExecutionMode = 'api';
-		await handleInterpreterUI(template, {}, 1, 'https://example.com', modelConfig);
+		const profile = findPopupModelProfile(v1View(), 'model-b');
+		await handleInterpreterUI(template, {}, 1, 'https://example.com', profile);
 
 		expect(mocks.runAiTask).toHaveBeenCalledWith('interpret', expect.anything(), { profileId: 'model-b' });
+	});
+
+	test('lists the enabled v1 models for the model select, only in API mode', () => {
+		const view = v1View();
+		expect(listPopupModelProfiles(view).map(profile => [profile.id, profile.label])).toEqual([['model-b', 'B']]);
+		expect(findPopupModelProfile(view, 'model-a')?.enabled).toBe(false);
+		expect(findPopupModelProfile(view, 'legacy-cli-codex-default')).toBeUndefined();
+		expect(usesPopupModelSelect(view)).toBe(true);
+		expect(usesPopupModelSelect(v1View({ interpreterExecutionMode: 'codex' }))).toBe(false);
+		expect(usesPopupModelSelect(v1View({ interpreterExecutionMode: 'grok' }))).toBe(false);
 	});
 
 	test('shows a localized AI error with its technical detail', async () => {

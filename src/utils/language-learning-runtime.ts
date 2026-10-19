@@ -26,7 +26,8 @@ import {
 import { getMessage } from './i18n';
 import type { NativeCliErrorCode } from './native-cli-contract';
 import { RequestCancelledError, throwIfRequestAborted } from './request-cancellation';
-import { loadSettings, saveSettings } from './storage-utils';
+import { saveSettings } from './storage-utils';
+import { loadAiSettings } from './ai-settings';
 import { configuredLanguageLearningVocabulary } from './language-learning-vocabulary';
 import {
 	applyJapaneseReadingDictionary,
@@ -36,7 +37,9 @@ import {
 	configuredJapaneseReadingDictionary,
 	listJapaneseReadingDictionary
 } from './japanese-reading-dictionary-storage';
-import type { Settings } from '../types/types';
+import { resolveResponseLanguage } from '../ai/resolve';
+import { legacyExecutionMode } from '../ai/settings-view';
+import type { AiSettingsView } from '../ai/types';
 
 // The scope of the fixed Japanese translation that feeds readings of a non-Japanese transcript.
 const JAPANESE_TRANSLATION_CHECKPOINT_SCOPE = 'japanese-readings:Japanese';
@@ -118,28 +121,27 @@ function toTranscriptJobError(error: unknown, mode: string): Error {
 	return converted;
 }
 
-function resolveResponseLanguage(settings: Settings): string {
-	return settings.readerSettings.learningResponseLanguage.trim()
-		|| (typeof navigator !== 'undefined' ? navigator.language : '')
-		|| 'English';
+function responseLanguageOf(view: AiSettingsView): string {
+	return resolveResponseLanguage(view, typeof navigator !== 'undefined' ? navigator.language : '');
+}
+
+async function loadResponseLanguage(): Promise<string> {
+	return responseLanguageOf(await loadAiSettings());
 }
 
 async function loadConfiguredAssistant() {
-	const settings = await loadSettings();
-	if (!settings.interpreterEnabled) {
+	const view = await loadAiSettings();
+	if (!view.enabled) {
 		throw new Error(getMessage('aiLanguageToolsRequireInterpreter'));
 	}
 
-	const executionMode = settings.interpreterExecutionMode ?? 'api';
-	if (executionMode === 'api') {
-		const enabledModels = settings.models.filter(model => model.enabled);
-		const model = enabledModels.find(item => item.id === settings.interpreterModel) || enabledModels[0];
-		if (!model) {
-			throw new Error(getMessage('aiLanguageToolsRequireModel'));
-		}
+	// The mode keeps the Reader's mode-specific error copy until the Reader moves to profiles.
+	const executionMode = legacyExecutionMode(view);
+	if (executionMode === 'api' && !view.routing.defaultProfileId) {
+		throw new Error(getMessage('aiLanguageToolsRequireModel'));
 	}
 
-	const responseLanguage = resolveResponseLanguage(settings);
+	const responseLanguage = responseLanguageOf(view);
 	const assistant = createLanguageLearningAssistant(async (task, input, signal) => {
 		throwIfRequestAborted(signal);
 		try {
@@ -233,8 +235,7 @@ export const configuredLanguageLearning = {
 	...configuredLanguageLearningVocabulary,
 	...configuredJapaneseReadingDictionary,
 	async getExecutionInfo() {
-		const settings = await loadSettings();
-		const mode = settings.interpreterExecutionMode ?? 'api';
+		const mode = legacyExecutionMode(await loadAiSettings());
 		return {
 			mode,
 			label: getMessage(mode === 'grok'
@@ -255,8 +256,7 @@ export const configuredLanguageLearning = {
 	},
 
 	async loadTranscriptTranslations(segments: string[]): Promise<string[] | undefined> {
-		const settings = await loadSettings();
-		return loadCompletedTranslations(`shared:${resolveResponseLanguage(settings)}`, segments);
+		return loadCompletedTranslations(`shared:${await loadResponseLanguage()}`, segments);
 	},
 
 	async loadJapaneseTranscriptTranslations(segments: string[]): Promise<string[] | undefined> {
@@ -272,10 +272,10 @@ export const configuredLanguageLearning = {
 
 	async saveTranscriptTranslations(segments: string[], translations: string[]): Promise<void> {
 		if (translations.length !== segments.length) return;
-		const settings = await loadSettings();
+		const responseLanguage = await loadResponseLanguage();
 		await saveTranscriptJob(
 			'translate',
-			transcriptTranslationJobIdentity(`shared:${resolveResponseLanguage(settings)}`),
+			transcriptTranslationJobIdentity(`shared:${responseLanguage}`),
 			segments,
 			[...translations]
 		);

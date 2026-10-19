@@ -1,7 +1,8 @@
-import type { Settings } from '../types/types';
+import type { InterpreterExecutionMode, Settings } from '../types/types';
 import { inferConnectionKind } from './connection-kind';
 import type {
 	AiSettingsView,
+	AiTask,
 	Connection,
 	ModelProfile,
 	NativeMessagingSupport
@@ -99,4 +100,18 @@ export function deriveAiSettings(
 		credentials,
 		nativeMessaging
 	};
+}
+
+/**
+ * The v1 execution mode a view implies for a task: the CLI kind of the profile that serves it, else
+ * `api`. In derived mode this is exactly `interpreterExecutionMode`. A bridge for readers whose UI
+ * still shows a mode (the popup model select, the Reader engine switch) until they move to profiles.
+ */
+export function legacyExecutionMode(view: AiSettingsView, task?: AiTask): InterpreterExecutionMode {
+	const profileId = (task ? view.routing.taskProfiles[task] : undefined) ?? view.routing.defaultProfileId;
+	const profile = profileId ? view.profiles.find(item => item.id === profileId) : undefined;
+	const kind = profile ? view.connections.find(item => item.id === profile.connectionId)?.kind : undefined;
+	if (kind === 'cli-codex') return 'codex';
+	if (kind === 'cli-grok') return 'grok';
+	return 'api';
 }

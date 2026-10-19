@@ -13,6 +13,8 @@ import {
 } from './job-store';
 import { RESUME_WINDOW_MS } from './job-runner';
 import type { AiGatewayMessage } from './protocol';
+import { deriveAiSettings } from './settings-view';
+import type { NativeMessagingSupport } from './types';
 
 function v1Settings(overrides: Partial<Settings> = {}): Settings {
 	return {
@@ -72,10 +74,18 @@ function deferred<T>() {
 	return { promise, resolve, reject };
 }
 
-function setup(overrides: Partial<AiGatewayDeps> = {}, settings = v1Settings()) {
+// The gateway reads the v2 view; in derived mode it is built from v1 exactly like this.
+function v1View(settings = v1Settings(), nativeMessaging: NativeMessagingSupport = 'port') {
+	return deriveAiSettings(settings, { nativeMessaging });
+}
+
+function setup(
+	overrides: Partial<AiGatewayDeps> = {},
+	settings = v1Settings(),
+	nativeMessaging: NativeMessagingSupport = 'port'
+) {
 	const deps: AiGatewayDeps = {
-		loadSettings: async () => settings,
-		nativeMessaging: () => 'port',
+		loadAiSettings: async () => v1View(settings, nativeMessaging),
 		app: () => ({ name: 'PagePick', homepageUrl: 'https://example.com' }),
 		executeApi: vi.fn(async () => envelope),
 		executeCli: vi.fn(async () => '{"prompt_1":"From CLI"}'),
@@ -302,8 +312,9 @@ describe('AI gateway', () => {
 
 	test('reports CLI profiles as unsupported without Native Messaging', async () => {
 		const { port } = setup(
-			{ nativeMessaging: () => 'none' },
-			v1Settings({ interpreterExecutionMode: 'grok' } as Partial<Settings>)
+			{},
+			v1Settings({ interpreterExecutionMode: 'grok' } as Partial<Settings>),
+			'none'
 		);
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
 		await flush();
@@ -474,8 +485,7 @@ describe('AI gateway', () => {
 
 	test('ignores ports with other names', () => {
 		const gateway = createAiGateway({
-			loadSettings: async () => v1Settings(),
-			nativeMessaging: () => 'none',
+			loadAiSettings: async () => v1View(v1Settings(), 'none'),
 			app: () => ({ name: 'PagePick', homepageUrl: 'https://example.com' })
 		});
 		const port = new FakePort('something-else');

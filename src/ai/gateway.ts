@@ -1,4 +1,3 @@
-import type { Settings } from '../types/types';
 import { executeApiCall, type AppIdentity } from './adapters/http';
 import { runCliPrompt } from './adapters/native-cli';
 import {
@@ -41,8 +40,7 @@ import {
 	type AiProgressPhase
 } from './protocol';
 import { resolveProfile } from './resolve';
-import { deriveAiSettings } from './settings-view';
-import type { AiTask, ApiConnectionKind, CliConnectionKind, ConnectionKind, NativeMessagingSupport } from './types';
+import type { AiSettingsView, AiTask, ApiConnectionKind, CliConnectionKind, ConnectionKind } from './types';
 
 export interface AiPortLike {
 	name: string;
@@ -52,8 +50,8 @@ export interface AiPortLike {
 }
 
 export interface AiGatewayDeps {
-	loadSettings: () => Promise<Settings>;
-	nativeMessaging: () => NativeMessagingSupport;
+	/** The current AI settings view, re-read on every call. It carries the Native Messaging support. */
+	loadAiSettings: () => Promise<AiSettingsView>;
 	app: () => AppIdentity;
 	executeApi?: typeof executeApiCall;
 	executeCli?: typeof runCliPrompt;
@@ -205,15 +203,14 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 	};
 
 	// Settings are re-read on every call, so a model, key, or routing change applies to the next request.
-	const resolveTask = (settings: Settings, task: AiTask, profileId: string | undefined) => {
-		const view = deriveAiSettings(settings, { nativeMessaging: deps.nativeMessaging() });
+	const resolveTask = (view: AiSettingsView, task: AiTask, profileId: string | undefined) => {
 		const resolved = resolveProfile(view, task, profileId ? { profileId } : {});
 		if (!resolved.ok) throw resolved.error;
 		return resolved;
 	};
 
 	const resolveConnection = async (task: TranscriptJobTask, profileId: string | undefined): Promise<JobConnection> => {
-		const { connection } = resolveTask(await deps.loadSettings(), task, profileId);
+		const { connection } = resolveTask(await deps.loadAiSettings(), task, profileId);
 		return {
 			kind: connection.kind,
 			...(connection.maxConcurrency !== undefined ? { maxConcurrency: connection.maxConcurrency } : {})
@@ -226,7 +223,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		input: AiTaskInput,
 		options: AiExecuteOptions
 	): Promise<{ output: unknown; connectionKind: ConnectionKind }> => {
-		const { profile, connection, credential } = resolveTask(await deps.loadSettings(), task, options.profileId);
+		const { profile, connection, credential } = resolveTask(await deps.loadAiSettings(), task, options.profileId);
 		const { signal, onProgress } = options;
 		if (signal.aborted) throw new AiError('cancelled', { connectionId: connection.id });
 		const spec = outputSpec(task, input);
