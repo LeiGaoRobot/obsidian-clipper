@@ -47,12 +47,14 @@ This document describes the implemented language-learning MVP and the interfaces
 | `src/utils/bilibili-reader.ts` | Safe timed Bilibili transcript DOM construction for Reader |
 | `src/utils/transcript-study.ts` | Local sentence repeat, A–B loop, auto-pause, speed, and shortcut controller |
 | `src/utils/focus-trap.ts` | Shared dialog focus containment, Escape handling, focus return, and cleanup |
-| `src/utils/language-learning-service.ts` | Background validation, stored-model resolution, and local CLI dispatch |
-| `src/utils/llm-client.ts` | DOM-free provider adapter and response parser shared with Interpreter |
+| `src/ai/client.ts` | `runAiTask`: one `ai` Port per job, keepalive pings, cancellation, typed `AiError` rejections |
+| `src/ai/gateway.ts` | Background job registry: profile resolution from stored settings, adapter dispatch, progress, cancel, and `attach` replay |
+| `src/ai/adapters/http.ts` | DOM-free streaming provider adapter shared with Interpreter |
+| `src/ai/adapters/native-cli.ts` | Native Messaging adapter for local Grok/Codex execution |
 | `src/utils/native-cli-service.ts` | Background Native Messaging bridge for local Grok/Codex execution |
 | `src/utils/native-cli-health.ts` | Settings-page client for explicit Host and CLI diagnostics |
 | `src/utils/native-cli-install.ts` | Platform-aware Settings guide that builds and copies the one-time Host install command for the current extension ID |
-| `src/background.ts` | `languageLearningRequest` execution seam, Bilibili subtitle bridge, and prefix-restricted transcript checkpoint bridge for content scripts |
+| `src/background.ts` | Registers the AI gateway on the `ai` Port, Bilibili subtitle bridge, and prefix-restricted transcript checkpoint bridge for content scripts |
 
 Bilibili transcript capture is limited to the in-page Reader on Chromium and Firefox. Before Reader removes the live page, the background runs in the page's MAIN world, verifies the current BVID, AID, and CID, waits briefly for the matching player response, and fetches the selected subtitle in that same page context. Expired request URLs are ignored while the polling window remains open. This path does not use Interpreter credentials or create a provider request.
 
@@ -61,9 +63,9 @@ The request path is:
 ```text
 Popup or Reader
   → configuredLanguageLearning
-  → browser.runtime languageLearningRequest
-  → background language-learning service
-  → DOM-free LLM client or Native Messaging Host
+  → runAiTask(task, input) over the `ai` runtime Port
+  → background AI gateway (resolveProfile from stored settings)
+  → streaming HTTP adapter or Native Messaging adapter
   → configured Interpreter provider or local CLI
 ```
 
@@ -100,9 +102,9 @@ Playback study controls, Learning Center filtering, local import/export, and per
 
 ### Background-only provider access
 
-Reader can run inside a page context, where cross-origin model requests inherit page restrictions. Callers therefore send a structured request through `browser.runtime`; the background resolves the stored enabled model and performs the provider request.
+Reader can run inside a page context, where cross-origin model requests inherit page restrictions. Callers therefore open an `ai` runtime Port and send a `start` message with a task (`edit`, `explain`, `reading`, or `translate`), context, prompts, and an optional output budget. The background gateway resolves the profile for that task from stored settings and performs the provider request.
 
-Credentials stay in the existing Interpreter settings. Language-learning messages contain context, prompts, and an optional output budget, but never a provider URL or API key. In Codex CLI mode, the background resolves `interpreterCodexModel` and `interpreterCodexReasoningEffort` from stored Interpreter settings. Native Messaging protocol v4 carries optional canonical `model` and `effort` values only for Codex. The extension and Host both validate effort against `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`; the Host passes effort as separate `-c` and `model_reasoning_effort="value"` spawn arguments. A protocol mismatch with an older v3 Host requires reinstalling the Host. Model support is left to Codex CLI, and failures do not trigger fallback. The host only launches the configured `grok` or `codex` executable. Both the extension and Host enforce the optional Codex model's 200-code-unit limit. The Host passes a model override as separate `--model` and model-ID spawn arguments. Grok execution disables built-in tools, web search, plan/subagent behavior, and cross-session memory, uses one turn, and sends the interpreter prompt verbatim.
+Credentials stay in the existing Interpreter settings. Gateway messages never contain a provider URL or API key. API requests stream (SSE for OpenAI-compatible, Azure, Anthropic, Hugging Face, and Perplexity; NDJSON for Ollama) so the MV3 service worker keeps receiving data; a request fails with a retryable `timeout` after 60 seconds without data or five minutes in total. The client pings the Port every 20 seconds while a job is pending. When the caller disconnects, `edit` and `explain` jobs are aborted, while `translate` and `reading` jobs finish and their outcome stays available to `attach` for 60 seconds. Gateway errors are `AiError` values with closed codes; the runtime converts them back to the legacy Reader error codes until the Reader card moves to `describeAiError`. In Codex CLI mode, the background resolves `interpreterCodexModel` and `interpreterCodexReasoningEffort` from stored Interpreter settings. Native Messaging protocol v5 carries optional canonical `model` and `effort` values only for Codex, and emits a heartbeat every 10 seconds on Port connections while a CLI runs. The extension and Host both validate effort against `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`; the Host passes effort as separate `-c` and `model_reasoning_effort="value"` spawn arguments. A protocol mismatch with an older Host requires reinstalling the Host. Model support is left to Codex CLI, and failures do not trigger fallback. The host only launches the configured `grok` or `codex` executable. Both the extension and Host enforce the optional Codex model's 200-code-unit limit. The Host passes a model override as separate `--model` and model-ID spawn arguments. Grok execution disables built-in tools, web search, plan/subagent behavior, and cross-session memory, uses one turn, and sends the interpreter prompt verbatim.
 
 The same port carries cancellation. The Host maps request IDs to child processes, sends `SIGTERM`, and falls back to `SIGKILL` after two seconds. A separate explicit health request verifies the protocol and configured executable path without including page content; it intentionally does not make a model request. Host errors carry stable codes and optional details so Reader can localize recovery while keeping raw output inside collapsed technical details.
 
@@ -110,9 +112,9 @@ The Settings readiness assistant combines local configuration checks with that e
 
 ### MV3-safe network client
 
-`llm-client.ts` must remain DOM-free. The background imports it synchronously. Do not dynamically import `interpreter.ts` from the background or generate a runtime-loaded network chunk: Chrome MV3 service workers cannot depend on a new chunk being imported after installation.
+`src/ai/adapters/http.ts` must remain DOM-free. The background imports the gateway and adapters synchronously. Do not dynamically import them from the background or generate a runtime-loaded network chunk: Chrome MV3 service workers cannot depend on a new chunk being imported after installation.
 
-`interpreter.ts` re-exports the same network client so the established Interpreter interface remains compatible without duplicating provider logic.
+The Interpreter uses the same gateway through `runAiTask('interpret', …)`, passing the model selected in the popup as the profile.
 
 ### Transcript alignment
 
@@ -211,7 +213,9 @@ Focused coverage lives in:
 - `src/utils/bilibili-reader.test.ts`
 - `src/utils/transcript-study.test.ts`
 - `src/utils/transcript-layout.test.ts`
-- `src/utils/llm-client.test.ts`
+- `src/ai/adapters/http.test.ts`
+- `src/ai/gateway.test.ts`
+- `src/ai/client.test.ts`
 - `src/utils/i18n.test.ts`
 - `src/utils/storage-utils.test.ts`
 - `src/utils/focus-trap.test.ts`

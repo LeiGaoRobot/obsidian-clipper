@@ -112,7 +112,7 @@ The following actions can create model-provider usage:
 
 Applying, cancelling, undoing, hiding, or showing an existing result does not make another model request.
 
-Cancelling a Reader request stops the extension from waiting for or applying that result. In API mode it aborts the provider fetch. In local CLI mode, protocol version 4 sends cancellation over the same Native Messaging port; the Host terminates the selected CLI process and force-kills it if it does not exit promptly.
+Cancelling a Reader request stops the extension from waiting for or applying that result. In API mode it aborts the provider fetch. In local CLI mode, protocol version 5 sends cancellation over the same Native Messaging port; the Host terminates the selected CLI process and force-kills it if it does not exit promptly.
 
 ## Troubleshoot language learning
 

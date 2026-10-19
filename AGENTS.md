@@ -15,14 +15,15 @@ Keep changes surgical. Match the existing TypeScript, SCSS, localization, and Ob
 | Module | Responsibility | Constraint |
 | --- | --- | --- |
 | `src/utils/language-learning.ts` | Pure prompt construction, text replacement, transcript batching, and response alignment | No DOM, storage, or browser runtime dependencies |
-| `src/utils/language-learning-runtime.ts` | Configured language-learning interface used by Popup and Reader callers | Loads settings and sends model work to the background |
+| `src/utils/language-learning-runtime.ts` | Configured language-learning interface used by Popup and Reader callers | Loads settings and sends model work to the background through `runAiTask` |
 | `src/utils/language-learning-popup.ts` | Popup and side-panel AI-edit UI | Preview against a source snapshot before applying |
 | `src/utils/transcript-language-learning.ts` | YouTube Reader bilingual and explanation UI | Remote calls must follow trusted user actions |
-| `src/utils/language-learning-service.ts` | Background configuration checks and model selection | Use only stored, enabled Interpreter models |
-| `src/utils/llm-client.ts` | Provider request construction and response parsing | Must remain DOM-free and safe in an MV3 service worker |
-| `src/ai/` | AI redesign domain core: connection kinds, derived v2 settings view, `resolveProfile`, `AiError` | No DOM, storage, or browser runtime dependencies, except `error-messages.ts` (UI-side i18n). See `docs/superpowers/specs/2026-10-19-ai-subsystem-redesign-design.md` |
+| `src/ai/` | AI domain core: connection kinds, derived v2 settings view, `resolveProfile`, `AiError`, prompt envelope, Port protocol | No DOM, storage, or browser runtime dependencies, except `error-messages.ts` (UI-side i18n), `client.ts`, `gateway.ts`, and `adapters/native-cli.ts`. See `docs/superpowers/specs/2026-10-19-ai-subsystem-redesign-design.md` |
+| `src/ai/adapters/http.ts` | Provider request construction, streaming (SSE, NDJSON, JSON fallback), idle and hard timeouts | Must remain DOM-free and safe in an MV3 service worker |
+| `src/ai/gateway.ts` | Background `ai` Port handler: resolves the profile from stored settings, runs the adapter, streams progress, cancels, replays outcomes on `attach` | The only place model work executes |
+| `src/ai/client.ts` | `runAiTask(task, input, options)` for Popup, Settings, and Reader callers | Sends keepalive pings while a job is pending; rejects with `AiError` |
 
-The network client is also re-exported from `src/utils/interpreter.ts` for the existing Interpreter interface. Keep the implementation in `llm-client.ts`; do not duplicate provider logic in UI modules.
+All model work goes through `runAiTask` and the background gateway. Do not call providers or the Native Messaging Host from UI modules, and do not duplicate provider logic outside `src/ai/adapters/`.
 
 ## Language-learning invariants
 
