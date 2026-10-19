@@ -1109,11 +1109,52 @@ describe('Transcript language learning controls', () => {
 		expect(transcript.hasAttribute('inert')).toBe(false);
 	});
 
-	test('shows an engine-aware task estimate and recovery switch', async () => {
+	const PROFILES = [
+		{ id: 'model-b', label: 'OpenAI · B', kind: 'openai-compatible' as const },
+		{ id: 'legacy-cli-grok-default', label: 'interpreterExecutionModeGrok', kind: 'cli-grok' as const },
+		{ id: 'legacy-cli-codex-default', label: 'interpreterExecutionModeCodex', kind: 'cli-codex' as const }
+	];
+
+	// Page-DOM controls reject synthetic events, so a test invokes the button's own listener with a
+	// trusted-looking event, the only way a user click can reach it.
+	function captureTrustedClick(className: string) {
+		const listeners: EventListener[] = [];
+		const original = HTMLElement.prototype.addEventListener;
+		const spy = vi.spyOn(HTMLElement.prototype, 'addEventListener').mockImplementation(function (
+			this: HTMLElement,
+			type: string,
+			listener: EventListenerOrEventListenerObject,
+			options?: boolean | AddEventListenerOptions
+		) {
+			if (type === 'click' && this.classList.contains(className) && typeof listener === 'function') {
+				listeners.push(listener);
+			}
+			return original.call(this, type, listener, options);
+		});
+		return {
+			restore: () => spy.mockRestore(),
+			click: async () => {
+				const event = { isTrusted: true, preventDefault() {}, stopPropagation() {} } as unknown as Event;
+				await Promise.all(listeners.map(listener => listener(event)));
+			}
+		};
+	}
+
+	async function flushPromises() {
+		for (let index = 0; index < 5; index++) await Promise.resolve();
+	}
+
+	test('estimates batches from the task budget and lists profiles in the recovery switch', async () => {
 		const { controls, transcript, segments } = createTranscript(['First.', 'Second.']);
 		const timeout = Object.assign(new Error('grok failed'), {
 			code: 'timeout',
-			details: { mode: 'grok', timeoutSeconds: 120 }
+			details: { mode: 'grok', task: 'translate', profileId: 'legacy-cli-grok-default', timeoutSeconds: 120 }
+		});
+		const getExecutionInfo = vi.fn().mockResolvedValue({
+			profileId: 'legacy-cli-grok-default',
+			kind: 'cli-grok',
+			label: 'Grok CLI',
+			promptCharLimit: 8
 		});
 		const controller = wireTranscriptLanguageLearning({
 			doc: document,
@@ -1124,24 +1165,230 @@ describe('Transcript language learning controls', () => {
 				translateTranscript: vi.fn().mockRejectedValue(timeout),
 				explainSelection: vi.fn(),
 				annotateJapaneseTranscript: vi.fn(),
-				getExecutionInfo: vi.fn().mockResolvedValue({
-					mode: 'grok',
-					label: 'Grok CLI',
-					promptCharLimit: 8
-				}),
-				setExecutionMode: vi.fn()
+				getExecutionInfo,
+				listProfiles: vi.fn().mockResolvedValue(PROFILES),
+				setTaskProfile: vi.fn()
 			},
 			cancelPendingSeek: vi.fn()
 		});
 
 		await controller.toggleBilingual();
+		await flushPromises();
 
+		expect(getExecutionInfo).toHaveBeenCalledWith('translate');
+		expect(controls.querySelector('.player-learning-task-engine')?.textContent).toBe('Grok CLI');
 		expect(controls.querySelector('.player-learning-task-estimate')?.textContent)
 			.toBe('readerTaskEstimate:2,2');
-		expect((document.querySelector('.language-learning-card-engine-select') as HTMLSelectElement).value)
-			.toBe('grok');
+		const select = document.querySelector('.language-learning-card-engine-select') as HTMLSelectElement;
+		expect(Array.from(select.options, option => [option.value, option.textContent])).toEqual(
+			PROFILES.map(profile => [profile.id, profile.label])
+		);
+		expect(select.value).toBe('legacy-cli-grok-default');
+		expect((document.querySelector('.language-learning-card-engine-recovery') as HTMLElement).hidden).toBe(false);
 		expect(document.querySelector('.language-learning-card-engine-apply')?.textContent)
 			.toBe('readerSwitchAndRetry');
+		expect(document.querySelector('.language-learning-card-body')?.textContent)
+			.toBe('readerCliTimeout:grok,120');
+	});
+
+	test('the readings budget comes from getExecutionInfo for the reading task', async () => {
+		const { controls, transcript, segments } = createTranscript(['東京です。', '大阪です。']);
+		const getExecutionInfo = vi.fn().mockResolvedValue({ label: 'Codex CLI', kind: 'cli-codex', promptCharLimit: 5 });
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn().mockResolvedValue([[], []]),
+				getExecutionInfo
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.toggleJapaneseReadings();
+
+		expect(getExecutionInfo).toHaveBeenCalledWith('reading');
+		expect(controls.querySelector('.player-learning-task-estimate')?.textContent)
+			.toBe('readerTaskEstimate:2,2');
+	});
+
+	test('Switch and retry routes the failed task to the chosen profile, then retries', async () => {
+		const { controls, transcript, segments } = createTranscript(['First.']);
+		const failure = Object.assign(new Error('Codex failed'), {
+			code: 'cli-failed',
+			details: { mode: 'codex', task: 'translate', profileId: 'legacy-cli-codex-default' }
+		});
+		const translateTranscript = vi.fn()
+			.mockRejectedValueOnce(failure)
+			.mockResolvedValueOnce(['第一']);
+		const setTaskProfile = vi.fn().mockResolvedValue(undefined);
+		const apply = captureTrustedClick('language-learning-card-engine-apply');
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript,
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn(),
+				listProfiles: vi.fn().mockResolvedValue(PROFILES),
+				setTaskProfile
+			},
+			cancelPendingSeek: vi.fn()
+		});
+		apply.restore();
+
+		await controller.toggleBilingual();
+		await flushPromises();
+		const select = document.querySelector('.language-learning-card-engine-select') as HTMLSelectElement;
+		expect(select.value).toBe('legacy-cli-codex-default');
+		expect(document.querySelector('.language-learning-card-body')?.textContent).toBe('readerCliFailed:codex');
+
+		// A synthetic click from the host page does nothing.
+		(document.querySelector('.language-learning-card-engine-apply') as HTMLButtonElement).click();
+		await flushPromises();
+		expect(setTaskProfile).not.toHaveBeenCalled();
+
+		select.value = 'model-b';
+		await apply.click();
+		await flushPromises();
+
+		expect(setTaskProfile).toHaveBeenCalledWith('translate', 'model-b');
+		expect(translateTranscript).toHaveBeenCalledTimes(2);
+		expect(transcript.classList.contains('show-bilingual-transcript')).toBe(true);
+		expect((document.querySelector('.language-learning-card') as HTMLElement).style.display).toBe('none');
+	});
+
+	test('a readings run that fails in its translate step re-routes translate, not reading', async () => {
+		const { controls, transcript, segments } = createTranscript(['Hello world.']);
+		const failure = Object.assign(new Error('failed'), {
+			code: 'failed',
+			details: { mode: 'api', task: 'translate', profileId: 'model-b' }
+		});
+		const setTaskProfile = vi.fn().mockResolvedValue(undefined);
+		const apply = captureTrustedClick('language-learning-card-engine-apply');
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn(),
+				translateTranscriptToJapanese: vi.fn().mockRejectedValue(failure),
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn(),
+				listProfiles: vi.fn().mockResolvedValue(PROFILES),
+				setTaskProfile
+			},
+			cancelPendingSeek: vi.fn()
+		});
+		apply.restore();
+
+		await controller.toggleJapaneseReadings();
+		await flushPromises();
+		(document.querySelector('.language-learning-card-engine-select') as HTMLSelectElement).value = 'legacy-cli-grok-default';
+		await apply.click();
+
+		expect(setTaskProfile).toHaveBeenCalledWith('translate', 'legacy-cli-grok-default');
+	});
+
+	test('an error without a task falls back to the task of the failed flow', async () => {
+		const { controls, transcript, segments } = createTranscript(['First.']);
+		const setTaskProfile = vi.fn().mockResolvedValue(undefined);
+		const explainSelection = vi.fn()
+			.mockRejectedValueOnce(Object.assign(new Error('failed'), { code: 'failed', details: { mode: 'api' } }))
+			.mockResolvedValueOnce('Explanation');
+		const apply = captureTrustedClick('language-learning-card-engine-apply');
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection,
+				annotateJapaneseTranscript: vi.fn(),
+				listProfiles: vi.fn().mockResolvedValue(PROFILES),
+				setTaskProfile
+			},
+			cancelPendingSeek: vi.fn()
+		});
+		apply.restore();
+
+		await controller.explain({ kind: 'word', text: 'First', context: 'First.' });
+		await flushPromises();
+		const select = document.querySelector('.language-learning-card-engine-select') as HTMLSelectElement;
+		expect(select.value).toBe('model-b');
+		await apply.click();
+		await flushPromises();
+
+		expect(setTaskProfile).toHaveBeenCalledWith('explain', 'model-b');
+		expect(explainSelection).toHaveBeenCalledTimes(2);
+		expect(document.querySelector('.language-learning-card-body')?.textContent).toBe('Explanation');
+	});
+
+	test('hides the switch without profiles, without the tools, or for a cancellation', async () => {
+		const failure = Object.assign(new Error('failed'), { code: 'failed', details: { mode: 'api', task: 'translate' } });
+		const recoveryHidden = async (tools: Record<string, unknown>) => {
+			cleanupTranscriptLanguageLearning(document);
+			const { controls, transcript, segments } = createTranscript(['First.']);
+			const controller = wireTranscriptLanguageLearning({
+				doc: document,
+				transcript,
+				segments,
+				controls,
+				tools: {
+					translateTranscript: vi.fn().mockRejectedValue(failure),
+					explainSelection: vi.fn(),
+					annotateJapaneseTranscript: vi.fn(),
+					...tools
+				},
+				cancelPendingSeek: vi.fn()
+			});
+			await controller.toggleBilingual();
+			await flushPromises();
+			return (document.querySelector('.language-learning-card-engine-recovery') as HTMLElement).hidden;
+		};
+
+		await expect(recoveryHidden({ listProfiles: vi.fn().mockResolvedValue([]), setTaskProfile: vi.fn() })).resolves.toBe(true);
+		await expect(recoveryHidden({ listProfiles: vi.fn().mockRejectedValue(new Error('x')), setTaskProfile: vi.fn() })).resolves.toBe(true);
+		await expect(recoveryHidden({ listProfiles: vi.fn().mockResolvedValue(PROFILES) })).resolves.toBe(true);
+		await expect(recoveryHidden({ listProfiles: vi.fn().mockResolvedValue(PROFILES), setTaskProfile: vi.fn() })).resolves.toBe(false);
+	});
+
+	test('a profile listing that resolves after cleanup changes nothing', async () => {
+		const { controls, transcript, segments } = createTranscript(['First.']);
+		let resolveProfiles!: (profiles: typeof PROFILES) => void;
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn().mockRejectedValue(Object.assign(new Error('failed'), {
+					code: 'failed',
+					details: { mode: 'api', task: 'translate' }
+				})),
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn(),
+				listProfiles: vi.fn(() => new Promise<typeof PROFILES>(resolve => { resolveProfiles = resolve; })),
+				setTaskProfile: vi.fn()
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.toggleBilingual();
+		const select = document.querySelector('.language-learning-card-engine-select') as HTMLSelectElement;
+		cleanupTranscriptLanguageLearning(document);
+		resolveProfiles(PROFILES);
+		await flushPromises();
+
+		expect(select.options.length).toBe(0);
+		expect(document.querySelector('.language-learning-card')).toBeNull();
 	});
 
 	test('keeps elapsed task status busy until the model request finishes', async () => {
@@ -1191,7 +1438,7 @@ describe('Transcript language learning controls', () => {
 				explainSelection: vi.fn(),
 				annotateJapaneseTranscript: vi.fn(),
 				getExecutionInfo: vi.fn().mockResolvedValue({
-					mode: 'grok',
+					kind: 'cli-grok',
 					label: 'Grok CLI',
 					promptCharLimit: 1600
 				})

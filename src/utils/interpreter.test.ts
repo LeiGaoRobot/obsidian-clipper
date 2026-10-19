@@ -8,22 +8,31 @@ import type { Settings, Template } from '../types/types';
 
 const mocks = vi.hoisted(() => ({
 	runAiTask: vi.fn(),
+	saveSettings: vi.fn(),
+	loadAiSettings: vi.fn(),
+	saveRouting: vi.fn(),
 	generalSettings: {} as Record<string, unknown>
 }));
 
 vi.mock('./storage-utils', () => ({
 	generalSettings: mocks.generalSettings,
-	saveSettings: vi.fn()
+	saveSettings: mocks.saveSettings
 }));
+vi.mock('./ai-settings', () => ({
+	loadAiSettings: mocks.loadAiSettings,
+	aiSettingsStore: { load: mocks.loadAiSettings, saveRouting: mocks.saveRouting }
+}));
+vi.mock('./template-compiler', () => ({ compileTemplate: async (_tabId: number, text: string) => text }));
 vi.mock('../ai/client', () => ({ runAiTask: mocks.runAiTask }));
 vi.mock('./i18n', () => ({ getMessage: (key: string) => key }));
 vi.mock('./debug', () => ({ debugLog: vi.fn() }));
 
 import {
-	findPopupModelProfile,
 	handleInterpreterUI,
-	listPopupModelProfiles,
-	usesPopupModelSelect
+	initializeInterpreter,
+	populatePopupModelSelect,
+	popupInterpretProfileId,
+	saveInterpretProfile
 } from './interpreter';
 
 const template: Template = {
@@ -54,6 +63,39 @@ function v1View(overrides: Partial<Settings> = {}): AiSettingsView {
 	} as Settings, { nativeMessaging: 'port' });
 }
 
+// A stored (v2) view: per-task routing, labelled connections, and a CLI listed even where the
+// browser has no Native Messaging (the resolver explains that when it runs).
+function storedView(routing: Partial<AiSettingsView['routing']> = {}): AiSettingsView {
+	return {
+		enabled: true,
+		connections: [
+			{ id: 'openai', kind: 'openai-compatible', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', apiKeyRequired: true },
+			{ id: 'codex', kind: 'cli-codex', label: '' }
+		],
+		profiles: [
+			{ id: 'gpt', connectionId: 'openai', model: 'gpt-5', label: 'GPT-5', enabled: true },
+			{ id: 'gpt-off', connectionId: 'openai', model: 'gpt-4', label: 'Old', enabled: false },
+			{ id: 'mini', connectionId: 'openai', model: 'gpt-5-mini', label: '', enabled: true },
+			{ id: 'codex-default', connectionId: 'codex', label: '', enabled: true }
+		],
+		routing: { defaultProfileId: 'gpt', taskProfiles: {}, ...routing },
+		interpreter: { autoRun: false, defaultPromptContext: '' },
+		credentials: { openai: 'sk' },
+		nativeMessaging: 'none'
+	};
+}
+
+function selectGroups(select: HTMLSelectElement): Array<[string, Array<[string, string | null]>]> {
+	return Array.from(select.querySelectorAll('optgroup'), group => [
+		group.label,
+		Array.from(group.querySelectorAll('option'), option => [option.value, option.textContent] as [string, string | null])
+	]);
+}
+
+function modelSelect(): HTMLSelectElement {
+	return document.getElementById('model-select') as HTMLSelectElement;
+}
+
 describe('Interpreter', () => {
 	beforeEach(() => {
 		document.body.innerHTML = `
@@ -64,7 +106,12 @@ describe('Interpreter', () => {
 			<button id="clip-btn"></button>
 			<button id="more-btn"></button>
 			<textarea id="prompt-context">Page context</textarea>
+			<select id="model-select" style="display: none;"></select>
 		`;
+		Object.keys(mocks.generalSettings).forEach(key => delete mocks.generalSettings[key]);
+		mocks.saveSettings.mockReset().mockResolvedValue(undefined);
+		mocks.saveRouting.mockReset().mockResolvedValue(false);
+		mocks.loadAiSettings.mockReset().mockResolvedValue(v1View());
 		mocks.runAiTask.mockReset().mockResolvedValue({
 			output: { responses: { prompt_1: 'Done' }, missing: [] },
 			connectionKind: 'cli-codex'
@@ -126,21 +173,136 @@ describe('Interpreter', () => {
 		expect(document.getElementById('interpret-btn')?.classList.contains('partial')).toBe(false);
 	});
 
-	test('passes the selected model as the profile in API mode', async () => {
-		const profile = findPopupModelProfile(v1View(), 'model-b');
-		await handleInterpreterUI(template, {}, 1, 'https://example.com', profile);
+	test('passes the chosen profile id to the gateway', async () => {
+		await handleInterpreterUI(template, {}, 1, 'https://example.com', 'legacy-cli-codex-default');
 
-		expect(mocks.runAiTask).toHaveBeenCalledWith('interpret', expect.anything(), { profileId: 'model-b' });
+		expect(mocks.runAiTask).toHaveBeenCalledWith('interpret', expect.anything(), { profileId: 'legacy-cli-codex-default' });
 	});
 
-	test('lists the enabled v1 models for the model select, only in API mode', () => {
-		const view = v1View();
-		expect(listPopupModelProfiles(view).map(profile => [profile.id, profile.label])).toEqual([['model-b', 'B']]);
-		expect(findPopupModelProfile(view, 'model-a')?.enabled).toBe(false);
-		expect(findPopupModelProfile(view, 'legacy-cli-codex-default')).toBeUndefined();
-		expect(usesPopupModelSelect(view)).toBe(true);
-		expect(usesPopupModelSelect(v1View({ interpreterExecutionMode: 'codex' }))).toBe(false);
-		expect(usesPopupModelSelect(v1View({ interpreterExecutionMode: 'grok' }))).toBe(false);
+	test('lists every enabled profile in one group per connection, CLI profiles included', () => {
+		populatePopupModelSelect(modelSelect(), storedView());
+
+		expect(selectGroups(modelSelect())).toEqual([
+			['OpenAI', [['gpt', 'GPT-5'], ['mini', 'gpt-5-mini']]],
+			['interpreterExecutionModeCodex', [['codex-default', 'interpreterExecutionModeCodex']]]
+		]);
+		expect(modelSelect().style.display).toBe('inline-block');
+		expect(modelSelect().value).toBe('gpt');
+	});
+
+	test('lists the derived v1 models and both CLIs before v2 exists, starting on the v1 model', () => {
+		populatePopupModelSelect(modelSelect(), v1View({ interpreterExecutionMode: 'codex' }));
+
+		expect(selectGroups(modelSelect())).toEqual([
+			['OpenAI', [['model-b', 'B']]],
+			['interpreterExecutionModeCodex', [['legacy-cli-codex-default', 'interpreterExecutionModeCodex']]],
+			['interpreterExecutionModeGrok', [['legacy-cli-grok-default', 'interpreterExecutionModeGrok']]]
+		]);
+		// The select is shown in a CLI mode too, on the CLI profile that serves interpret.
+		expect(modelSelect().style.display).toBe('inline-block');
+		expect(modelSelect().value).toBe('legacy-cli-codex-default');
+		expect(popupInterpretProfileId(v1View())).toBe('model-b');
+	});
+
+	test('starts on the interpret routing entry, and on no choice when it names a disabled profile', () => {
+		populatePopupModelSelect(modelSelect(), storedView({ taskProfiles: { interpret: 'codex-default', translate: 'mini' } }));
+		expect(modelSelect().value).toBe('codex-default');
+
+		// No self-heal: the resolver reports not-configured when the run is routed.
+		populatePopupModelSelect(modelSelect(), storedView({ taskProfiles: { interpret: 'gpt-off' } }));
+		expect(modelSelect().value).toBe('');
+	});
+
+	test('hides the select when no profile is enabled', () => {
+		const view = storedView();
+		populatePopupModelSelect(modelSelect(), { ...view, profiles: view.profiles.map(profile => ({ ...profile, enabled: false })) });
+
+		expect(modelSelect().options.length).toBe(0);
+		expect(modelSelect().style.display).toBe('none');
+	});
+
+	test('a choice writes routing.taskProfiles.interpret when v2 is stored', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ taskProfiles: { translate: 'mini' } }));
+		mocks.saveRouting.mockResolvedValue(true);
+
+		const next = await saveInterpretProfile('codex-default');
+
+		expect(mocks.saveRouting).toHaveBeenCalledWith({
+			defaultProfileId: 'gpt',
+			taskProfiles: { translate: 'mini', interpret: 'codex-default' }
+		});
+		expect(popupInterpretProfileId(next)).toBe('codex-default');
+		expect(mocks.saveSettings).not.toHaveBeenCalled();
+	});
+
+	test('a choice equal to the default clears the interpret entry', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ taskProfiles: { interpret: 'mini' } }));
+		mocks.saveRouting.mockResolvedValue(true);
+
+		await saveInterpretProfile('gpt');
+
+		expect(mocks.saveRouting).toHaveBeenCalledWith({ defaultProfileId: 'gpt', taskProfiles: {} });
+	});
+
+	test('in derived mode an API choice keeps writing the v1 interpreterModel', async () => {
+		mocks.saveRouting.mockResolvedValue(false);
+		mocks.loadAiSettings.mockResolvedValue(v1View({
+			models: [
+				{ id: 'model-a', providerId: 'provider-1', providerModelId: 'gpt-a', name: 'A', enabled: true },
+				{ id: 'model-b', providerId: 'provider-1', providerModelId: 'gpt-b', name: 'B', enabled: true }
+			]
+		}));
+
+		const next = await saveInterpretProfile('model-a');
+
+		expect(mocks.generalSettings.interpreterModel).toBe('model-a');
+		expect(mocks.saveSettings).toHaveBeenCalledOnce();
+		expect(popupInterpretProfileId(next)).toBe('model-a');
+	});
+
+	test('in derived mode a CLI choice is kept in memory only', async () => {
+		mocks.saveRouting.mockResolvedValue(false);
+
+		const next = await saveInterpretProfile('legacy-cli-grok-default');
+
+		expect(mocks.saveSettings).not.toHaveBeenCalled();
+		expect(mocks.generalSettings.interpreterModel).toBeUndefined();
+		expect(popupInterpretProfileId(next)).toBe('legacy-cli-grok-default');
+	});
+
+	test('the popup select saves a change, reports the new view, and runs with the chosen profile', async () => {
+		const view = storedView();
+		mocks.loadAiSettings.mockResolvedValue(view);
+		mocks.saveRouting.mockResolvedValue(true);
+		const onViewChange = vi.fn();
+
+		await initializeInterpreter(template, {}, 1, 'https://example.com', view, onViewChange);
+		expect(modelSelect().value).toBe('gpt');
+
+		modelSelect().value = 'codex-default';
+		modelSelect().dispatchEvent(new Event('change'));
+		await vi.waitFor(() => expect(onViewChange).toHaveBeenCalledOnce());
+		expect(mocks.saveRouting).toHaveBeenCalledWith({ defaultProfileId: 'gpt', taskProfiles: { interpret: 'codex-default' } });
+		expect(popupInterpretProfileId(onViewChange.mock.calls[0][0])).toBe('codex-default');
+
+		// A rebuild from the reported view shows the new choice.
+		modelSelect().textContent = '';
+		populatePopupModelSelect(modelSelect(), onViewChange.mock.calls[0][0]);
+		expect(modelSelect().value).toBe('codex-default');
+
+		(document.getElementById('interpret-btn') as HTMLButtonElement).click();
+		await vi.waitFor(() => expect(mocks.runAiTask).toHaveBeenCalledOnce());
+		expect(mocks.runAiTask).toHaveBeenCalledWith('interpret', expect.anything(), { profileId: 'codex-default' });
+	});
+
+	test('the interpret button lets routing decide when the select has no choice', async () => {
+		const view = storedView({ taskProfiles: { interpret: 'gpt-off' } });
+
+		await initializeInterpreter(template, {}, 1, 'https://example.com', view);
+		(document.getElementById('interpret-btn') as HTMLButtonElement).click();
+
+		await vi.waitFor(() => expect(mocks.runAiTask).toHaveBeenCalledOnce());
+		expect(mocks.runAiTask).toHaveBeenCalledWith('interpret', expect.anything(), {});
 	});
 
 	test('shows a localized AI error with its technical detail', async () => {

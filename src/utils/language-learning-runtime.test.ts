@@ -8,6 +8,7 @@ import { RequestCancelledError } from './request-cancellation';
 const mocks = vi.hoisted(() => ({
 	loadSettings: vi.fn(),
 	loadAiSettings: vi.fn(),
+	saveRouting: vi.fn(),
 	runAiTask: vi.fn(),
 	runTranscriptJob: vi.fn(),
 	loadTranscriptCheckpoint: vi.fn(),
@@ -46,13 +47,18 @@ vi.mock('./storage-utils', () => ({
 	loadSettings: mocks.loadSettings,
 	saveSettings: mocks.saveSettings
 }));
-vi.mock('./ai-settings', () => ({ loadAiSettings: mocks.loadAiSettings }));
+vi.mock('./ai-settings', () => ({
+	loadAiSettings: mocks.loadAiSettings,
+	aiSettingsStore: { load: mocks.loadAiSettings, saveRouting: mocks.saveRouting }
+}));
 vi.mock('./clipboard-utils', () => ({ copyToClipboard: mocks.copyToClipboard }));
 vi.mock('./obsidian-note-creator', () => ({ saveToObsidian: mocks.saveToObsidian }));
 vi.mock('./i18n', () => ({ getMessage: (key: string) => key }));
 
 import { withJobAttempts } from '../ai/job-client';
 import { deriveAiSettings } from '../ai/settings-view';
+import { TRANSCRIPT_GROUP_BUDGETS } from '../ai/job-runner';
+import type { AiSettingsView } from '../ai/types';
 import { configuredLanguageLearning } from './language-learning-runtime';
 import type { TranscriptReadingProgress } from './language-learning';
 
@@ -223,6 +229,27 @@ function cliTimeout(mode: string, seconds: number) {
 
 const READINGS = { namespace: 'japanese-readings', scope: 'shared' };
 
+// A stored (v2) view as the Reader sees it: a content script reports no Native Messaging, yet
+// CLI profiles stay listed and routable because the background decides whether they can run.
+function storedView(overrides: Partial<AiSettingsView['routing']> = {}): AiSettingsView {
+	return {
+		enabled: true,
+		connections: [
+			{ id: 'openai', kind: 'openai-compatible', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', apiKeyRequired: true },
+			{ id: 'codex', kind: 'cli-codex', label: '' }
+		],
+		profiles: [
+			{ id: 'gpt', connectionId: 'openai', model: 'gpt-5', label: '', enabled: true },
+			{ id: 'gpt-off', connectionId: 'openai', model: 'gpt-4', label: 'Old', enabled: false },
+			{ id: 'codex-default', connectionId: 'codex', model: 'gpt-5-codex', label: '', enabled: true }
+		],
+		routing: { defaultProfileId: 'gpt', taskProfiles: {}, ...overrides },
+		interpreter: { autoRun: false, defaultPromptContext: '' },
+		credentials: {},
+		nativeMessaging: 'none'
+	};
+}
+
 describe('Configured language learning runtime', () => {
 	beforeEach(() => {
 		mocks.loadSettings.mockReset();
@@ -235,6 +262,7 @@ describe('Configured language learning runtime', () => {
 		mocks.storageLocalGet.mockReset();
 		mocks.storageLocalSet.mockReset();
 		mocks.saveSettings.mockReset();
+		mocks.saveRouting.mockReset().mockResolvedValue(false);
 		mocks.copyToClipboard.mockReset();
 		mocks.saveToObsidian.mockReset();
 		Object.keys(mocks.storageLocalState).forEach(key => delete mocks.storageLocalState[key]);
@@ -256,20 +284,168 @@ describe('Configured language learning runtime', () => {
 		));
 	});
 
-	test('reports the selected engine and can switch it explicitly', async () => {
+	test('reports the profile routed to a transcript task with its kind budget (derived mode)', async () => {
+		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterExecutionMode: 'grok' });
+
+		await expect(configuredLanguageLearning.getExecutionInfo('reading')).resolves.toEqual({
+			profileId: 'legacy-cli-grok-default',
+			kind: 'cli-grok',
+			label: 'interpreterExecutionModeGrok',
+			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS['cli-grok'].reading
+		});
+		await expect(configuredLanguageLearning.getExecutionInfo('translate')).resolves.toMatchObject({
+			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS['cli-grok'].translate
+		});
+	});
+
+	test('reports per-task routing from a stored view without hiding CLI profiles', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ taskProfiles: { reading: 'codex-default' } }));
+
+		await expect(configuredLanguageLearning.getExecutionInfo('reading')).resolves.toEqual({
+			profileId: 'codex-default',
+			kind: 'cli-codex',
+			label: 'interpreterExecutionModeCodex · gpt-5-codex',
+			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS['cli-codex'].reading
+		});
+		await expect(configuredLanguageLearning.getExecutionInfo('translate')).resolves.toEqual({
+			profileId: 'gpt',
+			kind: 'openai-compatible',
+			label: 'OpenAI · gpt-5',
+			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS.api.translate
+		});
+	});
+
+	test('reports no profile when routing names none or a disabled one', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ defaultProfileId: undefined, taskProfiles: { reading: 'gpt-off' } }));
+
+		await expect(configuredLanguageLearning.getExecutionInfo('reading')).resolves.toEqual({
+			label: 'aiErrorNotConfiguredTitle',
+			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS.api.reading
+		});
+	});
+
+	test('lists every enabled profile, CLI included, labelled connection · model', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView());
+
+		await expect(configuredLanguageLearning.listProfiles()).resolves.toEqual([
+			{ id: 'gpt', label: 'OpenAI · gpt-5', kind: 'openai-compatible' },
+			{ id: 'codex-default', label: 'interpreterExecutionModeCodex · gpt-5-codex', kind: 'cli-codex' }
+		]);
+	});
+
+	test('lists the derived v1 models and both CLIs before v2 exists', async () => {
 		mocks.loadSettings.mockResolvedValue({
 			...settings,
-			interpreterExecutionMode: 'grok'
+			providers: [{ id: 'provider-1', name: 'Provider', baseUrl: 'https://api.example.com/v1/chat/completions', apiKey: '' }]
 		});
 
-		await expect(configuredLanguageLearning.getExecutionInfo()).resolves.toEqual({
-			mode: 'grok',
-			label: 'interpreterExecutionModeGrok',
-			promptCharLimit: 1600
-		});
-		await configuredLanguageLearning.setExecutionMode('codex');
+		await expect(configuredLanguageLearning.listProfiles()).resolves.toEqual([
+			{ id: 'model-1', label: 'Provider · Model', kind: 'openai-compatible' },
+			{ id: 'legacy-cli-codex-default', label: 'interpreterExecutionModeCodex', kind: 'cli-codex' },
+			{ id: 'legacy-cli-grok-default', label: 'interpreterExecutionModeGrok', kind: 'cli-grok' }
+		]);
+	});
 
-		expect(mocks.saveSettings).toHaveBeenCalledWith({ interpreterExecutionMode: 'codex' });
+	test('switching a task profile writes only that routing entry when v2 is stored', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ taskProfiles: { explain: 'gpt' } }));
+		mocks.saveRouting.mockResolvedValue(true);
+
+		await configuredLanguageLearning.setTaskProfile('translate', 'codex-default');
+
+		expect(mocks.saveRouting).toHaveBeenCalledWith({
+			defaultProfileId: 'gpt',
+			taskProfiles: { explain: 'gpt', translate: 'codex-default' }
+		});
+		expect(mocks.saveSettings).not.toHaveBeenCalled();
+	});
+
+	test('switching a task back to the default profile clears its routing entry', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ taskProfiles: { reading: 'codex-default', explain: 'codex-default' } }));
+		mocks.saveRouting.mockResolvedValue(true);
+
+		await configuredLanguageLearning.setTaskProfile('reading', 'gpt');
+
+		expect(mocks.saveRouting).toHaveBeenCalledWith({
+			defaultProfileId: 'gpt',
+			taskProfiles: { explain: 'codex-default' }
+		});
+	});
+
+	test('in derived mode a switch keeps its v1 effect', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			providers: [{ id: 'provider-1', name: 'Provider', baseUrl: 'https://api.example.com/v1/chat/completions', apiKey: '' }]
+		});
+		mocks.saveRouting.mockResolvedValue(false);
+
+		await configuredLanguageLearning.setTaskProfile('translate', 'legacy-cli-codex-default');
+		expect(mocks.saveSettings).toHaveBeenLastCalledWith({ interpreterExecutionMode: 'codex' });
+
+		await configuredLanguageLearning.setTaskProfile('explain', 'model-1');
+		expect(mocks.saveSettings).toHaveBeenLastCalledWith({ interpreterExecutionMode: 'api', interpreterModel: 'model-1' });
+		expect(mocks.saveRouting).toHaveBeenCalledTimes(2);
+	});
+
+	test('rejects a switch to an unknown profile without writing', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView());
+
+		await expect(configuredLanguageLearning.setTaskProfile('translate', 'missing')).rejects.toThrow('missing');
+		expect(mocks.saveRouting).not.toHaveBeenCalled();
+		expect(mocks.saveSettings).not.toHaveBeenCalled();
+	});
+
+	test('errors name the failed task and its profile for the Reader engine switch', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ taskProfiles: { translate: 'codex-default' } }));
+		mocks.executeJob.mockRejectedValue(withJobAttempts(cliTimeout('codex', 300), { requests: 1, retries: 0, splits: 0 }));
+		mocks.runAiTask.mockRejectedValue(new AiError('auth', { status: 401 }));
+
+		await expect(configuredLanguageLearning.translateTranscript(['Hello.'])).rejects.toMatchObject({
+			code: 'timeout',
+			details: expect.objectContaining({ mode: 'codex', task: 'translate', profileId: 'codex-default' })
+		});
+		await expect(configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' }))
+			.rejects.toMatchObject({
+				code: 'failed',
+				details: expect.objectContaining({ mode: 'api', task: 'explain', profileId: 'gpt' })
+			});
+	});
+
+	test('the response language comes from the stored view', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ responseLanguage: 'Japanese' }));
+		mocks.executeJob.mockImplementation(async (_task: string, input: { segments: TranscriptSegment[] }) => (
+			input.segments.map(({ id }) => ({ id, text: `T${id}` }))
+		));
+
+		await configuredLanguageLearning.translateTranscript(['Hello.']);
+
+		expect(mocks.runTranscriptJob).toHaveBeenCalledWith(
+			'translate',
+			expect.objectContaining({
+				instruction: expect.stringContaining('Translate each transcript segment into Japanese.'),
+				identity: { namespace: 'translations', scope: 'shared:Japanese' }
+			}),
+			expect.anything()
+		);
+	});
+
+	test('a task routed by its own entry runs without a default profile; one without a profile does not', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ defaultProfileId: undefined, taskProfiles: { translate: 'gpt' } }));
+		mocks.executeJob.mockImplementation(async (_task: string, input: { segments: TranscriptSegment[] }) => (
+			input.segments.map(({ id }) => ({ id, text: `T${id}` }))
+		));
+
+		await expect(configuredLanguageLearning.translateTranscript(['Hello.'])).resolves.toEqual(['T0']);
+		await expect(configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' }))
+			.rejects.toThrow('aiLanguageToolsRequireModel');
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
+	});
+
+	test('AI tools stay off while AI is disabled', async () => {
+		mocks.loadAiSettings.mockResolvedValue({ ...storedView(), enabled: false });
+
+		await expect(configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' }))
+			.rejects.toThrow('aiLanguageToolsRequireInterpreter');
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
 	test('persists learner translation corrections for the next Reader session', async () => {

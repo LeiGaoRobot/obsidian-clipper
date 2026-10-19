@@ -10,9 +10,14 @@ import { updateTokenCount } from './token-counter';
 import { runAiTask } from '../ai/client';
 import { describeAiError } from '../ai/error-messages';
 import { isAiError } from '../ai/errors';
-import { isCliKind } from '../ai/connection-kind';
-import { legacyExecutionMode } from '../ai/settings-view';
-import type { AiSettingsView, ModelProfile } from '../ai/types';
+import type { AiSettingsView } from '../ai/types';
+import {
+	isCliProfile,
+	listEnabledProfileGroups,
+	profileDisplayName,
+	routedProfileId,
+	saveTaskProfile
+} from './ai-profiles';
 
 
 // Store event listeners for cleanup
@@ -58,25 +63,56 @@ export function collectPromptVariables(template: Template | null): PromptVariabl
 	return Array.from(promptMap.values());
 }
 
-// Profiles on API connections; in derived mode these are the v1 models, in v1 order.
-function apiProfiles(view: AiSettingsView): ModelProfile[] {
-	const cliConnectionIds = new Set(view.connections.filter(item => isCliKind(item.kind)).map(item => item.id));
-	return view.profiles.filter(profile => !cliConnectionIds.has(profile.connectionId));
+/**
+ * The profile the popup model select starts on: the one routing names for `interpret` (its task
+ * entry, else the default). Availability is not checked here; when the profile is disabled or
+ * missing the select shows no choice and the gateway's resolver reports `not-configured`.
+ */
+export function popupInterpretProfileId(view: AiSettingsView): string | undefined {
+	return routedProfileId(view, 'interpret');
 }
 
-/** The profiles the popup model select lists: the enabled API profiles. */
-export function listPopupModelProfiles(view: AiSettingsView): ModelProfile[] {
-	return apiProfiles(view).filter(profile => profile.enabled);
+/**
+ * Fills the popup model select with every enabled profile, one `<optgroup>` per connection, CLI
+ * profiles included so the select is shown whenever any profile is enabled.
+ */
+export function populatePopupModelSelect(select: HTMLSelectElement, view: AiSettingsView): void {
+	const groups = listEnabledProfileGroups(view);
+	select.textContent = '';
+	for (const group of groups) {
+		const optgroup = document.createElement('optgroup');
+		optgroup.label = group.label;
+		for (const profile of group.profiles) {
+			const option = document.createElement('option');
+			option.value = profile.id;
+			option.textContent = profileDisplayName(profile, group.connection);
+			optgroup.appendChild(option);
+		}
+		select.appendChild(optgroup);
+	}
+	select.value = popupInterpretProfileId(view) ?? '';
+	select.style.display = groups.length > 0 ? 'inline-block' : 'none';
 }
 
-/** The API profile a popup model select value names, enabled or not. */
-export function findPopupModelProfile(view: AiSettingsView, profileId: string | undefined): ModelProfile | undefined {
-	return apiProfiles(view).find(profile => profile.id === profileId);
-}
-
-/** The model select is shown, and its choice used, only when an API connection serves `interpret`. */
-export function usesPopupModelSelect(view: AiSettingsView): boolean {
-	return legacyExecutionMode(view, 'interpret') === 'api';
+/**
+ * Persists the popup's model choice as `routing.taskProfiles.interpret` (cleared when it equals the
+ * default) and returns the view with that routing, for the popup to keep in memory.
+ */
+export async function saveInterpretProfile(profileId: string): Promise<AiSettingsView> {
+	const { written, view } = await saveTaskProfile('interpret', profileId);
+	if (!written) {
+		// DERIVED-MODE FALLBACK — delete in Phase 5 Task 9 (the AI_V2_BOOTSTRAP switch), with the
+		// `generalSettings` / `saveSettings` imports if nothing else uses them. Until v2 is stored the
+		// store write is a no-op, so the choice keeps its v1 effect: an API profile is the v1
+		// `interpreterModel` (its id is the v1 model id). A CLI profile has no v1 per-popup
+		// equivalent (the mode is global), so it is kept only in the returned in-memory view and
+		// passed explicitly with each run.
+		if (!isCliProfile(view, profileId)) {
+			generalSettings.interpreterModel = profileId;
+			await saveSettings();
+		}
+	}
+	return view;
 }
 
 export async function initializeInterpreter(
@@ -84,7 +120,8 @@ export async function initializeInterpreter(
 	variables: { [key: string]: string },
 	tabId: number,
 	currentUrl: string,
-	view: AiSettingsView
+	view: AiSettingsView,
+	onViewChange?: (view: AiSettingsView) => void
 ) {
 	const interpreterContainer = document.getElementById('interpreter');
 	const interpretBtn = document.getElementById('interpret-btn');
@@ -150,48 +187,27 @@ export async function initializeInterpreter(
 		// Only add click listener if auto-run is disabled
 		if (interpretBtn && !view.interpreter.autoRun) {
 			const clickListener = async () => {
-				const selectedModelId = modelSelect.value;
-				const profile = findPopupModelProfile(view, selectedModelId);
-				const useModelSelect = usesPopupModelSelect(view);
-				if (useModelSelect && !profile) {
-					throw new Error(`Model configuration not found for ${selectedModelId}`);
-				}
-				await handleInterpreterUI(template, variables, tabId, currentUrl, useModelSelect ? profile : undefined);
+				// No choice (no enabled profile, or the routed one is unavailable): routing decides.
+				await handleInterpreterUI(template, variables, tabId, currentUrl, modelSelect?.value || undefined);
 			};
 			storeListener(interpretBtn, 'click', clickListener);
 		}
 
 		if (modelSelect) {
 			const changeListener = async () => {
-				generalSettings.interpreterModel = modelSelect.value;
-				await saveSettings();
+				const profileId = modelSelect.value;
+				if (!profileId) return;
+				try {
+					onViewChange?.(await saveInterpretProfile(profileId));
+				} catch (error) {
+					console.error('Error saving the interpret model choice:', error);
+				}
 			};
 			storeListener(modelSelect, 'change', changeListener);
 
-			modelSelect.style.display = usesPopupModelSelect(view) ? 'inline-block' : 'none';
-
 			// Only repopulate if the skeleton hasn't already done it
 			if (modelSelect.options.length === 0) {
-				const enabledModels = listPopupModelProfiles(view);
-				modelSelect.textContent = '';
-				enabledModels.forEach(model => {
-					const option = document.createElement('option');
-					option.value = model.id;
-					option.textContent = model.label;
-					modelSelect.appendChild(option);
-				});
-				modelSelect.value = generalSettings.interpreterModel || (enabledModels[0]?.id ?? '');
-			}
-
-			// Validate that the selected model is still enabled. The choice is still the v1
-			// `interpreterModel`, which this select writes until it moves to task routing.
-			const enabledModels = listPopupModelProfiles(view);
-			const lastSelectedModel = enabledModels.find(model => model.id === generalSettings.interpreterModel);
-
-			if (!lastSelectedModel && enabledModels.length > 0) {
-				generalSettings.interpreterModel = enabledModels[0].id;
-				await saveSettings();
-				modelSelect.value = generalSettings.interpreterModel;
+				populatePopupModelSelect(modelSelect, view);
 			}
 		}
 	}
@@ -202,7 +218,7 @@ export async function handleInterpreterUI(
 	variables: { [key: string]: string },
 	tabId: number,
 	currentUrl: string,
-	profile?: ModelProfile
+	profileId?: string
 ): Promise<void> {
 	const interpreterContainer = document.getElementById('interpreter');
 	const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
@@ -253,12 +269,11 @@ export async function handleInterpreterUI(
 			responseTimer.textContent = formatDuration(elapsedTime);
 		}, 10);
 
-		// Callers pass the model select's profile only when the select is in use (an API connection
-		// serves interpret); otherwise routing picks the profile.
+		// The model select's profile is an explicit choice for this run; without one, routing picks.
 		const { output: { responses, missing } } = await runAiTask('interpret', {
 			context: contextToUse,
 			prompts: promptVariables
-		}, profile ? { profileId: profile.id } : {});
+		}, profileId ? { profileId } : {});
 		// Unanswered prompts get no response, so their placeholders stay in the fields.
 		const promptResponses = promptVariables
 			.filter(variable => Object.prototype.hasOwnProperty.call(responses, variable.key))

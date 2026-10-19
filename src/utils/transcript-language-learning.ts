@@ -17,6 +17,8 @@ import {
 } from './request-cancellation';
 import { renderLanguageLearningCenter } from './language-learning-center';
 import { trapFocus } from './focus-trap';
+import type { TranscriptJobTask } from '../ai/job-identity';
+import type { AiTask, ConnectionKind } from '../ai/types';
 
 export interface TranscriptLanguageLearning {
 	translateTranscript: (
@@ -35,7 +37,9 @@ export interface TranscriptLanguageLearning {
 		signal?: AbortSignal
 	) => Promise<TranscriptReadingSegments>;
 	explainSelection: (selection: LearningSelection, signal?: AbortSignal) => Promise<string>;
-	getExecutionInfo?: () => Promise<TranscriptExecutionInfo>;
+	getExecutionInfo?: (task: TranscriptJobTask) => Promise<TranscriptExecutionInfo>;
+	/** Every enabled profile, for the error card's engine switch. */
+	listProfiles?: () => Promise<TranscriptProfileOption[]>;
 	loadTranscriptTranslations?: (segments: string[]) => Promise<string[] | undefined>;
 	loadJapaneseTranscriptTranslations?: (segments: string[]) => Promise<string[] | undefined>;
 	loadJapaneseReadings?: (segments: string[]) => Promise<TranscriptReadingSegments | undefined>;
@@ -58,15 +62,42 @@ export interface TranscriptLanguageLearning {
 	clearJapaneseReadingDictionary?: () => Promise<void>;
 	exportJapaneseReadingDictionary?: () => Promise<string>;
 	importJapaneseReadingDictionary?: (json: string) => Promise<number>;
-	setExecutionMode?: (mode: 'api' | 'grok' | 'codex') => Promise<void>;
+	/** Routes the failed task to a profile before Switch and retry. */
+	setTaskProfile?: (task: ReaderAiTask, profileId: string) => Promise<void>;
+}
+
+/** The Reader tasks whose failure the error card can recover by switching the task's profile. */
+export type ReaderAiTask = Extract<AiTask, 'translate' | 'reading' | 'explain'>;
+
+const READER_AI_TASKS: readonly ReaderAiTask[] = ['translate', 'reading', 'explain'];
+
+function isReaderAiTask(value: unknown): value is ReaderAiTask {
+	return READER_AI_TASKS.includes(value as ReaderAiTask);
+}
+
+export interface TranscriptProfileOption {
+	id: string;
+	/** `connection · model`. */
+	label: string;
+	kind: ConnectionKind;
 }
 
 export type TranscriptTaskRange = 'current' | 'next-five-minutes' | 'all';
 
+/** The profile routing names for a transcript task; absent when the task has none. */
 export interface TranscriptExecutionInfo {
-	mode: 'api' | 'grok' | 'codex';
+	profileId?: string;
+	kind?: ConnectionKind;
 	label: string;
+	/** `TRANSCRIPT_GROUP_BUDGETS[kind][task]`, which drives the batch estimate. */
 	promptCharLimit: number;
+}
+
+// The v1 mode name the CLI error copy substitutes when an error does not carry one.
+function executionModeOfKind(kind: ConnectionKind | undefined): 'api' | 'grok' | 'codex' {
+	if (kind === 'cli-codex') return 'codex';
+	if (kind === 'cli-grok') return 'grok';
+	return 'api';
 }
 
 export interface TranscriptLanguageLearningController {
@@ -461,16 +492,6 @@ export function wireTranscriptLanguageLearning({
 	engineRecovery.hidden = true;
 	const engineSelect = doc.createElement('select');
 	engineSelect.className = 'language-learning-card-engine-select';
-	[
-		['api', 'interpreterExecutionModeApi'],
-		['grok', 'interpreterExecutionModeGrok'],
-		['codex', 'interpreterExecutionModeCodex']
-	].forEach(([value, label]) => {
-		const option = doc.createElement('option');
-		option.value = value;
-		option.textContent = getMessage(label);
-		engineSelect.appendChild(option);
-	});
 	engineSelect.setAttribute('aria-label', getMessage('interpreterExecutionMode'));
 	const applyEngineButton = doc.createElement('button');
 	applyEngineButton.type = 'button';
@@ -487,9 +508,17 @@ export function wireTranscriptLanguageLearning({
 	let retryAction: (() => void) | null = null;
 	let currentExplanation: { selection: LearningSelection; explanation: string } | null = null;
 	let currentExecutionInfo: TranscriptExecutionInfo = {
-		mode: 'api',
 		label: getMessage('interpreterExecutionModeApi'),
 		promptCharLimit: 6000
+	};
+	// The task the shown error card would re-route, and the latest profile listing for its select.
+	let engineTask: ReaderAiTask | null = null;
+	let engineOptions: TranscriptProfileOption[] = [];
+	let engineRequest = 0;
+	const resetEngineRecovery = () => {
+		engineRecovery.hidden = true;
+		engineTask = null;
+		engineRequest++;
 	};
 	let cardReturnFocus: HTMLElement | null = null;
 	let lastTaskProgress: { completed: number; total: number } | null = null;
@@ -541,7 +570,7 @@ export function wireTranscriptLanguageLearning({
 		retryButton.textContent = getMessage('readerRetry');
 		cardErrorDetails.replaceChildren();
 		cardErrorDetails.hidden = true;
-		engineRecovery.hidden = true;
+		resetEngineRecovery();
 		cardFeedback.textContent = '';
 		favoriteButton.hidden = true;
 		copyButton.hidden = true;
@@ -549,7 +578,31 @@ export function wireTranscriptLanguageLearning({
 		cardReturnFocus = null;
 		if (returnFocus?.isConnected) returnFocus.focus();
 	};
-	const showCardError = (title: string, error: unknown, retry?: () => void) => {
+	// Lists the enabled profiles in the engine select and shows the switch once there is one.
+	const showEngineRecovery = async (task: ReaderAiTask, selectedProfileId: string | undefined) => {
+		const request = ++engineRequest;
+		engineTask = task;
+		let options: TranscriptProfileOption[] = [];
+		try {
+			options = await tools.listProfiles?.() ?? [];
+		} catch {
+			options = [];
+		}
+		if (request !== engineRequest || signal.aborted) return;
+		engineOptions = options;
+		engineSelect.replaceChildren(...options.map(item => {
+			const option = doc.createElement('option');
+			option.value = item.id;
+			option.textContent = item.label;
+			return option;
+		}));
+		if (options.length === 0) return;
+		engineSelect.value = options.some(item => item.id === selectedProfileId)
+			? selectedProfileId as string
+			: options[0].id;
+		engineRecovery.hidden = false;
+	};
+	const showCardError = (title: string, error: unknown, retry?: () => void, task?: ReaderAiTask) => {
 		rememberCardReturnFocus();
 		cardTitle.textContent = title;
 		currentExplanation = null;
@@ -561,7 +614,7 @@ export function wireTranscriptLanguageLearning({
 		const structuredError = error && typeof error === 'object'
 			? error as { code?: string; details?: Record<string, unknown>; message?: string }
 			: null;
-		const errorMode = String(structuredError?.details?.mode || currentExecutionInfo.mode);
+		const errorMode = String(structuredError?.details?.mode || executionModeOfKind(currentExecutionInfo.kind));
 		const localizedErrorKeys: Record<string, string> = {
 			unavailable: 'readerCliUnavailable',
 			config: 'readerCliConfig',
@@ -593,17 +646,24 @@ export function wireTranscriptLanguageLearning({
 			cardErrorDetails.append(summary, detail);
 			cardErrorDetails.hidden = false;
 		}
+		// The runtime names the task that failed (a readings run can fail in its translate step);
+		// the flow's own task is the fallback.
+		const detailTask = structuredError?.details?.task;
+		const failedTask = isReaderAiTask(detailTask) ? detailTask : task;
 		const canSwitchEngine = Boolean(
 			structuredError?.code
 			&& structuredError.code !== 'cancelled'
-			&& tools.setExecutionMode
+			&& failedTask
+			&& tools.setTaskProfile
+			&& tools.listProfiles
 		);
-		engineRecovery.hidden = !canSwitchEngine;
-		if (canSwitchEngine) {
-			const selectedErrorMode = structuredError?.details?.mode;
-			engineSelect.value = selectedErrorMode === 'grok' || selectedErrorMode === 'codex' || selectedErrorMode === 'api'
-				? selectedErrorMode
-				: currentExecutionInfo.mode;
+		resetEngineRecovery();
+		if (canSwitchEngine && failedTask) {
+			const detailProfileId = structuredError?.details?.profileId;
+			const failedProfileId = typeof detailProfileId === 'string'
+				? detailProfileId
+				: failedTask === 'explain' ? undefined : currentExecutionInfo.profileId;
+			void showEngineRecovery(failedTask, failedProfileId);
 		}
 		card.classList.add('is-error');
 		showCard();
@@ -657,7 +717,7 @@ export function wireTranscriptLanguageLearning({
 		saveButton.hidden = true;
 		cardErrorDetails.replaceChildren();
 		cardErrorDetails.hidden = true;
-		engineRecovery.hidden = true;
+		resetEngineRecovery();
 		cardFeedback.textContent = '';
 		retryAction = null;
 		retryButton.hidden = true;
@@ -689,7 +749,7 @@ export function wireTranscriptLanguageLearning({
 				return;
 			}
 			card.classList.add('is-error');
-			showCardError(selection.text, error, () => { void explain(selection); });
+			showCardError(selection.text, error, () => { void explain(selection); }, 'explain');
 		} finally {
 			if (activeRequest === requestController) {
 				cancelRequestButton.hidden = true;
@@ -730,26 +790,25 @@ export function wireTranscriptLanguageLearning({
 		cardFeedback.textContent = getMessage('readerSavedToObsidian');
 	});
 	applyEngineButton.addEventListener('click', async event => {
-		if (!event.isTrusted || !tools.setExecutionMode || !retryAction) return;
-		const mode = engineSelect.value as 'api' | 'grok' | 'codex';
+		if (!event.isTrusted || !tools.setTaskProfile || !retryAction || !engineTask) return;
+		const task = engineTask;
+		const profileId = engineSelect.value;
+		const option = engineOptions.find(item => item.id === profileId);
+		if (!option) return;
 		applyEngineButton.disabled = true;
 		try {
-			await tools.setExecutionMode(mode);
-			currentExecutionInfo = {
-				mode,
-				label: getMessage(mode === 'api'
-					? 'interpreterExecutionModeApi'
-					: mode === 'grok'
-						? 'interpreterExecutionModeGrok'
-						: 'interpreterExecutionModeCodex'),
-				promptCharLimit: mode === 'grok' ? 1600 : mode === 'codex' ? 2500 : 6000
-			};
-			const retry = retryAction;
-			hideCard();
-			retry?.();
+			await tools.setTaskProfile(task, profileId);
+		} catch {
+			cardFeedback.textContent = getMessage('error');
+			return;
 		} finally {
 			applyEngineButton.disabled = false;
 		}
+		// A transcript retry refreshes the budget through getExecutionInfo(task).
+		currentExecutionInfo = { ...currentExecutionInfo, profileId, kind: option.kind, label: option.label };
+		const retry = retryAction;
+		hideCard();
+		retry?.();
 	});
 
 	const showVocabulary = async () => {
@@ -758,7 +817,7 @@ export function wireTranscriptLanguageLearning({
 		cardBody.replaceChildren();
 		card.classList.remove('is-error');
 		cardErrorDetails.hidden = true;
-		engineRecovery.hidden = true;
+		resetEngineRecovery();
 		retryButton.hidden = true;
 		favoriteButton.hidden = true;
 		copyButton.hidden = true;
@@ -913,9 +972,9 @@ export function wireTranscriptLanguageLearning({
 			: label);
 	};
 	let elapsedTimer: number | undefined;
-	const updateExecutionInfo = async (taskTexts: string[]) => {
+	const updateExecutionInfo = async (task: TranscriptJobTask, taskTexts: string[]) => {
 		try {
-			if (tools.getExecutionInfo) currentExecutionInfo = await tools.getExecutionInfo();
+			if (tools.getExecutionInfo) currentExecutionInfo = await tools.getExecutionInfo(task);
 		} catch {
 			// Execution errors are reported by the requested task itself.
 		}
@@ -927,10 +986,15 @@ export function wireTranscriptLanguageLearning({
 			String(estimatedBatches)
 		]);
 	};
-	const beginRequestUi = async (button: HTMLButtonElement, label: string, taskTexts: string[]) => {
+	const beginRequestUi = async (
+		button: HTMLButtonElement,
+		label: string,
+		taskTexts: string[],
+		task: TranscriptJobTask
+	) => {
 		hideCard();
 		lastTaskProgress = null;
-		await updateExecutionInfo(taskTexts);
+		await updateExecutionInfo(task, taskTexts);
 		taskBar.hidden = false;
 		taskBar.setAttribute('aria-busy', 'true');
 		taskProgress.value = 0;
@@ -1084,7 +1148,7 @@ export function wireTranscriptLanguageLearning({
 
 		const taskTexts = taskIndexes.map(index => originalTexts[index]);
 		const requestController = startActiveRequest();
-		await beginRequestUi(bilingualButton, getMessage('thinking'), taskTexts);
+		await beginRequestUi(bilingualButton, getMessage('thinking'), taskTexts, 'translate');
 		const setTranslationProgress = (progress: TranscriptTranslationProgress) => {
 			if (progress.translations?.some(translation => translation.trim())) {
 				renderTranslations(mergeTranslations(taskIndexes, progress.translations), false);
@@ -1116,7 +1180,7 @@ export function wireTranscriptLanguageLearning({
 				setProgressStatus(getMessage('readerAiCancelled'));
 				return;
 			}
-			showCardError(getMessage('readerBilingualSubtitles'), error, () => { void toggleBilingual(); });
+			showCardError(getMessage('readerBilingualSubtitles'), error, () => { void toggleBilingual(); }, 'translate');
 		} finally {
 			finishRequestUi(
 				requestController,
@@ -1312,7 +1376,7 @@ export function wireTranscriptLanguageLearning({
 		const taskIndexes = getTaskIndexes();
 		const sourceTaskTexts = taskIndexes.map(index => originalTexts[index]);
 		const requestController = startActiveRequest();
-		await beginRequestUi(readingsButton, getMessage('thinking'), sourceTaskTexts);
+		await beginRequestUi(readingsButton, getMessage('thinking'), sourceTaskTexts, 'reading');
 		const setReadingProgress = (progress: TranscriptReadingProgress) => {
 			if (progress.readings?.some(tokens => tokens.length > 0)) {
 				japaneseReadings = mergeReadings(taskIndexes, progress.readings);
@@ -1350,7 +1414,7 @@ export function wireTranscriptLanguageLearning({
 				setProgressStatus(getMessage('readerAiCancelled'));
 				return;
 			}
-			showCardError(getMessage('readerJapaneseReadings'), error, () => { void toggleJapaneseReadings(); });
+			showCardError(getMessage('readerJapaneseReadings'), error, () => { void toggleJapaneseReadings(); }, 'reading');
 		} finally {
 			finishRequestUi(
 				requestController,

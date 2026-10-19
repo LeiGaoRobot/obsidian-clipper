@@ -10,6 +10,7 @@ import {
 	type TranscriptJobValues
 } from '../ai/job-client';
 import type { TranscriptJobIdentity, TranscriptJobTask } from '../ai/job-identity';
+import { isCliKind } from '../ai/connection-kind';
 import { TRANSCRIPT_GROUP_BUDGETS } from '../ai/job-runner';
 import {
 	JAPANESE_READING_JOB_IDENTITY,
@@ -28,7 +29,20 @@ import type { NativeCliErrorCode } from './native-cli-contract';
 import { RequestCancelledError, throwIfRequestAborted } from './request-cancellation';
 import { saveSettings } from './storage-utils';
 import { loadAiSettings } from './ai-settings';
+import {
+	executionModeOfKind,
+	findProfileConnection,
+	listEnabledProfileGroups,
+	profileDisplayLabel,
+	routedProfileId,
+	saveTaskProfile
+} from './ai-profiles';
 import { configuredLanguageLearningVocabulary } from './language-learning-vocabulary';
+import type {
+	ReaderAiTask,
+	TranscriptExecutionInfo,
+	TranscriptProfileOption
+} from './transcript-language-learning';
 import {
 	applyJapaneseReadingDictionary,
 	resolveJapaneseReadingsFromDictionary
@@ -38,8 +52,8 @@ import {
 	listJapaneseReadingDictionary
 } from './japanese-reading-dictionary-storage';
 import { resolveResponseLanguage } from '../ai/resolve';
-import { legacyExecutionMode } from '../ai/settings-view';
-import type { AiSettingsView } from '../ai/types';
+import type { AiSettingsView, AiTask, Connection, ModelProfile } from '../ai/types';
+import type { InterpreterExecutionMode } from '../types/types';
 
 // The scope of the fixed Japanese translation that feeds readings of a non-Japanese transcript.
 const JAPANESE_TRANSLATION_CHECKPOINT_SCOPE = 'japanese-readings:Japanese';
@@ -82,7 +96,14 @@ const NATIVE_HOST_ERROR_CODES: ReadonlySet<string> = new Set<NativeCliErrorCode>
 	'unavailable'
 ]);
 
-function toLanguageLearningError(error: unknown, mode: string): Error {
+/** What a failed request ran on: the v1 mode keeps the CLI error copy, `task` names the routing entry. */
+interface RequestContext {
+	mode: InterpreterExecutionMode;
+	task: AiTask;
+	profileId?: string;
+}
+
+function toLanguageLearningError(error: unknown, context: RequestContext): Error {
 	const aiError = toAiError(error);
 	if (aiError.code === 'cancelled') return new RequestCancelledError();
 	// Host codes keep their mode-specific Reader copy.
@@ -91,7 +112,7 @@ function toLanguageLearningError(error: unknown, mode: string): Error {
 		: LEGACY_ERROR_CODES[aiError.code] ?? 'failed';
 	const description = describeAiError(aiError);
 	return new LanguageLearningRequestError(code, description.body, {
-		mode,
+		...context,
 		aiCode: aiError.code,
 		retryable: aiError.retryable,
 		...(aiError.timeoutSeconds !== undefined ? { timeoutSeconds: aiError.timeoutSeconds } : {}),
@@ -104,9 +125,9 @@ function toLanguageLearningError(error: unknown, mode: string): Error {
  * means even the smaller groups did not finish: the Reader offers Continue remaining instead of
  * the single-request timeout card.
  */
-function toTranscriptJobError(error: unknown, mode: string): Error {
+function toTranscriptJobError(error: unknown, context: RequestContext): Error {
 	const aiError = toAiError(error);
-	const converted = toLanguageLearningError(aiError, mode);
+	const converted = toLanguageLearningError(aiError, context);
 	if (
 		aiError.code === 'timeout'
 		&& aiError.nativeCode === 'timeout'
@@ -114,7 +135,7 @@ function toTranscriptJobError(error: unknown, mode: string): Error {
 	) {
 		return new LanguageLearningRequestError('failed', getMessage('readerTranscriptTranslationBatchFailed'), {
 			...(converted instanceof LanguageLearningRequestError ? converted.details : {}),
-			mode,
+			...context,
 			automaticBatchRetry: true
 		});
 	}
@@ -129,38 +150,61 @@ async function loadResponseLanguage(): Promise<string> {
 	return responseLanguageOf(await loadAiSettings());
 }
 
+/**
+ * The profile routing names for a task and its connection kind, from profile → connection. The
+ * Reader is a content script whose view reports no Native Messaging, so this deliberately skips
+ * `resolveProfile`'s availability checks: the background decides whether a CLI can run.
+ */
+function routedProfile(view: AiSettingsView, task: AiTask): { profile: ModelProfile; connection: Connection } | undefined {
+	const found = findProfileConnection(view, routedProfileId(view, task));
+	return found?.profile.enabled ? found : undefined;
+}
+
+function requestContext(view: AiSettingsView, task: AiTask): RequestContext {
+	const routed = routedProfile(view, task);
+	return {
+		mode: executionModeOfKind(routed?.connection.kind),
+		task,
+		...(routed ? { profileId: routed.profile.id } : {})
+	};
+}
+
 async function loadConfiguredAssistant() {
 	const view = await loadAiSettings();
+	// These pre-checks keep the Reader's own copy, which `not-configured` from the resolver does not
+	// match (decision 6 drops them in Task 9 once the copy is reconciled). The model check is per
+	// task: in derived mode a task has a profile exactly when v1 is in a CLI mode or has an enabled
+	// model, as the former `api && !defaultProfileId` check required.
 	if (!view.enabled) {
 		throw new Error(getMessage('aiLanguageToolsRequireInterpreter'));
 	}
-
-	// The mode keeps the Reader's mode-specific error copy until the Reader moves to profiles.
-	const executionMode = legacyExecutionMode(view);
-	if (executionMode === 'api' && !view.routing.defaultProfileId) {
-		throw new Error(getMessage('aiLanguageToolsRequireModel'));
-	}
+	const requireProfile = (task: AiTask): RequestContext => {
+		if (!routedProfileId(view, task)) throw new Error(getMessage('aiLanguageToolsRequireModel'));
+		return requestContext(view, task);
+	};
 
 	const responseLanguage = responseLanguageOf(view);
 	const assistant = createLanguageLearningAssistant(async (task, input, signal) => {
 		throwIfRequestAborted(signal);
+		const context = requireProfile(task);
 		try {
 			return (await runAiTask(task, input, { signal })).output;
 		} catch (error) {
-			throw toLanguageLearningError(error, executionMode);
+			throw toLanguageLearningError(error, context);
 		}
 	}, {
 		runJob: async (task, input, options) => {
 			throwIfRequestAborted(options.signal);
+			const context = requireProfile(task);
 			try {
 				return await runTranscriptJob(task, input, options);
 			} catch (error) {
-				throw toTranscriptJobError(error, executionMode);
+				throw toTranscriptJobError(error, context);
 			}
 		}
 	});
 
-	return { assistant, responseLanguage, executionMode };
+	return { assistant, responseLanguage };
 }
 
 /**
@@ -234,25 +278,44 @@ async function translateConfiguredTranscript(
 export const configuredLanguageLearning = {
 	...configuredLanguageLearningVocabulary,
 	...configuredJapaneseReadingDictionary,
-	async getExecutionInfo() {
-		const mode = legacyExecutionMode(await loadAiSettings());
+	/** The profile routing names for a transcript task, its kind, and the kind's group budget. */
+	async getExecutionInfo(task: TranscriptJobTask): Promise<TranscriptExecutionInfo> {
+		const view = await loadAiSettings();
+		const routed = routedProfile(view, task);
+		const kind = routed?.connection.kind;
+		const budgetKind = kind && isCliKind(kind) ? kind : 'api';
 		return {
-			mode,
-			label: getMessage(mode === 'grok'
-				? 'interpreterExecutionModeGrok'
-				: mode === 'codex'
-					? 'interpreterExecutionModeCodex'
-					: 'interpreterExecutionModeApi'),
-			promptCharLimit: mode === 'grok'
-				? TRANSCRIPT_GROUP_BUDGETS['cli-grok'].reading
-				: mode === 'codex'
-					? TRANSCRIPT_GROUP_BUDGETS['cli-codex'].reading
-					: TRANSCRIPT_GROUP_BUDGETS.api.translate
+			...(routed ? { profileId: routed.profile.id, kind } : {}),
+			label: routed
+				? profileDisplayLabel(routed.profile, routed.connection)
+				: getMessage('aiErrorNotConfiguredTitle'),
+			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS[budgetKind][task]
 		};
 	},
 
-	async setExecutionMode(mode: 'api' | 'grok' | 'codex'): Promise<void> {
-		await saveSettings({ interpreterExecutionMode: mode });
+	/** Every enabled profile, CLI included; whether one can run here is the background's call. */
+	async listProfiles(): Promise<TranscriptProfileOption[]> {
+		const view = await loadAiSettings();
+		return listEnabledProfileGroups(view).flatMap(group => group.profiles.map(profile => ({
+			id: profile.id,
+			label: profileDisplayLabel(profile, group.connection),
+			kind: group.connection.kind
+		})));
+	},
+
+	/** Routes a Reader task to a profile (the error card's Switch and retry). */
+	async setTaskProfile(task: ReaderAiTask, profileId: string): Promise<void> {
+		const { written, view } = await saveTaskProfile(task, profileId);
+		if (written) return;
+		// DERIVED-MODE FALLBACK — delete in Phase 5 Task 9 (the AI_V2_BOOTSTRAP switch), with the
+		// `saveSettings` import. Until v2 is stored the store write is a no-op, so the switch keeps
+		// its v1 effect, which is global rather than per task: a CLI profile sets
+		// `interpreterExecutionMode` (as `setExecutionMode` did) and an API profile sets the `api`
+		// mode with that profile as `interpreterModel` (its id is the v1 model id).
+		const mode = executionModeOfKind(findProfileConnection(view, profileId)?.connection.kind);
+		await saveSettings(mode === 'api'
+			? { interpreterExecutionMode: 'api', interpreterModel: profileId }
+			: { interpreterExecutionMode: mode });
 	},
 
 	async loadTranscriptTranslations(segments: string[]): Promise<string[] | undefined> {

@@ -16,9 +16,7 @@ import {
 	initializeInterpreter,
 	handleInterpreterUI,
 	collectPromptVariables,
-	findPopupModelProfile,
-	listPopupModelProfiles,
-	usesPopupModelSelect
+	populatePopupModelSelect
 } from '../utils/interpreter';
 import { loadAiSettings } from '../utils/ai-settings';
 import type { AiSettingsView } from '../ai/types';
@@ -900,19 +898,7 @@ function buildTemplateFieldsSkeleton(template: Template | null) {
 	// Populate model dropdown immediately (only needs the loaded settings)
 	if (hasPromptVars) {
 		const modelSelect = document.getElementById('model-select') as HTMLSelectElement;
-		if (modelSelect) {
-			const enabledModels = listPopupModelProfiles(aiSettings);
-			modelSelect.textContent = '';
-			enabledModels.forEach(model => {
-				const option = document.createElement('option');
-				option.value = model.id;
-				option.textContent = model.label;
-				modelSelect.appendChild(option);
-			});
-			// The choice is still the v1 `interpreterModel`, which the select writes until it moves to routing.
-			modelSelect.value = generalSettings.interpreterModel || (enabledModels[0]?.id ?? '');
-			modelSelect.style.display = usesPopupModelSelect(aiSettings) ? 'inline-block' : 'none';
-		}
+		if (modelSelect) populatePopupModelSelect(modelSelect, aiSettings);
 	}
 }
 
@@ -974,21 +960,19 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 
 	if (aiSettings.enabled) {
 		const view = aiSettings;
-		await initializeInterpreter(template, variables, currentTabId!, currentUrl, view);
+		// A model choice updates the in-memory view, so a rebuild of the fields shows it.
+		await initializeInterpreter(template, variables, currentTabId!, currentUrl, view, next => {
+			aiSettings = next;
+		});
 
 		const promptVariables = collectPromptVariables(template);
 
 		if (view.interpreter.autoRun && promptVariables.length > 0) {
 			try {
 				const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
-				const modelSelect = document.getElementById('model-select') as HTMLSelectElement;
-				const selectedModelId = modelSelect?.value || generalSettings.interpreterModel;
-				const profile = findPopupModelProfile(view, selectedModelId);
-				const useModelSelect = usesPopupModelSelect(view);
-				if (useModelSelect && !profile) {
-					throw new Error(`Model configuration not found for ${selectedModelId}`);
-				}
-				await handleInterpreterUI(template, variables, currentTabId!, currentUrl, useModelSelect ? profile : undefined);
+				const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
+				// Without a choice in the select, routing picks the profile.
+				await handleInterpreterUI(template, variables, currentTabId!, currentUrl, modelSelect?.value || undefined);
 
 				if (interpretBtn && !interpretBtn.classList.contains('partial')) {
 					interpretBtn.classList.add('done');
