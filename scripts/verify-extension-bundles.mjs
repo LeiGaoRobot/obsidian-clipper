@@ -26,8 +26,10 @@ for (const outputDirectory of outputDirectories) {
 	const output = path.join(root, outputDirectory);
 	const chunkFiles = existsSync(path.join(output, 'chunks')) ? readdirSync(path.join(output, 'chunks')) : [];
 	for (const chunk of lazyChunks) {
-		// Webpack prefixes a split chunk with the modules it shares, so match the module's own name.
-		const file = chunkFiles.find(name => name === chunk || name.endsWith(`-${chunk}`)) ?? chunk;
+		// Webpack names a split chunk after the root modules it holds (`src_a_ts-src_b_ts.js`), so
+		// match the module's own name at either end.
+		const stem = chunk.replace(/\.js$/, '');
+		const file = chunkFiles.find(name => name === chunk || name.endsWith(`-${chunk}`) || name.startsWith(`${stem}-`)) ?? chunk;
 		requireFile(path.join(output, 'chunks', file));
 	}
 

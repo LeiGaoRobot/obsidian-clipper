@@ -70,7 +70,8 @@ describe('Transcript layout integration', () => {
 				pinPlayer: true,
 				autoScroll: true,
 				highlightActiveLine: true,
-				transcriptLayout: 'reading'
+				transcriptLayout: 'reading',
+				responseLanguage: 'English'
 			},
 			{
 				getStickyOffset: () => 0,
@@ -125,7 +126,8 @@ describe('Transcript layout integration', () => {
 			pinPlayer: true,
 			autoScroll: true,
 			highlightActiveLine: true,
-			transcriptLayout: 'reading'
+			transcriptLayout: 'reading',
+			responseLanguage: 'English'
 		}, {
 			getStickyOffset: () => 0,
 			scrollTo: vi.fn(),
@@ -166,7 +168,8 @@ describe('Transcript layout integration', () => {
 				pinPlayer: true,
 				autoScroll: true,
 				highlightActiveLine: true,
-				transcriptLayout: 'reading'
+				transcriptLayout: 'reading',
+				responseLanguage: 'English'
 			},
 			{
 				getStickyOffset: () => 0,
@@ -256,6 +259,7 @@ describe('Transcript layout integration', () => {
 			autoScroll: true,
 			highlightActiveLine: true,
 			transcriptLayout: 'reading',
+			responseLanguage: 'English',
 			compactPlayer: true
 		}, {
 			getStickyOffset: () => 0,
@@ -296,7 +300,8 @@ describe('Transcript layout integration', () => {
 			pinPlayer: true,
 			autoScroll: true,
 			highlightActiveLine: true,
-			transcriptLayout: 'reading'
+			transcriptLayout: 'reading',
+			responseLanguage: 'English'
 		}, {
 			getStickyOffset: () => 0,
 			scrollTo: vi.fn(),
@@ -368,7 +373,8 @@ describe('Transcript layout integration', () => {
 			pinPlayer: true,
 			autoScroll: true,
 			highlightActiveLine: true,
-			transcriptLayout: 'focus'
+			transcriptLayout: 'focus',
+			responseLanguage: 'English'
 		}, {
 			getStickyOffset: () => 0,
 			scrollTo: vi.fn(),
@@ -416,7 +422,8 @@ describe('Transcript layout integration', () => {
 			pinPlayer: true,
 			autoScroll: true,
 			highlightActiveLine: true,
-			transcriptLayout: 'reading' as const
+			transcriptLayout: 'reading' as const,
+			responseLanguage: 'English'
 		};
 		const scroll = {
 			getStickyOffset: () => 0,
@@ -461,7 +468,8 @@ describe('Transcript layout integration', () => {
 			pinPlayer: true,
 			autoScroll: true,
 			highlightActiveLine: true,
-			transcriptLayout: 'reading' as const
+			transcriptLayout: 'reading' as const,
+			responseLanguage: 'English'
 		};
 		const scroll = {
 			getStickyOffset: () => 0,
@@ -506,7 +514,8 @@ describe('Transcript layout integration', () => {
 			pinPlayer: true,
 			autoScroll: true,
 			highlightActiveLine: true,
-			transcriptLayout: 'reading'
+			transcriptLayout: 'reading',
+			responseLanguage: 'English'
 		}, {
 			getStickyOffset: () => 0,
 			scrollTo: vi.fn(),

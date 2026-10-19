@@ -1,48 +1,24 @@
 import { getMessage } from '../../utils/i18n';
-import {
-	LearningSelection,
-	TranscriptReadingProgress,
-	TranscriptReadingSegments,
-	TranscriptBatchProgress,
-	TranscriptTranslationProgress,
-	isCompleteTranscriptReadings,
-	isCompleteTranscriptTranslationSegment,
-	isCompleteTranscriptTranslations
-} from '../../utils/language-learning';
-import {
-	isRequestCancelled,
-	throwIfRequestAborted
-} from '../../utils/request-cancellation';
-import { renderLanguageLearningCenter } from '../../utils/language-learning-center';
-import { trapFocus } from '../../utils/focus-trap';
-import { describeAiError } from '../../ai/error-messages';
-import { isAiError } from '../../ai/errors';
-import type { TranscriptJobTask } from '../../ai/job-identity';
-import type { ConnectionKind } from '../../ai/types';
+import { createAiAction, type AiActionRun } from '../../ai/ui/action';
+import { createLearningCard } from './card';
+import { createExplainFeature } from './explain';
+import { createReadingsFeature } from './readings';
+import { getOriginalSegmentText, wireSelectionTrigger } from './selection';
+import { createTaskBar } from './task-bar';
+import { createTranslationsFeature } from './translations';
 import type {
-	ReaderAiTask,
-	TranscriptExecutionInfo,
+	TranscriptFeatureContext,
+	TranscriptFlow,
 	TranscriptLanguageLearningController,
 	TranscriptLanguageLearningOptions,
-	TranscriptProfileOption,
-	TranscriptTaskRange
+	TranscriptRestoreState
 } from './types';
-import {
-	cacheExplanation,
-	cacheJapaneseReadings,
-	cacheJapaneseTranslations,
-	cacheTranslations,
-	cloneTranscriptReadings,
-	getCachedExplanation,
-	getCachedJapaneseReadings,
-	getCachedJapaneseTranslations,
-	getCachedTranslations,
-	removeCachedJapaneseReadings,
-	removeCachedTranslations
-} from './cache';
-import { isJapaneseTranscript, shouldOfferJapaneseReadings } from './japanese';
-import { getOriginalSegmentText, getTranscriptLearningSelection } from './selection';
-import { renderJapaneseTranslationReadings, renderTranscriptReadings } from './readings-render';
+
+// Reader transcript learning: composes the task bar, the learning card, bilingual subtitles,
+// Japanese readings, explanations and the selection trigger for one transcript. Two action
+// controllers carry the model work: one per transcript (bilingual and readings share it, so a new
+// transcript task aborts the previous one) and one for explanations. Nothing here starts model
+// work on its own: only trusted user actions and the returned controller's methods do.
 
 export type {
 	ReaderAiTask,
@@ -57,33 +33,25 @@ export { clearTranscriptLanguageLearningCache } from './cache';
 export { isJapaneseTranscript, shouldOfferJapaneseReadings } from './japanese';
 export { getTranscriptLearningSelection } from './selection';
 
-function isCancelled(error: unknown): boolean {
-	return isRequestCancelled(error) || (isAiError(error) && error.code === 'cancelled');
-}
+/** Disposes a document's wiring: listeners, timers, and both controllers with their requests. */
+const wiredDocuments = new WeakMap<Document, () => void>();
 
-const READER_AI_TASKS: readonly ReaderAiTask[] = ['translate', 'reading', 'explain'];
-
-function isReaderAiTask(value: unknown): value is ReaderAiTask {
-	return READER_AI_TASKS.includes(value as ReaderAiTask);
-}
-
-// The v1 mode name the CLI error copy substitutes when an error does not carry one.
-function executionModeOfKind(kind: ConnectionKind | undefined): 'api' | 'grok' | 'codex' {
-	if (kind === 'cli-codex') return 'codex';
-	if (kind === 'cli-grok') return 'grok';
-	return 'api';
-}
-
-const selectionControllers = new WeakMap<Document, AbortController>();
-const activeLearningRequests = new WeakMap<Document, AbortController>();
+const LEARNING_CONTROL_SELECTOR = [
+	'.player-learning-bilingual',
+	'.player-learning-translations-edit',
+	'.player-learning-vocabulary',
+	'.player-learning-range',
+	'.player-learning-task',
+	'.player-learning-readings',
+	'.player-learning-readings-edit',
+	'.player-learning-readings-regenerate'
+].join(', ');
 
 export function cleanupTranscriptLanguageLearning(doc: Document): void {
-	selectionControllers.get(doc)?.abort();
-	selectionControllers.delete(doc);
-	activeLearningRequests.get(doc)?.abort();
-	activeLearningRequests.delete(doc);
+	wiredDocuments.get(doc)?.();
+	wiredDocuments.delete(doc);
 	doc.querySelector('.language-learning-selection-action')?.remove();
-	doc.querySelectorAll('.player-learning-bilingual, .player-learning-translations-edit, .player-learning-vocabulary, .player-learning-range, .player-learning-task, .player-learning-readings, .player-learning-readings-edit, .player-learning-readings-regenerate').forEach(element => element.remove());
+	doc.querySelectorAll(LEARNING_CONTROL_SELECTOR).forEach(element => element.remove());
 	doc.querySelector('.language-learning-card')?.remove();
 }
 
@@ -100,485 +68,104 @@ export function wireTranscriptLanguageLearning({
 	cancelPendingSeek
 }: TranscriptLanguageLearningOptions): TranscriptLanguageLearningController {
 	cleanupTranscriptLanguageLearning(doc);
-	const controller = new AbortController();
-	selectionControllers.set(doc, controller);
-	const { signal } = controller;
-
+	const wiring = new AbortController();
+	const { signal } = wiring;
 	const originalTexts = segments.map(getOriginalSegmentText);
-	const transcriptLanguage = transcript.dataset.transcriptLanguage;
-	const sourceIsJapanese = isJapaneseTranscript(originalTexts, transcriptLanguage);
-	const resolvedResponseLanguage = responseLanguage?.trim() || navigator.language || 'English';
+	const restore: TranscriptRestoreState = {
+		promise: Promise.resolve(),
+		complete: !restoreBilingualSubtitles && !restoreJapaneseReadings
+	};
 
-	const card = doc.createElement('aside');
-	card.className = 'language-learning-card';
-	card.setAttribute('role', 'dialog');
-	card.setAttribute('aria-modal', 'true');
-	card.setAttribute('tabindex', '-1');
-	card.style.display = 'none';
+	const card = createLearningCard({ doc, tools, signal });
+	let cancelAll = () => {};
+	const taskBar = createTaskBar({ doc, segments, tools, onCancel: () => cancelAll() });
 
-	const cardHeader = doc.createElement('div');
-	cardHeader.className = 'language-learning-card-header';
-	const cardTitle = doc.createElement('strong');
-	cardTitle.id = `language-learning-card-title-${Math.random().toString(36).slice(2)}`;
-	card.setAttribute('aria-labelledby', cardTitle.id);
-	const closeButton = doc.createElement('button');
-	closeButton.type = 'button';
-	closeButton.className = 'language-learning-card-close';
-	closeButton.textContent = '×';
-	closeButton.setAttribute('aria-label', getMessage('close'));
-	cardHeader.appendChild(cardTitle);
-	cardHeader.appendChild(closeButton);
-
-	const cardBody = doc.createElement('div');
-	cardBody.className = 'language-learning-card-body';
-	cardBody.setAttribute('aria-live', 'polite');
-	const cardErrorDetails = doc.createElement('details');
-	cardErrorDetails.className = 'language-learning-card-error-details';
-	cardErrorDetails.hidden = true;
-	const retryButton = doc.createElement('button');
-	retryButton.type = 'button';
-	retryButton.className = 'language-learning-card-retry';
-	retryButton.textContent = getMessage('readerRetry');
-	retryButton.hidden = true;
-	const cardActions = doc.createElement('div');
-	cardActions.className = 'language-learning-card-actions';
-	const favoriteButton = doc.createElement('button');
-	favoriteButton.type = 'button';
-	favoriteButton.className = 'language-learning-card-action language-learning-card-favorite';
-	favoriteButton.textContent = getMessage('readerFavorite');
-	favoriteButton.hidden = true;
-	const copyButton = doc.createElement('button');
-	copyButton.type = 'button';
-	copyButton.className = 'language-learning-card-action language-learning-card-copy';
-	copyButton.textContent = getMessage('copyToClipboard');
-	copyButton.hidden = true;
-	const saveButton = doc.createElement('button');
-	saveButton.type = 'button';
-	saveButton.className = 'language-learning-card-action language-learning-card-save';
-	saveButton.textContent = getMessage('addToObsidian');
-	saveButton.hidden = true;
-	const cardFeedback = doc.createElement('span');
-	cardFeedback.className = 'language-learning-card-feedback';
-	cardFeedback.setAttribute('role', 'status');
-	cardFeedback.setAttribute('aria-live', 'polite');
-	const engineRecovery = doc.createElement('div');
-	engineRecovery.className = 'language-learning-card-engine-recovery';
-	engineRecovery.hidden = true;
-	const engineSelect = doc.createElement('select');
-	engineSelect.className = 'language-learning-card-engine-select';
-	engineSelect.setAttribute('aria-label', getMessage('interpreterExecutionMode'));
-	const applyEngineButton = doc.createElement('button');
-	applyEngineButton.type = 'button';
-	applyEngineButton.className = 'language-learning-card-action language-learning-card-engine-apply';
-	applyEngineButton.textContent = getMessage('readerSwitchAndRetry');
-	engineRecovery.append(engineSelect, applyEngineButton);
-	cardActions.append(cardFeedback, engineRecovery, favoriteButton, copyButton, saveButton, retryButton);
-	card.appendChild(cardHeader);
-	card.appendChild(cardBody);
-	card.appendChild(cardErrorDetails);
-	card.appendChild(cardActions);
-	doc.body.appendChild(card);
-
-	let retryAction: (() => void) | null = null;
-	let currentExplanation: { selection: LearningSelection; explanation: string } | null = null;
-	let currentExecutionInfo: TranscriptExecutionInfo = {
-		label: getMessage('interpreterExecutionModeApi'),
-		promptCharLimit: 6000
+	// The flow whose button shows the running transcript task.
+	let activeFlow: TranscriptFlow | undefined;
+	let busyFlow: TranscriptFlow | undefined;
+	const setFlowBusy = (flow: TranscriptFlow, busy: boolean) => {
+		flow.button.disabled = busy;
+		flow.button.classList.toggle('is-loading', busy);
+		flow.button.textContent = busy ? getMessage('thinking') : flow.label;
+		if (busy) flow.button.setAttribute('aria-busy', 'true');
+		else flow.button.removeAttribute('aria-busy');
 	};
-	// The task the shown error card would re-route, and the latest profile listing for its select.
-	let engineTask: ReaderAiTask | null = null;
-	let engineOptions: TranscriptProfileOption[] = [];
-	let engineRequest = 0;
-	const resetEngineRecovery = () => {
-		engineRecovery.hidden = true;
-		engineTask = null;
-		engineRequest++;
-	};
-	let cardReturnFocus: HTMLElement | null = null;
-	let lastTaskProgress: { completed: number; total: number } | null = null;
-	const inertCardBackground = new Map<HTMLElement, boolean>();
-	const setCardBackgroundInert = (inert: boolean) => {
-		const HTMLElementConstructor = doc.defaultView?.HTMLElement;
-		if (!HTMLElementConstructor) return;
-		if (inert) {
-			Array.from(doc.body.children).forEach(child => {
-				if (!(child instanceof HTMLElementConstructor) || child === card) return;
-				if (!inertCardBackground.has(child)) {
-					inertCardBackground.set(child, child.hasAttribute('inert'));
-				}
-				child.setAttribute('inert', '');
-			});
-			return;
-		}
-		inertCardBackground.forEach((wasInert, element) => {
-			if (!element.isConnected) return;
-			if (wasInert) element.setAttribute('inert', '');
-			else element.removeAttribute('inert');
-		});
-		inertCardBackground.clear();
-	};
-	const showCard = () => {
-		card.style.display = 'block';
-		setCardBackgroundInert(true);
-		closeButton.focus();
-	};
-	signal.addEventListener('abort', () => setCardBackgroundInert(false), { once: true });
-	const rememberCardReturnFocus = (preferred?: HTMLElement | null) => {
-		if (card.style.display !== 'none') return;
-		if (preferred?.isConnected) {
-			cardReturnFocus = preferred;
-			return;
-		}
-		const activeElement = doc.activeElement;
-		cardReturnFocus = activeElement instanceof HTMLElement && activeElement !== doc.body
-			? activeElement
-			: null;
-	};
-	const hideCard = () => {
-		const returnFocus = cardReturnFocus;
-		card.style.display = 'none';
-		setCardBackgroundInert(false);
-		card.classList.remove('is-error');
-		retryAction = null;
-		retryButton.hidden = true;
-		retryButton.textContent = getMessage('readerRetry');
-		cardErrorDetails.replaceChildren();
-		cardErrorDetails.hidden = true;
-		resetEngineRecovery();
-		cardFeedback.textContent = '';
-		favoriteButton.hidden = true;
-		copyButton.hidden = true;
-		saveButton.hidden = true;
-		cardReturnFocus = null;
-		if (returnFocus?.isConnected) returnFocus.focus();
-	};
-	// Lists the enabled profiles in the engine select and shows the switch once there is one.
-	const showEngineRecovery = async (task: ReaderAiTask, selectedProfileId: string | undefined) => {
-		const request = ++engineRequest;
-		engineTask = task;
-		let options: TranscriptProfileOption[] = [];
-		try {
-			options = await tools.listProfiles?.() ?? [];
-		} catch {
-			options = [];
-		}
-		if (request !== engineRequest || signal.aborted) return;
-		engineOptions = options;
-		engineSelect.replaceChildren(...options.map(item => {
-			const option = doc.createElement('option');
-			option.value = item.id;
-			option.textContent = item.label;
-			return option;
-		}));
-		if (options.length === 0) return;
-		engineSelect.value = options.some(item => item.id === selectedProfileId)
-			? selectedProfileId as string
-			: options[0].id;
-		engineRecovery.hidden = false;
-	};
-	const showCardError = (title: string, error: unknown, retry?: () => void, task?: ReaderAiTask) => {
-		rememberCardReturnFocus();
-		cardTitle.textContent = title;
-		currentExplanation = null;
-		favoriteButton.hidden = true;
-		copyButton.hidden = true;
-		saveButton.hidden = true;
-		cardErrorDetails.replaceChildren();
-		cardErrorDetails.hidden = true;
-		const structuredError = error && typeof error === 'object'
-			? error as { code?: string; details?: Record<string, unknown>; message?: string }
-			: null;
-		// Model work rejects with AiError, which names the task and profile that failed.
-		const aiError = isAiError(error) ? error : undefined;
-		const description = aiError ? describeAiError(aiError) : undefined;
-		const errorMode = String(structuredError?.details?.mode || executionModeOfKind(currentExecutionInfo.kind));
-		const localizedErrorKeys: Record<string, string> = {
-			unavailable: 'readerCliUnavailable',
-			config: 'readerCliConfig',
-			'protocol-mismatch': 'readerCliProtocolMismatch',
-			'launch-failed': 'readerCliLaunchFailed',
-			'cli-failed': 'readerCliFailed',
-			'response-too-large': 'readerCliResponseTooLarge',
-			invalid: 'readerCliInvalid'
-		};
-		if (description) {
-			cardBody.textContent = description.body;
-		} else if (structuredError?.code === 'timeout') {
-			const timeoutSeconds = String(structuredError.details?.timeoutSeconds || '');
-			cardBody.textContent = getMessage('readerCliTimeout', [errorMode, timeoutSeconds]);
-		} else if (structuredError?.code && localizedErrorKeys[structuredError.code]) {
-			cardBody.textContent = getMessage(localizedErrorKeys[structuredError.code], errorMode);
-		} else {
-			cardBody.textContent = error instanceof Error ? error.message : getMessage('error');
-		}
-		const technicalMessage = description
-			? description.detail
-			: typeof structuredError?.details?.technicalDetail === 'string'
-				? structuredError.details.technicalDetail
-				: error instanceof Error
-					? error.message
-					: structuredError?.message;
-		if (technicalMessage && structuredError?.code) {
-			const summary = doc.createElement('summary');
-			summary.textContent = getMessage('readerTechnicalDetails');
-			const detail = doc.createElement('div');
-			detail.className = 'language-learning-card-error-detail';
-			detail.textContent = technicalMessage;
-			cardErrorDetails.append(summary, detail);
-			cardErrorDetails.hidden = false;
-		}
-		// The runtime names the task that failed (a readings run can fail in its translate step);
-		// the flow's own task is the fallback.
-		const detailTask = aiError ? aiError.task : structuredError?.details?.task;
-		const failedTask = isReaderAiTask(detailTask) ? detailTask : task;
-		const canSwitchEngine = Boolean(
-			structuredError?.code
-			&& structuredError.code !== 'cancelled'
-			&& failedTask
-			&& tools.setTaskProfile
-			&& tools.listProfiles
-		);
-		resetEngineRecovery();
-		if (canSwitchEngine && failedTask) {
-			const detailProfileId = aiError ? aiError.profileId : structuredError?.details?.profileId;
-			const failedProfileId = typeof detailProfileId === 'string'
-				? detailProfileId
-				: failedTask === 'explain' ? undefined : currentExecutionInfo.profileId;
-			void showEngineRecovery(failedTask, failedProfileId);
-		}
-		card.classList.add('is-error');
-		showCard();
-		retryAction = retry || null;
-		retryButton.hidden = !retryAction;
-		retryButton.textContent = lastTaskProgress && lastTaskProgress.completed > 0
-			? getMessage('readerContinueRemaining', [
-				String(lastTaskProgress.completed),
-				String(lastTaskProgress.total)
-			])
-			: getMessage('readerRetry');
-	};
-	const showExplanationActions = async (selection: LearningSelection, explanation: string) => {
-		currentExplanation = { selection, explanation };
-		copyButton.hidden = !tools.copyLearningText;
-		saveButton.hidden = !tools.saveVocabularyToObsidian;
-		favoriteButton.hidden = !tools.toggleVocabularyFavorite;
-		if (tools.isVocabularyFavorite && tools.toggleVocabularyFavorite) {
-			const favorite = await tools.isVocabularyFavorite(selection);
-			if (currentExplanation?.selection !== selection) return;
-			favoriteButton.textContent = getMessage(favorite ? 'readerUnfavorite' : 'readerFavorite');
-		}
-	};
-	let explanationRequest = 0;
-	let activeRequest: AbortController | null = null;
-	const startActiveRequest = (): AbortController => {
-		activeRequest?.abort();
-		const nextRequest = new AbortController();
-		activeRequest = nextRequest;
-		activeLearningRequests.set(doc, nextRequest);
-		return nextRequest;
-	};
-	const finishActiveRequest = (request: AbortController) => {
-		if (activeRequest !== request) return;
-		activeRequest = null;
-		if (activeLearningRequests.get(doc) === request) activeLearningRequests.delete(doc);
-	};
-	const cancelActiveRequest = () => {
-		activeLearningRequests.get(doc)?.abort();
-	};
-	const explain = async (selection: LearningSelection, returnFocus?: HTMLElement) => {
-		if (signal.aborted) return;
-		const request = ++explanationRequest;
-		rememberCardReturnFocus(returnFocus);
-		currentExplanation = null;
-		cardTitle.textContent = selection.text;
-		cardBody.textContent = getMessage('thinking');
-		card.classList.remove('is-error');
-		favoriteButton.hidden = true;
-		copyButton.hidden = true;
-		saveButton.hidden = true;
-		cardErrorDetails.replaceChildren();
-		cardErrorDetails.hidden = true;
-		resetEngineRecovery();
-		cardFeedback.textContent = '';
-		retryAction = null;
-		retryButton.hidden = true;
-		showCard();
-
-		const cachedExplanation = getCachedExplanation(selection, resolvedResponseLanguage);
-		if (cachedExplanation) {
-			cardBody.textContent = cachedExplanation;
-			await showExplanationActions(selection, cachedExplanation);
-			return;
-		}
-		const requestController = startActiveRequest();
-		cancelRequestButton.hidden = false;
-		setProgressStatus(getMessage('thinking'));
-		try {
-			const explanation = await tools.explainSelection(selection, requestController.signal);
-			throwIfRequestAborted(requestController.signal);
-			if (explanation) cacheExplanation(selection, resolvedResponseLanguage, explanation);
-			if (request !== explanationRequest) return;
-			const resolvedExplanation = explanation || getMessage('emptyResponse');
-			cardBody.textContent = resolvedExplanation;
-			await showExplanationActions(selection, resolvedExplanation);
-		} catch (error) {
-			if (request !== explanationRequest) return;
-			if (isCancelled(error) || requestController.signal.aborted) {
-				if (activeRequest !== requestController) return;
-				setProgressStatus(getMessage('readerAiCancelled'));
-				hideCard();
+	const retryTranscript = () => { void transcriptAction.retry(); };
+	const transcriptAction = createAiAction<void>({
+		onChange(state) {
+			if (signal.aborted) return;
+			if (state.status === 'running') {
+				// A progress report keeps the run's progress; a new run starts without one.
+				if (state.progress) return;
+				card.hide();
+				if (busyFlow && busyFlow !== activeFlow) setFlowBusy(busyFlow, false);
+				busyFlow = activeFlow;
+				if (busyFlow) setFlowBusy(busyFlow, true);
+				taskBar.begin(state.startedAt ?? Date.now());
+				syncCancel();
 				return;
 			}
-			card.classList.add('is-error');
-			showCardError(selection.text, error, () => { void explain(selection); }, 'explain');
-		} finally {
-			if (activeRequest === requestController) {
-				cancelRequestButton.hidden = true;
-				if (!requestController.signal.aborted) clearProgressStatus();
+			if (busyFlow) setFlowBusy(busyFlow, false);
+			busyFlow = undefined;
+			taskBar.finish(state.status);
+			syncCancel();
+			if (state.status === 'error' && state.error && activeFlow) {
+				const progress = state.progress;
+				card.showError('transcript', activeFlow.title, state.error, {
+					task: activeFlow.task,
+					profileId: taskBar.executionInfo?.profileId,
+					...(progress ? { progress: { completed: progress.completed, total: progress.total } } : {}),
+					retry: retryTranscript,
+					onProfileSwitched: option => taskBar.useProfile(option)
+				});
 			}
-			finishActiveRequest(requestController);
 		}
+	});
+	const runTranscriptTask = async (flow: TranscriptFlow, run: AiActionRun<void>) => {
+		activeFlow = flow;
+		await transcriptAction.start(run);
 	};
-	retryButton.addEventListener('click', event => {
-		if (!event.isTrusted) return;
-		event.preventDefault();
-		event.stopPropagation();
-		retryAction?.();
-	});
-	favoriteButton.addEventListener('click', async event => {
-		if (!event.isTrusted || !currentExplanation || !tools.toggleVocabularyFavorite) return;
-		const favorite = await tools.toggleVocabularyFavorite(
-			currentExplanation.selection,
-			currentExplanation.explanation
-		);
-		favoriteButton.textContent = getMessage(favorite ? 'readerUnfavorite' : 'readerFavorite');
-		cardFeedback.textContent = getMessage(favorite ? 'readerFavoriteSaved' : 'readerFavoriteRemoved');
-	});
-	copyButton.addEventListener('click', async event => {
-		if (!event.isTrusted || !currentExplanation || !tools.copyLearningText) return;
-		const copied = await tools.copyLearningText([
-			currentExplanation.selection.text,
-			currentExplanation.explanation
-		].join('\n\n'));
-		cardFeedback.textContent = getMessage(copied ? 'copied' : 'error');
-	});
-	saveButton.addEventListener('click', async event => {
-		if (!event.isTrusted || !currentExplanation || !tools.saveVocabularyToObsidian) return;
-		await tools.saveVocabularyToObsidian(
-			currentExplanation.selection,
-			currentExplanation.explanation
-		);
-		cardFeedback.textContent = getMessage('readerSavedToObsidian');
-	});
-	applyEngineButton.addEventListener('click', async event => {
-		if (!event.isTrusted || !tools.setTaskProfile || !retryAction || !engineTask) return;
-		const task = engineTask;
-		const profileId = engineSelect.value;
-		const option = engineOptions.find(item => item.id === profileId);
-		if (!option) return;
-		applyEngineButton.disabled = true;
-		try {
-			await tools.setTaskProfile(task, profileId);
-		} catch {
-			cardFeedback.textContent = getMessage('error');
-			return;
-		} finally {
-			applyEngineButton.disabled = false;
+
+	const explanations = createExplainFeature({
+		tools,
+		card,
+		responseLanguage,
+		signal,
+		onRequestChange(state) {
+			if (signal.aborted) return;
+			// The status line belongs to a running transcript task.
+			if (transcriptAction.state.status !== 'running') {
+				if (state.status === 'running') taskBar.setStatus(getMessage('thinking'));
+				else if (state.status === 'cancelled') taskBar.setStatus(getMessage('readerAiCancelled'));
+				else taskBar.clearStatus();
+			}
+			syncCancel();
 		}
-		// A transcript retry refreshes the budget through getExecutionInfo(task).
-		currentExecutionInfo = { ...currentExecutionInfo, profileId, kind: option.kind, label: option.label };
-		const retry = retryAction;
-		hideCard();
-		retry?.();
 	});
-
-	const showVocabulary = async () => {
-		rememberCardReturnFocus();
-		cardTitle.textContent = getMessage('readerLearningCenter');
-		cardBody.replaceChildren();
-		card.classList.remove('is-error');
-		cardErrorDetails.hidden = true;
-		resetEngineRecovery();
-		retryButton.hidden = true;
-		favoriteButton.hidden = true;
-		copyButton.hidden = true;
-		saveButton.hidden = true;
-		currentExplanation = null;
-		const center = renderLanguageLearningCenter({
-			doc,
-			container: cardBody,
-			tools,
-			onFeedback: message => { cardFeedback.textContent = message; }
-		});
-		await center.ready;
-		if (signal.aborted || !card.isConnected) return;
-		showCard();
+	const syncCancel = () => {
+		taskBar.setCancelVisible(transcriptAction.state.status === 'running' || explanations.running);
 	};
-	closeButton.addEventListener('click', () => {
-		hideCard();
-	});
-	doc.addEventListener('keydown', event => {
-		if (card.style.display === 'none') return;
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			hideCard();
-			return;
-		}
-		trapFocus(event, card);
-	}, { signal });
-
-	const rangeControl = doc.createElement('label');
-	rangeControl.className = 'player-learning-range';
-	const rangeLabel = doc.createElement('span');
-	rangeLabel.textContent = getMessage('readerTaskRange');
-	const rangeSelect = doc.createElement('select');
-	const rangeOptions: Array<{ value: TranscriptTaskRange; label: string }> = [
-		{ value: 'current', label: getMessage('readerTaskRangeCurrent') },
-		{ value: 'next-five-minutes', label: getMessage('readerTaskRangeNextFiveMinutes') },
-		{ value: 'all', label: getMessage('readerTaskRangeAll') }
-	];
-	rangeOptions.forEach(({ value, label }) => {
-		const option = doc.createElement('option');
-		option.value = value;
-		option.textContent = label;
-		rangeSelect.appendChild(option);
-	});
-	rangeSelect.value = 'all';
-	rangeControl.append(rangeLabel, rangeSelect);
-	controls.appendChild(rangeControl);
-
-	const getTaskRange = (): TranscriptTaskRange => rangeSelect.value as TranscriptTaskRange;
-	const setTaskRange = (range: TranscriptTaskRange) => {
-		rangeSelect.value = range;
-	};
-	const getActiveSegmentIndex = () => {
-		const activeIndex = segments.findIndex(segment => segment.classList.contains('is-active'));
-		return activeIndex >= 0 ? activeIndex : 0;
-	};
-	const getSegmentTimestamp = (segment: HTMLElement): number | null => {
-		const timestamp = segment.querySelector<HTMLElement>('.timestamp[data-timestamp]')?.dataset.timestamp;
-		if (timestamp == null) return null;
-		const parsed = Number(timestamp);
-		return Number.isFinite(parsed) ? parsed : null;
-	};
-	const getTaskIndexes = (): number[] => {
-		const range = getTaskRange();
-		if (range === 'all') return originalTexts.map((_, index) => index);
-		const activeIndex = getActiveSegmentIndex();
-		if (range === 'current') return [activeIndex];
-		const startTime = getSegmentTimestamp(segments[activeIndex]);
-		if (startTime == null) return [activeIndex];
-		return segments
-			.map((segment, index) => ({ index, timestamp: getSegmentTimestamp(segment) }))
-			.filter(({ index, timestamp }) => index >= activeIndex && timestamp != null && timestamp <= startTime + 300)
-			.map(({ index }) => index);
+	cancelAll = () => {
+		transcriptAction.cancel();
+		explanations.cancel();
 	};
 
-	const bilingualButton = doc.createElement('button');
-	bilingualButton.type = 'button';
-	bilingualButton.className = 'player-learning-action player-learning-bilingual';
-	bilingualButton.textContent = getMessage('readerBilingualSubtitles');
-	controls.appendChild(bilingualButton);
+	const context: TranscriptFeatureContext = {
+		doc,
+		transcript,
+		segments,
+		originalTexts,
+		tools,
+		responseLanguage,
+		signal,
+		taskBar,
+		restore,
+		runTranscriptTask,
+		onPreferenceChange
+	};
+	const translations = createTranslationsFeature(context);
+	const readings = createReadingsFeature(context);
+
 	const vocabularyButton = doc.createElement('button');
 	vocabularyButton.type = 'button';
 	vocabularyButton.className = 'player-learning-action player-learning-vocabulary';
@@ -588,756 +175,55 @@ export function wireTranscriptLanguageLearning({
 		if (!event.isTrusted) return;
 		event.preventDefault();
 		event.stopPropagation();
-		void showVocabulary();
-	});
-	controls.appendChild(vocabularyButton);
-
-	const translationsEditButton = doc.createElement('button');
-	translationsEditButton.type = 'button';
-	translationsEditButton.className = 'player-learning-action player-learning-translations-edit';
-	translationsEditButton.textContent = getMessage('readerEditTranslations');
-	translationsEditButton.hidden = true;
-	controls.appendChild(translationsEditButton);
-
-	const taskBar = doc.createElement('div');
-	taskBar.className = 'player-learning-task';
-	taskBar.hidden = true;
-	taskBar.setAttribute('aria-busy', 'false');
-	const taskEngine = doc.createElement('span');
-	taskEngine.className = 'player-learning-task-engine';
-	taskEngine.textContent = getMessage('interpreterExecutionModeApi');
-	const taskEstimate = doc.createElement('span');
-	taskEstimate.className = 'player-learning-task-estimate';
-	const taskElapsed = doc.createElement('span');
-	taskElapsed.className = 'player-learning-task-elapsed';
-	taskElapsed.setAttribute('aria-hidden', 'true');
-	const taskProgress = doc.createElement('progress');
-	taskProgress.className = 'player-learning-task-progress';
-	taskProgress.max = 1;
-	taskProgress.value = 0;
-	taskBar.append(taskEngine, taskEstimate, taskElapsed, taskProgress);
-	controls.appendChild(taskBar);
-
-	const cancelRequestButton = doc.createElement('button');
-	cancelRequestButton.type = 'button';
-	cancelRequestButton.className = 'player-learning-action player-learning-cancel';
-	cancelRequestButton.textContent = getMessage('cancel');
-	cancelRequestButton.hidden = true;
-	cancelRequestButton.addEventListener('click', event => {
-		if (!event.isTrusted) return;
-		event.preventDefault();
-		event.stopPropagation();
-		cancelActiveRequest();
-	});
-	taskBar.appendChild(cancelRequestButton);
-
-	const progressStatus = doc.createElement('span');
-	progressStatus.className = 'player-learning-progress';
-	progressStatus.setAttribute('role', 'status');
-	progressStatus.setAttribute('aria-live', 'polite');
-	progressStatus.hidden = true;
-	taskBar.appendChild(progressStatus);
-
-	const clearProgressStatus = () => {
-		progressStatus.textContent = '';
-		progressStatus.hidden = true;
-	};
-	const setProgressStatus = (message: string) => {
-		progressStatus.textContent = message;
-		progressStatus.hidden = false;
-	};
-	// A group backing off after a rate limit shows the wait; the next progress replaces it.
-	const setTaskProgressStatus = (progress: TranscriptBatchProgress, label: string) => {
-		setProgressStatus(progress.retry
-			? getMessage('readerTranscriptRetrying', String(Math.max(1, Math.ceil(progress.retry.delayMs / 1000))))
-			: label);
-	};
-	let elapsedTimer: number | undefined;
-	const updateExecutionInfo = async (task: TranscriptJobTask, taskTexts: string[]) => {
-		try {
-			if (tools.getExecutionInfo) currentExecutionInfo = await tools.getExecutionInfo(task);
-		} catch {
-			// Execution errors are reported by the requested task itself.
-		}
-		taskEngine.textContent = currentExecutionInfo.label;
-		const sourceChars = taskTexts.reduce((total, text) => total + text.length, 0);
-		const estimatedBatches = Math.max(1, Math.ceil(sourceChars / currentExecutionInfo.promptCharLimit));
-		taskEstimate.textContent = getMessage('readerTaskEstimate', [
-			String(taskTexts.length),
-			String(estimatedBatches)
-		]);
-	};
-	const beginRequestUi = async (
-		button: HTMLButtonElement,
-		label: string,
-		taskTexts: string[],
-		task: TranscriptJobTask
-	) => {
-		hideCard();
-		lastTaskProgress = null;
-		await updateExecutionInfo(task, taskTexts);
-		taskBar.hidden = false;
-		taskBar.setAttribute('aria-busy', 'true');
-		taskProgress.value = 0;
-		taskProgress.max = 1;
-		const startedAt = Date.now();
-		const updateElapsed = () => {
-			taskElapsed.textContent = getMessage('readerTaskElapsed', String(Math.floor((Date.now() - startedAt) / 1000)));
-		};
-		updateElapsed();
-		if (elapsedTimer) window.clearInterval(elapsedTimer);
-		elapsedTimer = window.setInterval(updateElapsed, 1000);
-		button.disabled = true;
-		button.setAttribute('aria-busy', 'true');
-		button.classList.add('is-loading');
-		button.textContent = label;
-		cancelRequestButton.hidden = false;
-		clearProgressStatus();
-	};
-	const finishRequestUi = (request: AbortController, button: HTMLButtonElement, label: string, cancelled: boolean) => {
-		button.disabled = false;
-		button.removeAttribute('aria-busy');
-		button.classList.remove('is-loading');
-		button.textContent = label;
-		if (activeRequest && activeRequest !== request) return;
-		if (elapsedTimer) window.clearInterval(elapsedTimer);
-		elapsedTimer = undefined;
-		taskBar.setAttribute('aria-busy', 'false');
-		cancelRequestButton.hidden = true;
-		if (!cancelled) clearProgressStatus();
-	};
-
-	let translationsVisible = false;
-	let translationEditMode = false;
-	let translationValues = new Array<string>(originalTexts.length).fill('');
-	let japaneseTranslationValues = new Array<string>(originalTexts.length).fill('');
-	let restorePromise: Promise<void> = Promise.resolve();
-	let restoreComplete = !restoreBilingualSubtitles && !restoreJapaneseReadings;
-	const persistTranslations = () => {
-		if (isCompleteTranscriptTranslations(translationValues, originalTexts)) {
-			cacheTranslations(originalTexts, resolvedResponseLanguage, translationValues);
-		}
-		void tools.saveTranscriptTranslations?.(originalTexts, [...translationValues]);
-	};
-	const updateTranslationEditButton = () => {
-		translationsEditButton.hidden = !translationsVisible
-			|| !translationValues.some(translation => translation.trim());
-		translationsEditButton.textContent = translationEditMode
-			? getMessage('readerFinishTranslationEdit')
-			: getMessage('readerEditTranslations');
-		translationsEditButton.classList.toggle('is-enabled', translationEditMode);
-	};
-	const updateTranslationEditing = () => {
-		segments.forEach((segment, index) => {
-			const translationElement = segment.querySelector<HTMLElement>('.transcript-segment-translation');
-			if (!translationElement) return;
-			translationElement.setAttribute('contenteditable', translationEditMode ? 'true' : 'false');
-			if (translationEditMode) {
-				translationElement.setAttribute('role', 'textbox');
-				translationElement.setAttribute('aria-label', getMessage('readerTranslationEditLabel', String(index + 1)));
-				translationElement.setAttribute('aria-multiline', 'true');
-				translationElement.setAttribute('spellcheck', 'true');
-			} else {
-				translationElement.removeAttribute('role');
-				translationElement.removeAttribute('aria-label');
-				translationElement.removeAttribute('aria-multiline');
-				translationElement.removeAttribute('spellcheck');
-			}
-		});
-		transcript.classList.toggle('is-editing-translations', translationEditMode);
-		updateTranslationEditButton();
-	};
-	const renderTranslations = (translations: string[], complete: boolean) => {
-		if (translations.length !== originalTexts.length) {
-			throw new Error(getMessage('readerTranslationIncomplete'));
-		}
-		translations.forEach((translation, index) => {
-			if (!translation.trim()) return;
-			const textElement = segments[index].querySelector('.transcript-segment-text');
-			if (!textElement) throw new Error(getMessage('readerTranslationIncomplete'));
-			let translationElement = textElement.querySelector('.transcript-segment-translation') as HTMLElement | null;
-			if (!translationElement) {
-				translationElement = doc.createElement('div');
-				translationElement.className = 'transcript-segment-translation';
-				translationElement.addEventListener('input', () => {
-					translationValues[index] = translationElement?.textContent?.trim() || '';
-					persistTranslations();
-				});
-				const japaneseElement = textElement.querySelector('.transcript-segment-japanese');
-				if (japaneseElement) {
-					textElement.insertBefore(translationElement, japaneseElement);
-				} else {
-					textElement.appendChild(translationElement);
-				}
-			}
-			translationElement.textContent = translation;
-		});
-		translationValues = [...translations];
-		translationsVisible = true;
-		transcript.classList.add('show-bilingual-transcript');
-		transcript.classList.toggle('has-partial-bilingual-transcript', !complete);
-		bilingualButton.classList.add('is-enabled');
-		updateTranslationEditing();
-	};
-	const applyTranslations = (translations: string[]) => {
-		if (!isCompleteTranscriptTranslations(translations, originalTexts)) {
-			throw new Error(getMessage('readerTranslationIncomplete'));
-		}
-		renderTranslations(translations, true);
-	};
-	const mergeTranslations = (indexes: number[], scopedTranslations: string[]): string[] => {
-		if (scopedTranslations.length !== indexes.length) {
-			throw new Error(getMessage('readerTranslationIncomplete'));
-		}
-		const merged = [...translationValues];
-		indexes.forEach((sourceIndex, scopedIndex) => {
-			merged[sourceIndex] = scopedTranslations[scopedIndex] || '';
-		});
-		return merged;
-	};
-	const toggleBilingual = async () => {
-		const wasRestoring = !restoreComplete;
-		if (wasRestoring) await restorePromise;
-		if (signal.aborted) return;
-		if (wasRestoring && translationsVisible) return;
-		const taskIndexes = getTaskIndexes();
-		const selectedRangeLoaded = taskIndexes.every(index => (
-			isCompleteTranscriptTranslationSegment(translationValues[index], originalTexts[index])
-		));
-		if (selectedRangeLoaded) {
-			translationsVisible = !translationsVisible;
-			if (!translationsVisible) translationEditMode = false;
-			transcript.classList.toggle('show-bilingual-transcript', translationsVisible);
-			bilingualButton.classList.toggle('is-enabled', translationsVisible);
-			updateTranslationEditing();
-			onPreferenceChange?.('bilingualSubtitles', translationsVisible);
-			return;
-		}
-
-		const cachedTranslations = getTaskRange() === 'all'
-			? getCachedTranslations(originalTexts, resolvedResponseLanguage)
-			: null;
-		if (cachedTranslations) {
-			try {
-				applyTranslations(cachedTranslations);
-				onPreferenceChange?.('bilingualSubtitles', true);
-				return;
-			} catch {
-				removeCachedTranslations(originalTexts, resolvedResponseLanguage);
-			}
-		}
-
-		const taskTexts = taskIndexes.map(index => originalTexts[index]);
-		const requestController = startActiveRequest();
-		await beginRequestUi(bilingualButton, getMessage('thinking'), taskTexts, 'translate');
-		const setTranslationProgress = (progress: TranscriptTranslationProgress) => {
-			if (progress.translations?.some(translation => translation.trim())) {
-				renderTranslations(mergeTranslations(taskIndexes, progress.translations), false);
-			}
-			lastTaskProgress = { completed: progress.completed, total: progress.total };
-			taskProgress.max = Math.max(1, progress.total);
-			taskProgress.value = progress.completed;
-			const label = getMessage('readerTranslationProgress', [
-				String(progress.completed),
-				String(progress.total)
-			]);
-			setTaskProgressStatus(progress, label);
-		};
-		try {
-			throwIfRequestAborted(requestController.signal);
-			const translations = await tools.translateTranscript(taskTexts, setTranslationProgress, requestController.signal);
-			throwIfRequestAborted(requestController.signal);
-			if (!isCompleteTranscriptTranslations(translations, taskTexts)) {
-				throw new Error(getMessage('readerTranslationIncomplete'));
-			}
-			const merged = mergeTranslations(taskIndexes, translations);
-			const complete = isCompleteTranscriptTranslations(merged, originalTexts);
-			renderTranslations(merged, complete);
-			if (complete) cacheTranslations(originalTexts, resolvedResponseLanguage, merged);
-			onPreferenceChange?.('bilingualSubtitles', true);
-		} catch (error) {
-			if (isCancelled(error) || requestController.signal.aborted) {
-				if (activeRequest !== requestController) return;
-				setProgressStatus(getMessage('readerAiCancelled'));
-				return;
-			}
-			showCardError(getMessage('readerBilingualSubtitles'), error, () => { void toggleBilingual(); }, 'translate');
-		} finally {
-			finishRequestUi(
-				requestController,
-				bilingualButton,
-				getMessage('readerBilingualSubtitles'),
-				requestController.signal.aborted
-			);
-			finishActiveRequest(requestController);
-		}
-	};
-	bilingualButton.addEventListener('click', (event) => {
-		if (!event.isTrusted) return;
-		event.preventDefault();
-		event.stopPropagation();
-		void toggleBilingual();
-	});
-	translationsEditButton.addEventListener('click', event => {
-		event.preventDefault();
-		event.stopPropagation();
-		if (!translationsVisible) return;
-		translationEditMode = !translationEditMode;
-		updateTranslationEditing();
-		if (!translationEditMode) persistTranslations();
+		void card.showCenter();
 	});
 
-	const readingsButton = doc.createElement('button');
-	readingsButton.type = 'button';
-	readingsButton.className = 'player-learning-action player-learning-readings';
-	readingsButton.textContent = getMessage('readerJapaneseReadings');
-	readingsButton.hidden = !shouldOfferJapaneseReadings(originalTexts, transcriptLanguage);
-	controls.appendChild(readingsButton);
+	controls.append(
+		taskBar.rangeControl,
+		translations.bilingualButton,
+		vocabularyButton,
+		translations.editButton,
+		taskBar.element,
+		readings.button,
+		readings.editButton,
+		readings.regenerateButton
+	);
 
-	const readingsEditButton = doc.createElement('button');
-	readingsEditButton.type = 'button';
-	readingsEditButton.className = 'player-learning-action player-learning-readings-edit';
-	readingsEditButton.textContent = getMessage('readerEditReadings');
-	readingsEditButton.hidden = true;
-	controls.appendChild(readingsEditButton);
-
-	const readingsRegenerateButton = doc.createElement('button');
-	readingsRegenerateButton.type = 'button';
-	readingsRegenerateButton.className = 'player-learning-action player-learning-readings-regenerate';
-	readingsRegenerateButton.textContent = getMessage('readerRegenerateReadings');
-	readingsRegenerateButton.hidden = true;
-	controls.appendChild(readingsRegenerateButton);
-
-	let japaneseReadings: TranscriptReadingSegments | null = null;
-	let readingsVisible = false;
-	let readingEditMode = false;
-	let readingsComplete = false;
-	const getReadingSourceText = (index: number): string => sourceIsJapanese
-		? originalTexts[index]
-		: japaneseTranslationValues[index];
-	const getAllReadingSourceTexts = (): string[] => originalTexts.map((_, index) => getReadingSourceText(index));
-	const hasAllReadingSourceTexts = (): boolean => sourceIsJapanese
-		|| isCompleteTranscriptTranslations(japaneseTranslationValues, originalTexts);
-	const hasCompleteFullReadings = (readings: TranscriptReadingSegments | null): readings is TranscriptReadingSegments => {
-		if (!readings || !hasAllReadingSourceTexts()) return false;
-		return isCompleteTranscriptReadings(readings, getAllReadingSourceTexts());
-	};
-	const mergeReadings = (indexes: number[], scopedReadings: TranscriptReadingSegments): TranscriptReadingSegments => {
-		if (scopedReadings.length !== indexes.length) {
-			throw new Error(getMessage('readerReadingIncomplete'));
-		}
-		const merged = japaneseReadings
-			? cloneTranscriptReadings(japaneseReadings)
-			: originalTexts.map(() => []);
-		indexes.forEach((sourceIndex, scopedIndex) => {
-			merged[sourceIndex] = scopedReadings[scopedIndex].map(token => ({ ...token }));
-		});
-		return merged;
-	};
-	const hasCompleteReadings = (indexes: number[]) => Boolean(japaneseReadings)
-		&& indexes.every(index => {
-			const sourceText = getReadingSourceText(index);
-			if (!sourceIsJapanese && !isCompleteTranscriptTranslationSegment(sourceText, originalTexts[index])) return false;
-			return isCompleteTranscriptReadings(
-				[japaneseReadings?.[index] || []],
-				[sourceText]
-			);
-		});
-	const updateReadingsEditButton = () => {
-		const hasGeneratedReadings = Boolean(japaneseReadings?.some(tokens => tokens.length > 0));
-		readingsEditButton.hidden = !readingsVisible || !hasGeneratedReadings;
-		readingsRegenerateButton.hidden = !readingsVisible || !hasGeneratedReadings;
-		readingsEditButton.textContent = readingEditMode
-			? getMessage('readerFinishReadingEdit')
-			: getMessage('readerEditReadings');
-		readingsEditButton.classList.toggle('is-enabled', readingEditMode);
-	};
-	const updateReading = (segmentIndex: number, tokenIndex: number, reading: string) => {
-		const readings = japaneseReadings;
-		const token = readings?.[segmentIndex]?.[tokenIndex];
-		if (!token || !readings) return;
-		token.reading = reading;
-		if (reading) {
-			void tools.saveJapaneseReadingOverride?.(token.text, reading);
-		} else {
-			void tools.removeJapaneseReadingOverride?.(token.text);
-		}
-		if (hasCompleteFullReadings(readings)) {
-			cacheJapaneseReadings(getAllReadingSourceTexts(), readings);
-		} else if (hasAllReadingSourceTexts()) {
-			removeCachedJapaneseReadings(getAllReadingSourceTexts());
-		}
-		const taskIndexes = getTaskIndexes();
-		const checkpointIndexes = taskIndexes.includes(segmentIndex) && hasCompleteReadings(taskIndexes)
-			? taskIndexes
-			: [segmentIndex];
-		void tools.saveJapaneseReadings?.(
-			checkpointIndexes.map(index => getReadingSourceText(index)),
-			cloneTranscriptReadings(checkpointIndexes.map(index => readings[index]))
-		);
-	};
-	const renderReadings = (show: boolean) => {
-		if (!japaneseReadings) return;
-		if (!show) readingEditMode = false;
-		japaneseReadings.forEach((tokens, index) => {
-			if (tokens.length === 0) return;
-			const textElement = segments[index].querySelector('.transcript-segment-text');
-			if (textElement && sourceIsJapanese) {
-				renderTranscriptReadings(
-					doc,
-					textElement,
-					tokens,
-					show,
-					readingEditMode,
-					(tokenIndex, reading) => updateReading(index, tokenIndex, reading)
-				);
-			} else if (textElement) {
-				renderJapaneseTranslationReadings(
-					doc,
-					textElement,
-					tokens,
-					show,
-					readingEditMode,
-					(tokenIndex, reading) => updateReading(index, tokenIndex, reading)
-				);
-			}
-		});
-		readingsVisible = show;
-		transcript.classList.toggle('show-japanese-readings', show);
-		transcript.classList.toggle('is-editing-japanese-readings', show && readingEditMode);
-		readingsButton.classList.toggle('is-enabled', show);
-		updateReadingsEditButton();
-	};
-	const setJapaneseTranslationProgress = (progress: TranscriptTranslationProgress) => {
-		lastTaskProgress = { completed: progress.completed, total: progress.total };
-		taskProgress.max = Math.max(1, progress.total);
-		taskProgress.value = progress.completed;
-		setTaskProgressStatus(progress, getMessage('readerJapaneseTranslationProgress', [
-			String(progress.completed),
-			String(progress.total)
-		]));
-	};
-	const ensureJapaneseTaskTexts = async (
-		taskIndexes: number[],
-		requestController: AbortController
-	): Promise<string[]> => {
-		if (sourceIsJapanese) return taskIndexes.map(index => originalTexts[index]);
-		const existing = taskIndexes.map(index => japaneseTranslationValues[index]);
-		const sourceTexts = taskIndexes.map(index => originalTexts[index]);
-		if (isCompleteTranscriptTranslations(existing, sourceTexts)) return existing;
-		if (getTaskRange() === 'all') {
-			const localTranslations = getCachedJapaneseTranslations(originalTexts)
-				?? await tools.loadJapaneseTranscriptTranslations?.(originalTexts);
-			if (localTranslations && isCompleteTranscriptTranslations(localTranslations, originalTexts)) {
-				japaneseTranslationValues = [...localTranslations];
-				cacheJapaneseTranslations(originalTexts, localTranslations);
-				return taskIndexes.map(index => localTranslations[index]);
-			}
-		}
-		if (!tools.translateTranscriptToJapanese) {
-			throw new Error(getMessage('readerTranslationIncomplete'));
-		}
-		const translations = await tools.translateTranscriptToJapanese(
-			sourceTexts,
-			setJapaneseTranslationProgress,
-			requestController.signal
-		);
-		if (!isCompleteTranscriptTranslations(translations, sourceTexts)) {
-			throw new Error(getMessage('readerTranslationIncomplete'));
-		}
-		taskIndexes.forEach((sourceIndex, scopedIndex) => {
-			japaneseTranslationValues[sourceIndex] = translations[scopedIndex];
-		});
-		if (getTaskRange() === 'all' && isCompleteTranscriptTranslations(japaneseTranslationValues, originalTexts)) {
-			cacheJapaneseTranslations(originalTexts, japaneseTranslationValues);
-		}
-		return [...translations];
-	};
-	const generateJapaneseReadings = async () => {
-		const taskIndexes = getTaskIndexes();
-		const sourceTaskTexts = taskIndexes.map(index => originalTexts[index]);
-		const requestController = startActiveRequest();
-		await beginRequestUi(readingsButton, getMessage('thinking'), sourceTaskTexts, 'reading');
-		const setReadingProgress = (progress: TranscriptReadingProgress) => {
-			if (progress.readings?.some(tokens => tokens.length > 0)) {
-				japaneseReadings = mergeReadings(taskIndexes, progress.readings);
-				readingsComplete = hasCompleteFullReadings(japaneseReadings);
-				renderReadings(true);
-			}
-			lastTaskProgress = {
-				completed: progress.completedSegments,
-				total: progress.totalSegments
-			};
-			taskProgress.max = Math.max(1, progress.total);
-			taskProgress.value = progress.completed;
-			const label = getMessage('readerJapaneseReadingsProgress', [
-				String(progress.completedSegments),
-				String(progress.totalSegments)
-			]);
-			setTaskProgressStatus(progress, label);
-		};
-		try {
-			throwIfRequestAborted(requestController.signal);
-			const taskTexts = await ensureJapaneseTaskTexts(taskIndexes, requestController);
-			throwIfRequestAborted(requestController.signal);
-			const readings = await tools.annotateJapaneseTranscript(taskTexts, setReadingProgress, requestController.signal);
-			throwIfRequestAborted(requestController.signal);
-			if (!isCompleteTranscriptReadings(readings, taskTexts)) {
-				throw new Error(getMessage('readerReadingIncomplete'));
-			}
-			japaneseReadings = mergeReadings(taskIndexes, readings);
-			readingsComplete = hasCompleteFullReadings(japaneseReadings);
-			if (readingsComplete) cacheJapaneseReadings(getAllReadingSourceTexts(), japaneseReadings);
-			renderReadings(true);
-		} catch (error) {
-			if (isCancelled(error) || requestController.signal.aborted) {
-				if (activeRequest !== requestController) return;
-				setProgressStatus(getMessage('readerAiCancelled'));
-				return;
-			}
-			showCardError(getMessage('readerJapaneseReadings'), error, () => { void toggleJapaneseReadings(); }, 'reading');
-		} finally {
-			finishRequestUi(
-				requestController,
-				readingsButton,
-				getMessage('readerJapaneseReadings'),
-				requestController.signal.aborted
-			);
-			finishActiveRequest(requestController);
-		}
-	};
-	const toggleJapaneseReadings = async () => {
-		const wasRestoring = !restoreComplete;
-		if (wasRestoring) await restorePromise;
-		if (signal.aborted) return;
-		if (wasRestoring && readingsVisible) return;
-		const taskIndexes = getTaskIndexes();
-		if (japaneseReadings && hasCompleteReadings(taskIndexes)) {
-			renderReadings(!readingsVisible);
-			onPreferenceChange?.('japaneseReadings', readingsVisible);
-			return;
-		}
-		const allReadingTexts = hasAllReadingSourceTexts() ? getAllReadingSourceTexts() : null;
-		const cachedReadings = allReadingTexts ? getCachedJapaneseReadings(allReadingTexts) : null;
-		if (
-			cachedReadings
-			&& allReadingTexts
-			&& isCompleteTranscriptReadings(cachedReadings, allReadingTexts)
-		) {
-			japaneseReadings = cachedReadings;
-			readingsComplete = true;
-			renderReadings(true);
-			onPreferenceChange?.('japaneseReadings', true);
-			return;
-		}
-		if (cachedReadings && allReadingTexts) removeCachedJapaneseReadings(allReadingTexts);
-
-		await generateJapaneseReadings();
-		if (readingsVisible) onPreferenceChange?.('japaneseReadings', true);
-	};
-	const regenerateJapaneseReadings = async () => {
-		if (!restoreComplete) await restorePromise;
-		if (signal.aborted) return;
-		if (!japaneseReadings || !readingsVisible) return;
-		const taskIndexes = getTaskIndexes();
-		const taskTexts = taskIndexes.map(index => getReadingSourceText(index));
-		const remainingReadings = cloneTranscriptReadings(japaneseReadings);
-		taskIndexes.forEach(index => {
-			const tokens = remainingReadings[index];
-			const textElement = segments[index].querySelector('.transcript-segment-text');
-			if (textElement && sourceIsJapanese) {
-				renderTranscriptReadings(doc, textElement, tokens, false, false);
-			} else if (textElement) {
-				renderJapaneseTranslationReadings(doc, textElement, tokens, false, false);
-			}
-			remainingReadings[index] = [];
-		});
-		const allReadingTexts = hasAllReadingSourceTexts() ? getAllReadingSourceTexts() : null;
-		if (allReadingTexts) removeCachedJapaneseReadings(allReadingTexts);
-		await tools.clearJapaneseReadings?.(taskTexts);
-		// A saved record of the whole transcript still holds the old readings of this range.
-		if (allReadingTexts && taskIndexes.length !== originalTexts.length) {
-			await tools.clearJapaneseReadings?.(allReadingTexts);
-		}
-		japaneseReadings = remainingReadings.some(tokens => tokens.length > 0)
-			? remainingReadings
-			: null;
-		readingsVisible = Boolean(japaneseReadings);
-		readingEditMode = false;
-		readingsComplete = false;
-		transcript.classList.toggle('show-japanese-readings', readingsVisible);
-		transcript.classList.remove('is-editing-japanese-readings');
-		readingsButton.classList.toggle('is-enabled', readingsVisible);
-		updateReadingsEditButton();
-		await generateJapaneseReadings();
-	};
-	readingsEditButton.addEventListener('click', event => {
-		event.preventDefault();
-		event.stopPropagation();
-		if (!japaneseReadings || !readingsVisible) return;
-		readingEditMode = !readingEditMode;
-		renderReadings(true);
-	});
-	readingsButton.addEventListener('click', (event) => {
-		if (!event.isTrusted) return;
-		event.preventDefault();
-		event.stopPropagation();
-		void toggleJapaneseReadings();
-	});
-	readingsRegenerateButton.addEventListener('click', event => {
-		if (!event.isTrusted) return;
-		event.preventDefault();
-		event.stopPropagation();
-		if (!window.confirm(getMessage('readerRegenerateReadingsConfirm'))) return;
-		void regenerateJapaneseReadings();
+	wireSelectionTrigger({
+		doc,
+		transcript,
+		segments,
+		originalTexts,
+		signal,
+		cancelPendingSeek,
+		explain: (selection, returnFocus) => explanations.explain(selection, returnFocus)
 	});
 
-	const selectionButton = doc.createElement('button');
-	selectionButton.type = 'button';
-	selectionButton.className = 'obsidian-selection-action language-learning-selection-action';
-	selectionButton.textContent = getMessage('readerExplainWithAi');
-	selectionButton.style.display = 'none';
-	doc.body.appendChild(selectionButton);
-
-	let pendingSelection: LearningSelection | null = null;
-	let pressedSelection: LearningSelection | null = null;
-	selectionButton.addEventListener('pointerdown', () => {
-		pressedSelection = pendingSelection;
-	});
-	selectionButton.addEventListener('mousedown', event => event.preventDefault());
-	const hideSelectionButton = () => {
-		selectionButton.style.display = 'none';
-		pendingSelection = null;
-	};
-
-	const readSelection = () => getTranscriptLearningSelection(doc, transcript, segments, originalTexts);
-	const getSelectionFocusTarget = (): HTMLElement | null => {
-		const selectionNode = doc.getSelection()?.anchorNode;
-		const selectionElement = selectionNode?.nodeType === 1
-			? selectionNode as Element
-			: selectionNode?.parentElement;
-		const sourceSegment = selectionElement?.closest('.transcript-segment') as HTMLElement | null;
-		if (sourceSegment && !sourceSegment.hasAttribute('tabindex')) {
-			sourceSegment.setAttribute('tabindex', '-1');
-		}
-		return sourceSegment;
-	};
-
-	const updateSelectionButton = () => {
-		const selection = readSelection();
-		const browserSelection = doc.getSelection();
-		if (!selection || !browserSelection || browserSelection.rangeCount === 0) {
-			hideSelectionButton();
-			return;
-		}
-		const rects = browserSelection.getRangeAt(0).getClientRects();
-		if (rects.length === 0) {
-			hideSelectionButton();
-			return;
-		}
-		pendingSelection = selection;
-		const lastRect = rects[rects.length - 1];
-		selectionButton.style.display = 'flex';
-		const buttonWidth = selectionButton.offsetWidth || 110;
-		const left = Math.min(lastRect.right + 2, window.innerWidth - buttonWidth - 4);
-		selectionButton.style.left = `${Math.max(4, left) + window.scrollX}px`;
-		selectionButton.style.top = `${lastRect.bottom + window.scrollY - 6}px`;
-	};
-
-	selectionButton.addEventListener('click', async (event) => {
-		if (!event.isTrusted) return;
-		event.preventDefault();
-		event.stopPropagation();
-		const selection = pendingSelection || pressedSelection;
-		pressedSelection = null;
-		if (!selection) return;
-		const returnFocus = getSelectionFocusTarget();
-		hideSelectionButton();
-		await explain(selection, returnFocus || undefined);
+	wiredDocuments.set(doc, () => {
+		// Abort first: the controllers' cancellation then changes no view that is being removed.
+		wiring.abort();
+		transcriptAction.dispose();
+		explanations.dispose();
+		taskBar.dispose();
 	});
 
-	transcript.addEventListener('dblclick', (event) => {
-		if (!event.isTrusted) return;
-		cancelPendingSeek();
-		event.stopPropagation();
-		window.setTimeout(() => {
-			if (signal.aborted) return;
-			const selection = readSelection();
-			if (!selection || selection.kind !== 'word') return;
-			const returnFocus = getSelectionFocusTarget();
-			hideSelectionButton();
-			explain(selection, returnFocus || undefined);
-		}, 0);
-	}, { signal });
-
-	transcript.addEventListener('pointerup', () => {
-		window.setTimeout(updateSelectionButton, 0);
-	}, { signal });
-
-	let selectionChangeTimer: number | undefined;
-	doc.addEventListener('selectionchange', () => {
-		if (selectionChangeTimer) window.clearTimeout(selectionChangeTimer);
-		const selection = doc.getSelection();
-		if (!selection || selection.isCollapsed) {
-			hideSelectionButton();
-			return;
-		}
-		selectionChangeTimer = window.setTimeout(updateSelectionButton, 200);
-	}, { signal });
-
-	restorePromise = (async () => {
-		if (restoreBilingualSubtitles) {
-			const savedTranslations = getCachedTranslations(originalTexts, resolvedResponseLanguage)
-				?? await tools.loadTranscriptTranslations?.(originalTexts);
-			if (!signal.aborted && savedTranslations) {
-				try {
-					applyTranslations(savedTranslations);
-				} catch {
-					// Ignore incomplete saved work; a user action can retry it explicitly.
-				}
-			}
-		}
-		if (restoreJapaneseReadings && shouldOfferJapaneseReadings(originalTexts, transcriptLanguage)) {
-			let readingTexts: string[] | undefined;
-			if (sourceIsJapanese) {
-				readingTexts = originalTexts;
-			} else {
-				const savedJapaneseTranslations = getCachedJapaneseTranslations(originalTexts)
-					?? await tools.loadJapaneseTranscriptTranslations?.(originalTexts);
-				if (savedJapaneseTranslations && isCompleteTranscriptTranslations(savedJapaneseTranslations, originalTexts)) {
-					japaneseTranslationValues = [...savedJapaneseTranslations];
-					cacheJapaneseTranslations(originalTexts, savedJapaneseTranslations);
-					readingTexts = savedJapaneseTranslations;
-				}
-			}
-			if (readingTexts) {
-				const savedReadings = getCachedJapaneseReadings(readingTexts)
-					?? await tools.loadJapaneseReadings?.(readingTexts);
-				if (
-					!signal.aborted
-					&& savedReadings
-					&& isCompleteTranscriptReadings(savedReadings, readingTexts)
-				) {
-					japaneseReadings = cloneTranscriptReadings(savedReadings);
-					readingsComplete = true;
-					renderReadings(true);
-				}
-			}
-		}
+	restore.promise = (async () => {
+		if (restoreBilingualSubtitles) await translations.restore();
+		if (restoreJapaneseReadings) await readings.restore();
 	})()
 		.catch(() => {
 			// Restoring local checkpoints is best-effort and never starts a paid request.
 		})
-		.finally(() => { restoreComplete = true; });
+		.finally(() => { restore.complete = true; });
 
 	return {
-		ready: restorePromise,
-		toggleBilingual,
-		toggleJapaneseReadings,
-		regenerateJapaneseReadings,
-		cancelActiveRequest,
-		explain,
-		setTaskRange,
-		showVocabulary
+		ready: restore.promise,
+		toggleBilingual: translations.toggle,
+		toggleJapaneseReadings: readings.toggle,
+		regenerateJapaneseReadings: readings.regenerate,
+		cancelActiveRequest: () => cancelAll(),
+		explain: (selection, returnFocus) => explanations.explain(selection, returnFocus),
+		setTaskRange: range => taskBar.setTaskRange(range),
+		showVocabulary: () => card.showCenter()
 	};
 }

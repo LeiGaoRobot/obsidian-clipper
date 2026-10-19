@@ -7,6 +7,8 @@ import type {
 } from '../../utils/language-learning';
 import type { TranscriptJobTask } from '../../ai/job-identity';
 import type { AiTask, ConnectionKind } from '../../ai/types';
+import type { AiActionRun } from '../../ai/ui/action';
+import type { TaskBar } from './task-bar';
 
 // The Reader's transcript learning contracts: the tools the runtime supplies, and the controller
 // `wireTranscriptLanguageLearning` returns.
@@ -95,7 +97,8 @@ export interface TranscriptLanguageLearningOptions {
 	segments: HTMLElement[];
 	controls: HTMLElement;
 	tools: TranscriptLanguageLearning;
-	responseLanguage?: string;
+	/** The resolved response language; the Reader falls back to the browser language itself. */
+	responseLanguage: string;
 	restoreBilingualSubtitles?: boolean;
 	restoreJapaneseReadings?: boolean;
 	onPreferenceChange?: (
@@ -103,4 +106,36 @@ export interface TranscriptLanguageLearningOptions {
 		value: boolean
 	) => void;
 	cancelPendingSeek: () => void;
+}
+
+/** A transcript flow the transcript action can run: its button, idle label, card title, and task. */
+export interface TranscriptFlow {
+	button: HTMLButtonElement;
+	label: string;
+	title: string;
+	/** The task an error that names none is attributed to. */
+	task: ReaderAiTask;
+}
+
+/** The restore of saved work at wiring time; user actions wait for it. */
+export interface TranscriptRestoreState {
+	promise: Promise<void>;
+	complete: boolean;
+}
+
+/** What the transcript features share, instead of closing over one wiring function. */
+export interface TranscriptFeatureContext {
+	doc: Document;
+	transcript: HTMLElement;
+	segments: HTMLElement[];
+	originalTexts: string[];
+	tools: TranscriptLanguageLearning;
+	responseLanguage: string;
+	/** Aborted on cleanup: late work changes nothing. */
+	signal: AbortSignal;
+	taskBar: TaskBar;
+	restore: TranscriptRestoreState;
+	/** Starts `run` on the transcript action (aborting the run before it) for `flow`. */
+	runTranscriptTask: (flow: TranscriptFlow, run: AiActionRun<void>) => Promise<void>;
+	onPreferenceChange?: TranscriptLanguageLearningOptions['onPreferenceChange'];
 }

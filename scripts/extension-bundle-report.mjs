@@ -34,6 +34,17 @@ const chunkBudgets = {
 	'vendors-node_modules_defuddle_dist_index_full_js.js': 800_000
 };
 
+/**
+ * The budget key a chunk file answers to. Webpack names a split chunk after the root modules it
+ * holds (`src_a_ts-src_b_ts.js`), so a budgeted module's name may sit at either end of the file name.
+ */
+function chunkBudgetKey(fileName) {
+	if (fileName in chunkBudgets) return fileName;
+	return Object.keys(chunkBudgets).find(key => (
+		fileName.endsWith(`-${key}`) || fileName.startsWith(`${key.replace(/\.js$/, '')}-`)
+	));
+}
+
 function listAssets(directory, prefix = '') {
 	return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
 		const relative = path.join(prefix, entry.name);
@@ -68,7 +79,7 @@ for (const outputDirectory of outputDirectories) {
 		const gzip = gzipSync(readFileSync(absolute)).length;
 		const normalized = asset.split(path.sep).join('/');
 		const budget = entryBudgets[normalized]
-			?? (normalized.startsWith('chunks/') ? chunkBudgets[path.basename(normalized)] : undefined);
+			?? (normalized.startsWith('chunks/') ? chunkBudgets[chunkBudgetKey(path.basename(normalized))] : undefined);
 		const overBudget = budget != null && raw > budget;
 		console.log(
 			normalized.padEnd(52),
@@ -87,8 +98,9 @@ for (const outputDirectory of outputDirectories) {
 				failed = true;
 			}
 		}
+		const chunkFiles = existsSync(path.join(output, 'chunks')) ? readdirSync(path.join(output, 'chunks')) : [];
 		for (const asset of Object.keys(chunkBudgets)) {
-			if (!existsSync(path.join(output, 'chunks', asset))) {
+			if (!chunkFiles.some(file => chunkBudgetKey(file) === asset)) {
 				console.error(`${outputDirectory}: required chunk chunks/${asset} is missing.`);
 				failed = true;
 			}

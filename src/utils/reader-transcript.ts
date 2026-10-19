@@ -113,8 +113,11 @@ interface TranscriptSettings {
 	compactPlayer?: boolean;
 	bilingualSubtitles?: boolean;
 	japaneseReadings?: boolean;
-	/** From the AI settings (`ai_routing.responseLanguage`), not from the Reader settings. */
-	responseLanguage?: string;
+	/**
+	 * From the AI settings (`ai_routing.responseLanguage`, then the browser language), not from the
+	 * Reader settings.
+	 */
+	responseLanguage: string;
 }
 
 type TranscriptSettingChange = <K extends keyof TranscriptSettings>(
