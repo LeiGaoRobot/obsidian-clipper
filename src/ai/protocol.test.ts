@@ -124,13 +124,14 @@ describe('AI port protocol', () => {
 			// Segment ids must equal their index.
 			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, segments: [{ id: 1, text: 'a' }, { id: 0, text: 'b' }] } })).toBe(false);
 			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, segments: [{ id: 0, text: 'a' }, { id: 2, text: 'b' }] } })).toBe(false);
-			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, segments: segments(Array(2001).fill('a')) } })).toBe(false);
-			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, segments: segments(['x'.repeat(750_000)]) } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, segments: segments(Array(20_001).fill('a')) } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, segments: segments(Array(5000).fill('a')) } })).toBe(true);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, segments: segments(['x'.repeat(1_500_000)]) } })).toBe(false);
 			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: undefined } })).toBe(false);
 			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: { namespace: '', scope: 's' } } })).toBe(false);
 			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: { namespace: 'n', scope: ' ' } } })).toBe(false);
 			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: { namespace: 'n'.repeat(101), scope: 's' } } })).toBe(false);
-			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: { namespace: 'n', scope: 's'.repeat(101) } } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: { namespace: 'n', scope: 's'.repeat(501) } } })).toBe(false);
 			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: { namespace: 'n', scope: 7 } } })).toBe(false);
 		});
 
@@ -165,7 +166,7 @@ describe('AI port protocol', () => {
 			expect(isAiClientMessage({ ...put, task: 'edit' })).toBe(false);
 			expect(isAiClientMessage({ ...put, identity: { namespace: 'n' } })).toBe(false);
 			expect(isAiClientMessage({ ...put, segmentCount: 0 })).toBe(false);
-			expect(isAiClientMessage({ ...put, segmentCount: 2001 })).toBe(false);
+			expect(isAiClientMessage({ ...put, segmentCount: 20_001 })).toBe(false);
 			expect(isAiClientMessage({ ...put, segmentCount: 1.5 })).toBe(false);
 			expect(isAiClientMessage({ ...put, results: undefined })).toBe(false);
 			expect(isAiClientMessage({ ...put, results: [{ id: 2, text: 'x' }] })).toBe(false);
@@ -184,7 +185,7 @@ describe('AI port protocol', () => {
 			expect(isAiClientMessage({ ...put, segments: [{ id: 0, text: 'Hola' }] })).toBe(false);
 			expect(isAiClientMessage({ ...put, segments: [{ id: 1, text: 'Hola' }, { id: 0, text: 'Adiós' }] })).toBe(false);
 			expect(isAiClientMessage({ ...put, segments: [{ id: 0, text: 'Hola' }, { id: 1, text: 2 }] })).toBe(false);
-			expect(isAiClientMessage({ ...put, segments: [{ id: 0, text: 'x'.repeat(750_001) }, { id: 1, text: '' }] })).toBe(false);
+			expect(isAiClientMessage({ ...put, segments: [{ id: 0, text: 'x'.repeat(1_500_001) }, { id: 1, text: '' }] })).toBe(false);
 		});
 
 		test('checks checkpoint-put readings against their source text', () => {

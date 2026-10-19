@@ -11,6 +11,7 @@ import {
 	loadTranscriptCheckpoint,
 	runTranscriptJob,
 	saveTranscriptCheckpoint,
+	transcriptJobAttempts,
 	type RunTranscriptJobOptions
 } from './job-client';
 
@@ -276,6 +277,25 @@ describe('runTranscriptJob', () => {
 		const error = await promise.catch(value => value);
 		expect(isAiError(error)).toBe(true);
 		expect(error).toMatchObject({ code: 'rate-limited', retryable: true, status: 429, retryAfterMs: 90_000 });
+	});
+
+	test('a failed job rejection carries the attempts the run spent', async () => {
+		const { connector, promise } = start();
+		connector.last.receive(jobState('failed', [], {
+			attempts: { requests: 4, retries: 0, splits: 2 },
+			error: { code: 'timeout', retryable: true, nativeCode: 'timeout', timeoutSeconds: 300 }
+		}));
+		const error = await promise.catch(value => value);
+		expect(error).toMatchObject({ code: 'timeout', nativeCode: 'timeout' });
+		expect(transcriptJobAttempts(error)).toEqual({ requests: 4, retries: 0, splits: 2 });
+	});
+
+	test('errors without job attempts report none', async () => {
+		const { connector, promise } = start();
+		connector.last.receive({ type: 'error', jobId, error: { code: 'auth', retryable: false } });
+		const error = await promise.catch(value => value);
+		expect(transcriptJobAttempts(error)).toBeUndefined();
+		expect(transcriptJobAttempts(new Error('plain'))).toBeUndefined();
 	});
 
 	test('a cancelled job rejects cancelled', async () => {

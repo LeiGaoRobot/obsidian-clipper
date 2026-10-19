@@ -223,7 +223,7 @@ try {
 	if (
 		storedSettings.local?.language !== 'zh_CN'
 		|| storedSettings.sync?.reader_settings?.transcriptLayout !== 'focus'
-		|| storedSettings.sessionCount !== 2
+		|| storedSettings.sessionCount !== Object.keys(checkpointState).length
 	) {
 		throw new Error(`Firefox did not persist the Reader fixture: ${JSON.stringify(storedSettings)}`);
 	}

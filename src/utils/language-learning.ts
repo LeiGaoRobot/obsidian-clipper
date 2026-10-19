@@ -1,15 +1,17 @@
 import {
-	isCompleteTranscriptReadingSegment,
 	isCompleteTranscriptReadings,
 	type AiTaskInput,
-	type AiTaskOutput
+	type AiTaskOutput,
+	type TranscriptSegment
 } from '../ai/contracts';
-import {
-	buildTranscriptPromptGroups,
-	readingMaxTokens,
-	translationMaxTokens,
-	TRANSCRIPT_GROUP_BUDGETS
-} from '../ai/job-runner';
+import type {
+	RunTranscriptJobOptions,
+	TranscriptJobInput,
+	TranscriptJobProgress,
+	TranscriptJobResult
+} from '../ai/job-client';
+import type { TranscriptJobIdentity, TranscriptJobTask } from '../ai/job-identity';
+import { isEmptySourceSegment } from '../ai/job-runner';
 import type { AiTask } from '../ai/types';
 import { throwIfRequestAborted } from './request-cancellation';
 
@@ -45,9 +47,17 @@ export interface TranscriptReadingToken {
 
 export type TranscriptReadingSegments = TranscriptReadingToken[][];
 
+/** A group of the transcript job is backing off after a rate limit or a transient provider error. */
+export interface TranscriptRetryStatus {
+	delayMs: number;
+	attempt: number;
+}
+
 export interface TranscriptBatchProgress {
 	completed: number;
 	total: number;
+	/** Present while a group waits to retry; the next progress without it ends the wait. */
+	retry?: TranscriptRetryStatus;
 }
 
 export interface TranscriptReadingProgress extends TranscriptBatchProgress {
@@ -62,25 +72,51 @@ export interface TranscriptTranslationProgress extends TranscriptBatchProgress {
 }
 export type TranscriptTranslationProgressHandler = (progress: TranscriptTranslationProgress) => void;
 
-type MaybePromise<T> = T | Promise<T>;
-
-export interface TranscriptReadingCheckpointStore {
-	load(segments: string[]): MaybePromise<TranscriptReadingSegments | undefined>;
-	save(segments: string[], readings: TranscriptReadingSegments): MaybePromise<void>;
-	clear(segments: string[]): MaybePromise<void>;
-}
-
-export interface TranscriptTranslationCheckpointStore {
-	load(segments: string[]): MaybePromise<string[] | undefined>;
-	save(segments: string[], translations: string[]): MaybePromise<void>;
-	clear(segments: string[]): MaybePromise<void>;
-}
+/** Runs one transcript task as a durable background job (`runTranscriptJob` in production). */
+export type RunLanguageLearningJob = <T extends TranscriptJobTask>(
+	task: T,
+	input: TranscriptJobInput,
+	options: Pick<RunTranscriptJobOptions<T>, 'signal' | 'onProgress' | 'onRetry'>
+) => Promise<TranscriptJobResult<T>>;
 
 export interface LanguageLearningAssistantOptions {
-	japaneseReadingPromptCharLimit?: number;
-	transcriptTranslationPromptCharLimit?: number;
-	japaneseReadingCheckpoints?: TranscriptReadingCheckpointStore;
-	transcriptTranslationCheckpoints?: TranscriptTranslationCheckpointStore;
+	runJob?: RunLanguageLearningJob;
+}
+
+export interface TranscriptTranslationOptions {
+	/** The job scope; defaults to `shared:<targetLanguage>`. */
+	scope?: string;
+}
+
+/** Job namespace of transcript translations; the scope names the target language. */
+export const TRANSCRIPT_TRANSLATION_JOB_NAMESPACE = 'translations';
+/** Japanese readings are shared by every Reader that shows the same Japanese text. */
+export const JAPANESE_READING_JOB_IDENTITY: Readonly<TranscriptJobIdentity> = {
+	namespace: 'japanese-readings',
+	scope: 'shared'
+};
+
+export function transcriptTranslationJobIdentity(scope: string): TranscriptJobIdentity {
+	return { namespace: TRANSCRIPT_TRANSLATION_JOB_NAMESPACE, scope };
+}
+
+/** Job segments are addressed by their source index. */
+export function toTranscriptJobSegments(texts: readonly string[]): TranscriptSegment[] {
+	return texts.map((text, id) => ({ id, text }));
+}
+
+/**
+ * A translated segment is complete when it has text, or when its source is blank: the job never
+ * requests a blank source and counts it as complete with an empty translation.
+ */
+export function isCompleteTranscriptTranslationSegment(translation: string | undefined, source: string): boolean {
+	return isEmptySourceSegment('translate', source) || Boolean(translation?.trim());
+}
+
+/** True when there is one complete translation per source segment, in order. */
+export function isCompleteTranscriptTranslations(translations: readonly string[], sources: readonly string[]): boolean {
+	return translations.length === sources.length
+		&& sources.every((source, index) => isCompleteTranscriptTranslationSegment(translations[index], source));
 }
 
 export interface LanguageLearningAssistant {
@@ -90,7 +126,8 @@ export interface LanguageLearningAssistant {
 		segments: string[],
 		targetLanguage: string,
 		onProgress?: TranscriptTranslationProgressHandler,
-		signal?: AbortSignal
+		signal?: AbortSignal,
+		options?: TranscriptTranslationOptions
 	): Promise<string[]>;
 	annotateJapaneseTranscript(
 		segments: string[],
@@ -99,22 +136,8 @@ export interface LanguageLearningAssistant {
 	): Promise<TranscriptReadingSegments>;
 }
 
-// Group budgets, grouping, and output budgets are the job runner's policy; reused here until
-// transcript tasks run as background jobs.
-const MAX_TRANSCRIPT_PROMPT_CHARS = TRANSCRIPT_GROUP_BUDGETS.api.translate;
-const MAX_JAPANESE_READING_PROMPT_CHARS = TRANSCRIPT_GROUP_BUDGETS.api.reading;
-
 function cloneTranscriptReadings(readings: TranscriptReadingSegments): TranscriptReadingSegments {
 	return readings.map(tokens => tokens.map(token => ({ ...token })));
-}
-
-function countCompleteTranscriptReadingSegments(
-	readings: TranscriptReadingSegments,
-	segments: string[]
-): number {
-	return readings.reduce((count, tokens, index) => (
-		count + (isCompleteTranscriptReadingSegment(tokens, segments[index]) ? 1 : 0)
-	), 0);
 }
 
 export function replaceTextSelection(
@@ -134,6 +157,36 @@ export function createLanguageLearningAssistant(
 	sendRequest: SendLanguageLearningRequest,
 	options: LanguageLearningAssistantOptions = {}
 ): LanguageLearningAssistant {
+	// One background job per transcript: the runner groups, checkpoints, and retries. A retry
+	// notice repeats the latest progress with the backoff, so the UI can show the wait.
+	const runTranscriptTask = async <T extends TranscriptJobTask>(
+		task: T,
+		input: TranscriptJobInput,
+		signal: AbortSignal | undefined,
+		report?: (progress: TranscriptJobProgress<T>, retry?: TranscriptRetryStatus) => void
+	): Promise<TranscriptJobResult<T>> => {
+		if (!options.runJob) throw new Error('Transcript tasks need a background job runner.');
+		let latest: TranscriptJobProgress<T> = {
+			completedGroups: 0,
+			totalGroups: 0,
+			completedSegments: 0,
+			totalSegments: input.segments.length,
+			values: input.segments.map(() => (task === 'translate' ? '' : [])) as TranscriptJobProgress<T>['values']
+		};
+		const result = await options.runJob(task, input, {
+			...(signal ? { signal } : {}),
+			...(report ? {
+				onProgress: (progress: TranscriptJobProgress<T>) => {
+					latest = progress;
+					report(progress);
+				},
+				onRetry: ({ delayMs, attempt }) => report(latest, { delayMs, attempt })
+			} : {})
+		});
+		throwIfRequestAborted(signal);
+		return result;
+	};
+
 	return {
 		async transformContent(content: string, instruction: string, signal?: AbortSignal): Promise<string> {
 			throwIfRequestAborted(signal);
@@ -166,6 +219,7 @@ export function createLanguageLearningAssistant(
 			signal?: AbortSignal
 		): Promise<TranscriptReadingSegments> {
 			throwIfRequestAborted(signal);
+			if (segments.length === 0) return [];
 			const instruction = [
 				'Annotate each Japanese transcript segment with hiragana readings for every kanji.',
 				'Preserve every segment exactly and do not merge or omit text.',
@@ -173,91 +227,50 @@ export function createLanguageLearningAssistant(
 				'Give each token that contains kanji its hiragana reading. Use an empty reading for kana, Latin letters, numbers, spaces, and punctuation.',
 				'Split mixed kanji and kana into separate tokens so every kanji has its own reading.'
 			].join('\n');
-			const checkpoint = await options.japaneseReadingCheckpoints?.load(segments);
-			const readings: TranscriptReadingSegments = segments.map((segment, index) => {
-				const tokens = checkpoint?.[index];
-				return tokens && isCompleteTranscriptReadingSegment(tokens, segment)
-					? tokens.map(token => ({ ...token }))
-					: [];
-			});
-			const promptGroups = buildTranscriptPromptGroups(
-				segments,
-				instruction,
-				options.japaneseReadingPromptCharLimit ?? MAX_JAPANESE_READING_PROMPT_CHARS,
-				index => !isCompleteTranscriptReadingSegment(readings[index], segments[index])
+			const result = await runTranscriptTask(
+				'reading',
+				{ instruction, segments: toTranscriptJobSegments(segments), identity: { ...JAPANESE_READING_JOB_IDENTITY } },
+				signal,
+				onProgress && ((progress, retry) => onProgress({
+					completed: progress.completedGroups,
+					total: progress.totalGroups,
+					completedSegments: progress.completedSegments,
+					totalSegments: progress.totalSegments,
+					readings: cloneTranscriptReadings(progress.values),
+					...(retry ? { retry } : {})
+				}))
 			);
-			onProgress?.({
-				completed: 0,
-				total: promptGroups.length,
-				completedSegments: countCompleteTranscriptReadingSegments(readings, segments),
-				totalSegments: segments.length,
-				readings: cloneTranscriptReadings(readings)
-			});
-			for (const [groupIndex, group] of promptGroups.entries()) {
-				throwIfRequestAborted(signal);
-				const generated = await sendRequest('reading', {
-					instruction,
-					segments: group.segments,
-					maxTokens: readingMaxTokens(group)
-				}, signal);
-				throwIfRequestAborted(signal);
-				// Accept only requested ids, and only readings that reproduce their source.
-				const requested = new Set(group.segments.map(segment => segment.id));
-				for (const { id, tokens } of generated) {
-					if (requested.has(id) && isCompleteTranscriptReadings([tokens], [segments[id]])) readings[id] = tokens;
-				}
-				await options.japaneseReadingCheckpoints?.save(segments, cloneTranscriptReadings(readings));
-				onProgress?.({
-					completed: groupIndex + 1,
-					total: promptGroups.length,
-					completedSegments: countCompleteTranscriptReadingSegments(readings, segments),
-					totalSegments: segments.length,
-					readings: cloneTranscriptReadings(readings)
-				});
-			}
-			return readings;
+			// Values are aligned: a segment without an accepted reading is [], which the caller's
+			// completeness check rejects unless its source is empty.
+			return result.values;
 		},
 
 		async translateTranscript(
 			segments: string[],
 			targetLanguage: string,
 			onProgress?: TranscriptTranslationProgressHandler,
-			signal?: AbortSignal
+			signal?: AbortSignal,
+			translationOptions: TranscriptTranslationOptions = {}
 		): Promise<string[]> {
 			throwIfRequestAborted(signal);
+			if (segments.length === 0) return [];
 			const instruction = [
 				`Translate each transcript segment into ${targetLanguage}.`,
 				'Preserve meaning and tone. Do not merge or omit segments.'
 			].join('\n');
-			const checkpoint = await options.transcriptTranslationCheckpoints?.load(segments);
-			const translations = segments.map((_segment, index) => checkpoint?.[index]?.trim() || '');
-			const promptGroups = buildTranscriptPromptGroups(
-				segments,
-				instruction,
-				options.transcriptTranslationPromptCharLimit ?? MAX_TRANSCRIPT_PROMPT_CHARS,
-				index => !translations[index]
+			const scope = translationOptions.scope?.trim() || `shared:${targetLanguage}`;
+			const result = await runTranscriptTask(
+				'translate',
+				{ instruction, segments: toTranscriptJobSegments(segments), identity: transcriptTranslationJobIdentity(scope) },
+				signal,
+				onProgress && ((progress, retry) => onProgress({
+					completed: progress.completedGroups,
+					total: progress.totalGroups,
+					translations: [...progress.values],
+					...(retry ? { retry } : {})
+				}))
 			);
-			onProgress?.({ completed: 0, total: promptGroups.length, translations: [...translations] });
-			for (const [groupIndex, group] of promptGroups.entries()) {
-				throwIfRequestAborted(signal);
-				const translated = await sendRequest('translate', {
-					instruction,
-					segments: group.segments,
-					maxTokens: translationMaxTokens(group)
-				}, signal);
-				throwIfRequestAborted(signal);
-				const requested = new Set(group.segments.map(segment => segment.id));
-				for (const { id, text } of translated) {
-					if (requested.has(id)) translations[id] = text;
-				}
-				await options.transcriptTranslationCheckpoints?.save(segments, [...translations]);
-				onProgress?.({
-					completed: groupIndex + 1,
-					total: promptGroups.length,
-					translations: [...translations]
-				});
-			}
-			return translations;
+			return result.values;
 		}
 	};
 }

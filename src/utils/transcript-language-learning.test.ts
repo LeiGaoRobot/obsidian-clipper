@@ -695,6 +695,8 @@ describe('Transcript language learning controls', () => {
 
 		await controller.regenerateJapaneseReadings();
 		expect(clearJapaneseReadings).toHaveBeenCalledWith(['日本語']);
+		// A saved record of the whole transcript would otherwise restore the old reading of the range.
+		expect(clearJapaneseReadings).toHaveBeenCalledWith(['日本語', '漢字']);
 		expect(segments[0].querySelector('rt')?.textContent).toBe('にっぽんご');
 		expect(segments[1].querySelector('rt')).toBeNull();
 	});
@@ -833,6 +835,118 @@ describe('Transcript language learning controls', () => {
 
 		expect(partialState).toEqual(['第一段', undefined]);
 		expect(segments[1].querySelector('.transcript-segment-translation')?.textContent).toBe('第二段');
+	});
+
+	test('shows a provider retry countdown while a group backs off and clears it on the next progress', async () => {
+		const { controls, transcript, segments } = createTranscript(['First.', 'Second.']);
+		const statuses: string[] = [];
+		const status = () => controls.querySelector('.player-learning-progress')?.textContent || '';
+		const translateTranscript = vi.fn(async (
+			_segments: string[],
+			onProgress?: (progress: {
+				completed: number;
+				total: number;
+				translations: string[];
+				retry?: { delayMs: number; attempt: number };
+			}) => void
+		) => {
+			onProgress?.({ completed: 1, total: 2, translations: ['第一段', ''] });
+			statuses.push(status());
+			onProgress?.({ completed: 1, total: 2, translations: ['第一段', ''], retry: { delayMs: 2200, attempt: 1 } });
+			statuses.push(status());
+			onProgress?.({ completed: 2, total: 2, translations: ['第一段', '第二段'] });
+			statuses.push(status());
+			return ['第一段', '第二段'];
+		});
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript,
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn()
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.toggleBilingual();
+
+		expect(statuses).toEqual([
+			'readerTranslationProgress:1,2',
+			'readerTranscriptRetrying:3',
+			'readerTranslationProgress:2,2'
+		]);
+		expect(segments[1].querySelector('.transcript-segment-translation')?.textContent).toBe('第二段');
+	});
+
+	test('shows the retry countdown during reading generation', async () => {
+		const { controls, transcript, segments } = createTranscript(['日本語']);
+		transcript.dataset.transcriptLanguage = 'ja';
+		const statuses: string[] = [];
+		const tokens = [{ text: '日本語', reading: 'にほんご' }];
+		const annotateJapaneseTranscript = vi.fn(async (
+			_segments: string[],
+			onProgress?: (progress: {
+				completed: number;
+				total: number;
+				completedSegments: number;
+				totalSegments: number;
+				readings: Array<Array<{ text: string; reading: string }>>;
+				retry?: { delayMs: number; attempt: number };
+			}) => void
+		) => {
+			onProgress?.({ completed: 0, total: 1, completedSegments: 0, totalSegments: 1, readings: [[]], retry: { delayMs: 400, attempt: 2 } });
+			statuses.push(controls.querySelector('.player-learning-progress')?.textContent || '');
+			return [tokens];
+		});
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn(),
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.toggleJapaneseReadings();
+
+		expect(statuses).toEqual(['readerTranscriptRetrying:1']);
+		expect(segments[0].querySelector('rt')?.textContent).toBe('にほんご');
+	});
+
+	test('a blank source segment needs no translation to be complete', async () => {
+		const { controls, transcript, segments } = createTranscript(['Hello.', '']);
+		const translateTranscript = vi.fn().mockResolvedValue(['你好。', '']);
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript,
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn()
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.toggleBilingual();
+
+		expect(document.querySelector('.language-learning-card.is-error')).toBeNull();
+		expect(transcript.classList.contains('show-bilingual-transcript')).toBe(true);
+		expect(transcript.classList.contains('has-partial-bilingual-transcript')).toBe(false);
+		expect(segments[0].querySelector('.transcript-segment-translation')?.textContent).toBe('你好。');
+
+		// Hiding and showing again reuses the loaded translations without another request.
+		await controller.toggleBilingual();
+		await controller.toggleBilingual();
+		expect(translateTranscript).toHaveBeenCalledOnce();
 	});
 
 	test('lets the learner correct generated translations and persists the correction', async () => {

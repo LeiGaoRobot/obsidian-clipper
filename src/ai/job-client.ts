@@ -82,6 +82,28 @@ export interface RunTranscriptJobOptions<T extends TranscriptJobTask = Transcrip
 	reconnectDelaysMs?: readonly number[];
 }
 
+/** A failed or cancelled job's rejection: the job's AiError plus the attempts the run spent. */
+export type TranscriptJobError = AiError & { readonly attempts?: AiJobAttempts };
+
+/** Records the attempts a job spent on the error it rejects with, e.g. CLI timeout splits. */
+export function withJobAttempts(error: AiError, attempts: AiJobAttempts | undefined): TranscriptJobError {
+	if (!attempts) return error;
+	return Object.assign(error, {
+		attempts: { requests: attempts.requests, retries: attempts.retries, splits: attempts.splits }
+	});
+}
+
+/** The attempts of a rejected transcript job, when the gateway reported them. */
+export function transcriptJobAttempts(error: unknown): AiJobAttempts | undefined {
+	if (!(error instanceof AiError)) return undefined;
+	const attempts = (error as TranscriptJobError).attempts;
+	if (!attempts || typeof attempts !== 'object') return undefined;
+	const { requests, retries, splits } = attempts;
+	return [requests, retries, splits].every(value => Number.isInteger(value) && value >= 0)
+		? { requests, retries, splits }
+		: undefined;
+}
+
 export interface TranscriptCheckpoint<T extends TranscriptJobTask = TranscriptJobTask> {
 	status: AiJobStatus;
 	values: TranscriptJobValues<T>;
@@ -194,7 +216,8 @@ function safeDisconnect(port: AiClientPort | undefined): void {
  * Runs a translate or reading job over a whole transcript in the background gateway. Resolves
  * `completed` and `incomplete` with values aligned to `input.segments`; rejects `failed` with the
  * job's error, `cancelled` on abort or a background cancel, and `network` once reconnecting fails
- * `MAX_RECONNECTS` times in a row (the job itself keeps running in the background).
+ * `MAX_RECONNECTS` times in a row (the job itself keeps running in the background). A rejection
+ * from a final `job-state` carries the run's attempts, read with `transcriptJobAttempts`.
  */
 export function runTranscriptJob<T extends TranscriptJobTask>(
 	task: T,
@@ -290,12 +313,12 @@ export function runTranscriptJob<T extends TranscriptJobTask>(
 							...(error ? { error } : {})
 						}));
 					} else if (message.status === 'cancelled') {
-						settle(() => reject(new AiError('cancelled')));
+						settle(() => reject(withJobAttempts(new AiError('cancelled'), message.attempts)));
 					} else {
 						const error = message.error
 							? deserializeAiError(message.error)
 							: new AiError('provider-error', { detail: 'The job failed.' });
-						settle(() => reject(error));
+						settle(() => reject(withJobAttempts(error, message.attempts)));
 					}
 					return;
 				}

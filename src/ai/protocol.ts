@@ -24,6 +24,11 @@ const MAX_PROMPTS = 50;
 const MAX_SEGMENTS = 2000;
 const MAX_INSTRUCTION_CHARS = 20_000;
 const MAX_IDENTITY_CHARS = 100;
+// The scope is hashed into the job id, so it may be longer than the namespace, which is not.
+const MAX_SCOPE_CHARS = 500;
+// A whole transcript job is bounded by its stored record in storage.session rather than by one request.
+const MAX_JOB_SEGMENTS = 20_000;
+const MAX_JOB_INPUT_CHARS = 1_500_000;
 
 export type AiStartMessage = {
 	[T in AiTask]: { type: 'start'; jobId: string; task: T; profileId?: string; input: AiTaskInput<T> }
@@ -189,8 +194,8 @@ function isInstruction(value: unknown): value is string {
 	return typeof value === 'string' && value.trim().length > 0 && value.length <= MAX_INSTRUCTION_CHARS;
 }
 
-function isSegments(value: unknown): value is AiTaskInputs['translate']['segments'] {
-	if (!Array.isArray(value) || value.length === 0 || value.length > MAX_SEGMENTS) return false;
+function isSegments(value: unknown, maxSegments = MAX_SEGMENTS): value is AiTaskInputs['translate']['segments'] {
+	if (!Array.isArray(value) || value.length === 0 || value.length > maxSegments) return false;
 	const ids = new Set<number>();
 	for (const segment of value) {
 		if (!segment || typeof segment !== 'object') return false;
@@ -251,15 +256,15 @@ function isJobTask(value: unknown): value is TranscriptJobTask {
 	return (AI_JOB_TASKS as readonly unknown[]).includes(value);
 }
 
-function isIdentityPart(value: unknown): value is string {
-	return typeof value === 'string' && value.trim().length > 0 && value.length <= MAX_IDENTITY_CHARS;
+function isIdentityPart(value: unknown, maxChars = MAX_IDENTITY_CHARS): value is string {
+	return typeof value === 'string' && value.trim().length > 0 && value.length <= maxChars;
 }
 
 /** Validates a job identity and returns a copy holding only its two fields. */
 export function sanitizeJobIdentity(value: unknown): TranscriptJobIdentity | undefined {
 	if (!value || typeof value !== 'object') return undefined;
 	const { namespace, scope } = value as Record<string, unknown>;
-	return isIdentityPart(namespace) && isIdentityPart(scope) ? { namespace, scope } : undefined;
+	return isIdentityPart(namespace) && isIdentityPart(scope, MAX_SCOPE_CHARS) ? { namespace, scope } : undefined;
 }
 
 /**
@@ -272,10 +277,10 @@ export function sanitizeJobInput(value: unknown): AiJobInput | undefined {
 	if (!value || typeof value !== 'object') return undefined;
 	const { instruction, segments, identity: rawIdentity } = value as Record<string, unknown>;
 	const identity = sanitizeJobIdentity(rawIdentity);
-	if (!identity || !isInstruction(instruction) || !isSegments(segments)) return undefined;
+	if (!identity || !isInstruction(instruction) || !isSegments(segments, MAX_JOB_SEGMENTS)) return undefined;
 	if (!hasIndexIds(segments)) return undefined;
 	const copies = segments.map(({ id, text }) => ({ id, text }));
-	if (sumLengths([instruction, ...copies.map(segment => segment.text)]) > MAX_INPUT_CHARS) return undefined;
+	if (sumLengths([instruction, ...copies.map(segment => segment.text)]) > MAX_JOB_INPUT_CHARS) return undefined;
 	return { instruction, segments: copies, identity };
 }
 
@@ -327,7 +332,7 @@ export function sanitizeJobResults<T extends TranscriptJobTask>(
 }
 
 function isSegmentCount(value: unknown): value is number {
-	return Number.isInteger(value) && (value as number) > 0 && (value as number) <= MAX_SEGMENTS;
+	return Number.isInteger(value) && (value as number) > 0 && (value as number) <= MAX_JOB_SEGMENTS;
 }
 
 /**
@@ -342,9 +347,9 @@ export function sanitizeCheckpointPut(value: unknown): AiCheckpointPutMessage | 
 	const { task, segmentCount, segments } = message;
 	const identity = sanitizeJobIdentity(message.identity);
 	if (!isJobTask(task) || !identity || !isSegmentCount(segmentCount)) return undefined;
-	if (!isSegments(segments) || segments.length !== segmentCount || !hasIndexIds(segments)) return undefined;
+	if (!isSegments(segments, MAX_JOB_SEGMENTS) || segments.length !== segmentCount || !hasIndexIds(segments)) return undefined;
 	const copies = segments.map(({ id, text }) => ({ id, text }));
-	if (sumLengths(copies.map(segment => segment.text)) > MAX_INPUT_CHARS) return undefined;
+	if (sumLengths(copies.map(segment => segment.text)) > MAX_JOB_INPUT_CHARS) return undefined;
 	const results = sanitizeJobResults(task, segmentCount, message.results, copies.map(segment => segment.text));
 	if (!results) return undefined;
 	return {

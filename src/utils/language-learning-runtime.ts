@@ -2,20 +2,31 @@ import { runAiTask } from '../ai/client';
 import { describeAiError } from '../ai/error-messages';
 import { toAiError, type AiErrorCode } from '../ai/errors';
 import {
+	clearTranscriptCheckpoint,
+	loadTranscriptCheckpoint,
+	runTranscriptJob,
+	saveTranscriptCheckpoint,
+	transcriptJobAttempts,
+	type TranscriptJobValues
+} from '../ai/job-client';
+import type { TranscriptJobIdentity, TranscriptJobTask } from '../ai/job-identity';
+import { TRANSCRIPT_GROUP_BUDGETS } from '../ai/job-runner';
+import {
+	JAPANESE_READING_JOB_IDENTITY,
 	LearningSelection,
-	TranscriptReadingCheckpointStore,
 	TranscriptReadingProgressHandler,
 	TranscriptReadingSegments,
-	TranscriptTranslationCheckpointStore,
 	TranscriptTranslationProgressHandler,
 	createLanguageLearningAssistant,
-	isCompleteTranscriptReadings
+	isCompleteTranscriptReadings,
+	isCompleteTranscriptTranslations,
+	toTranscriptJobSegments,
+	transcriptTranslationJobIdentity
 } from './language-learning';
 import { getMessage } from './i18n';
 import type { NativeCliErrorCode } from './native-cli-contract';
 import { RequestCancelledError, throwIfRequestAborted } from './request-cancellation';
 import { loadSettings, saveSettings } from './storage-utils';
-import { createSessionTranscriptCheckpointStore } from './transcript-checkpoint-storage';
 import { configuredLanguageLearningVocabulary } from './language-learning-vocabulary';
 import {
 	applyJapaneseReadingDictionary,
@@ -25,17 +36,10 @@ import {
 	configuredJapaneseReadingDictionary,
 	listJapaneseReadingDictionary
 } from './japanese-reading-dictionary-storage';
+import type { Settings } from '../types/types';
 
-const GROK_JAPANESE_READING_PROMPT_CHAR_LIMIT = 1600;
-const CODEX_JAPANESE_READING_PROMPT_CHAR_LIMIT = 2500;
-const MIN_CLI_JAPANESE_READING_PROMPT_CHAR_LIMIT = 600;
-const CLI_TRANSCRIPT_TRANSLATION_PROMPT_CHAR_LIMIT = 6000;
-const MIN_CLI_TRANSCRIPT_TRANSLATION_PROMPT_CHAR_LIMIT = 1200;
-const MAX_AUTOMATIC_TRANSCRIPT_TIMEOUT_RETRIES = 3;
-const MAX_ADAPTIVE_SESSION_ENTRIES = 20;
+// The scope of the fixed Japanese translation that feeds readings of a non-Japanese transcript.
 const JAPANESE_TRANSLATION_CHECKPOINT_SCOPE = 'japanese-readings:Japanese';
-const japaneseReadingPromptLimits = new Map<string, number>();
-const transcriptTranslationPromptLimits = new Map<string, number>();
 
 export class LanguageLearningRequestError extends Error {
 	code: NativeCliErrorCode | 'failed';
@@ -53,70 +57,8 @@ export class LanguageLearningRequestError extends Error {
 	}
 }
 
-function getJapaneseReadingSessionKey(scope: string, segments: string[]): string {
-	return JSON.stringify([scope, segments]);
-}
-
-function getTranscriptTranslationSessionKey(
-	executionScope: string,
-	checkpointScope: string,
-	segments: string[]
-): string {
-	return JSON.stringify([executionScope, checkpointScope, segments]);
-}
-
 function cloneTranscriptReadings(readings: TranscriptReadingSegments): TranscriptReadingSegments {
 	return readings.map(tokens => tokens.map(token => ({ ...token })));
-}
-
-function createJapaneseReadingCheckpointStore(scope: string): TranscriptReadingCheckpointStore {
-	return createSessionTranscriptCheckpointStore(
-		'japanese-readings',
-		scope,
-		cloneTranscriptReadings
-	);
-}
-
-function createTranslationCheckpointStore(scope: string): TranscriptTranslationCheckpointStore {
-	return createSessionTranscriptCheckpointStore(
-		'translations',
-		scope,
-		translations => [...translations]
-	);
-}
-
-function reduceJapaneseReadingPromptLimit(key: string, currentLimit: number): void {
-	const nextLimit = Math.max(
-		MIN_CLI_JAPANESE_READING_PROMPT_CHAR_LIMIT,
-		Math.floor(currentLimit / 2)
-	);
-	if (japaneseReadingPromptLimits.has(key)) japaneseReadingPromptLimits.delete(key);
-	japaneseReadingPromptLimits.set(key, nextLimit);
-	while (japaneseReadingPromptLimits.size > MAX_ADAPTIVE_SESSION_ENTRIES) {
-		const oldestKey = japaneseReadingPromptLimits.keys().next().value;
-		if (oldestKey === undefined) break;
-		japaneseReadingPromptLimits.delete(oldestKey);
-	}
-}
-
-function reduceTranscriptTranslationPromptLimit(key: string, currentLimit: number): void {
-	const nextLimit = Math.max(
-		MIN_CLI_TRANSCRIPT_TRANSLATION_PROMPT_CHAR_LIMIT,
-		Math.floor(currentLimit / 2)
-	);
-	if (transcriptTranslationPromptLimits.has(key)) transcriptTranslationPromptLimits.delete(key);
-	transcriptTranslationPromptLimits.set(key, nextLimit);
-	while (transcriptTranslationPromptLimits.size > MAX_ADAPTIVE_SESSION_ENTRIES) {
-		const oldestKey = transcriptTranslationPromptLimits.keys().next().value;
-		if (oldestKey === undefined) break;
-		transcriptTranslationPromptLimits.delete(oldestKey);
-	}
-}
-
-function isCliTimeoutError(error: unknown): error is Error {
-	return error instanceof LanguageLearningRequestError
-		? error.code === 'timeout'
-		: error instanceof Error && /\bCLI timed out\b/i.test(error.message);
 }
 
 // Gateway errors keep the legacy codes the Reader card already localizes until the Reader moves to AiError.
@@ -140,7 +82,7 @@ const NATIVE_HOST_ERROR_CODES: ReadonlySet<string> = new Set<NativeCliErrorCode>
 function toLanguageLearningError(error: unknown, mode: string): Error {
 	const aiError = toAiError(error);
 	if (aiError.code === 'cancelled') return new RequestCancelledError();
-	// Host codes keep their mode-specific Reader copy and the adaptive CLI timeout retry.
+	// Host codes keep their mode-specific Reader copy.
 	const code = aiError.nativeCode && NATIVE_HOST_ERROR_CODES.has(aiError.nativeCode)
 		? aiError.nativeCode as NativeCliErrorCode
 		: LEGACY_ERROR_CODES[aiError.code] ?? 'failed';
@@ -154,70 +96,50 @@ function toLanguageLearningError(error: unknown, mode: string): Error {
 	});
 }
 
-interface ConfiguredAssistantOptions {
-	japaneseReadingSegments?: string[];
-	transcriptTranslationSegments?: string[];
-	transcriptTargetLanguage?: string;
-	transcriptCheckpointScope?: string;
+/**
+ * A CLI timeout after the job already split its groups (the runner halves a CLI group on timeout)
+ * means even the smaller groups did not finish: the Reader offers Continue remaining instead of
+ * the single-request timeout card.
+ */
+function toTranscriptJobError(error: unknown, mode: string): Error {
+	const aiError = toAiError(error);
+	const converted = toLanguageLearningError(aiError, mode);
+	if (
+		aiError.code === 'timeout'
+		&& aiError.nativeCode === 'timeout'
+		&& (transcriptJobAttempts(aiError)?.splits ?? 0) > 0
+	) {
+		return new LanguageLearningRequestError('failed', getMessage('readerTranscriptTranslationBatchFailed'), {
+			...(converted instanceof LanguageLearningRequestError ? converted.details : {}),
+			mode,
+			automaticBatchRetry: true
+		});
+	}
+	return converted;
 }
 
-async function loadConfiguredAssistant({
-	japaneseReadingSegments,
-	transcriptTranslationSegments,
-	transcriptTargetLanguage,
-	transcriptCheckpointScope
-}: ConfiguredAssistantOptions = {}) {
+function resolveResponseLanguage(settings: Settings): string {
+	return settings.readerSettings.learningResponseLanguage.trim()
+		|| (typeof navigator !== 'undefined' ? navigator.language : '')
+		|| 'English';
+}
+
+async function loadConfiguredAssistant() {
 	const settings = await loadSettings();
 	if (!settings.interpreterEnabled) {
 		throw new Error(getMessage('aiLanguageToolsRequireInterpreter'));
 	}
 
 	const executionMode = settings.interpreterExecutionMode ?? 'api';
-	let executionScope: string = executionMode;
 	if (executionMode === 'api') {
 		const enabledModels = settings.models.filter(model => model.enabled);
 		const model = enabledModels.find(item => item.id === settings.interpreterModel) || enabledModels[0];
 		if (!model) {
 			throw new Error(getMessage('aiLanguageToolsRequireModel'));
 		}
-		executionScope = `${executionMode}:${model.id}`;
 	}
 
-	const responseLanguage = settings.readerSettings.learningResponseLanguage.trim()
-		|| navigator.language
-		|| 'English';
-	const resolvedTranscriptTargetLanguage = transcriptTargetLanguage?.trim() || responseLanguage;
-	const resolvedTranscriptCheckpointScope = transcriptCheckpointScope?.trim()
-		|| `shared:${resolvedTranscriptTargetLanguage}`;
-	const japaneseReadingSessionKey = executionMode === 'api' || !japaneseReadingSegments
-		? undefined
-		: getJapaneseReadingSessionKey(executionScope, japaneseReadingSegments);
-	const initialJapaneseReadingPromptCharLimit = executionMode === 'grok'
-		? GROK_JAPANESE_READING_PROMPT_CHAR_LIMIT
-		: CODEX_JAPANESE_READING_PROMPT_CHAR_LIMIT;
-	const japaneseReadingPromptCharLimit = executionMode === 'api'
-		? undefined
-		: japaneseReadingSessionKey
-			? japaneseReadingPromptLimits.get(japaneseReadingSessionKey)
-				?? initialJapaneseReadingPromptCharLimit
-			: initialJapaneseReadingPromptCharLimit;
-	const transcriptTranslationSessionKey = executionMode === 'api' || !transcriptTranslationSegments
-		? undefined
-		: getTranscriptTranslationSessionKey(
-			executionScope,
-			resolvedTranscriptCheckpointScope,
-			transcriptTranslationSegments
-		);
-	const transcriptTranslationPromptCharLimit = executionMode === 'api'
-		? undefined
-		: transcriptTranslationSessionKey
-			? transcriptTranslationPromptLimits.get(transcriptTranslationSessionKey)
-				?? CLI_TRANSCRIPT_TRANSLATION_PROMPT_CHAR_LIMIT
-			: CLI_TRANSCRIPT_TRANSLATION_PROMPT_CHAR_LIMIT;
-	const japaneseReadingCheckpoints = createJapaneseReadingCheckpointStore('shared');
-	const transcriptTranslationCheckpoints = createTranslationCheckpointStore(
-		resolvedTranscriptCheckpointScope
-	);
+	const responseLanguage = resolveResponseLanguage(settings);
 	const assistant = createLanguageLearningAssistant(async (task, input, signal) => {
 		throwIfRequestAborted(signal);
 		try {
@@ -226,23 +148,71 @@ async function loadConfiguredAssistant({
 			throw toLanguageLearningError(error, executionMode);
 		}
 	}, {
-		japaneseReadingPromptCharLimit,
-		transcriptTranslationPromptCharLimit,
-		japaneseReadingCheckpoints,
-		transcriptTranslationCheckpoints
+		runJob: async (task, input, options) => {
+			throwIfRequestAborted(options.signal);
+			try {
+				return await runTranscriptJob(task, input, options);
+			} catch (error) {
+				throw toTranscriptJobError(error, executionMode);
+			}
+		}
 	});
 
-	return {
-		assistant,
-		responseLanguage,
-		executionMode,
-		japaneseReadingCheckpoints,
-		transcriptTranslationCheckpoints,
-		japaneseReadingSessionKey,
-		japaneseReadingPromptCharLimit,
-		transcriptTranslationSessionKey,
-		transcriptTranslationPromptCharLimit
-	};
+	return { assistant, responseLanguage, executionMode };
+}
+
+/**
+ * Reads a stored transcript job without starting or resuming anything. Only a `completed` record
+ * counts: a `running` one seen from a fresh Reader may be stale, and partial work is continued by
+ * an explicit user action. A transport failure reads as nothing saved.
+ */
+async function loadCompletedTranscriptJob<T extends TranscriptJobTask>(
+	task: T,
+	identity: TranscriptJobIdentity,
+	segments: string[]
+) {
+	if (segments.length === 0) return undefined;
+	try {
+		const checkpoint = await loadTranscriptCheckpoint(task, identity, toTranscriptJobSegments(segments));
+		return checkpoint?.status === 'completed' && checkpoint.values.length === segments.length
+			? checkpoint.values
+			: undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+async function loadCompletedTranslations(scope: string, segments: string[]): Promise<string[] | undefined> {
+	const translations = await loadCompletedTranscriptJob(
+		'translate',
+		transcriptTranslationJobIdentity(scope),
+		segments
+	);
+	return translations && isCompleteTranscriptTranslations(translations, segments) ? [...translations] : undefined;
+}
+
+/** Best effort, like the Reader's other local saves: a refused or failed write is not an error. */
+async function saveTranscriptJob<T extends TranscriptJobTask>(
+	task: T,
+	identity: TranscriptJobIdentity,
+	segments: string[],
+	values: TranscriptJobValues<T>
+): Promise<void> {
+	if (segments.length === 0) return;
+	try {
+		await saveTranscriptCheckpoint(task, identity, toTranscriptJobSegments(segments), values);
+	} catch {
+		// The session record is a convenience; the visible work is unaffected.
+	}
+}
+
+async function clearTranscriptJob(task: TranscriptJobTask, identity: TranscriptJobIdentity, segments: string[]): Promise<void> {
+	if (segments.length === 0) return;
+	try {
+		await clearTranscriptCheckpoint(task, identity, toTranscriptJobSegments(segments));
+	} catch {
+		// Nothing more to clear when the background cannot be reached.
+	}
 }
 
 async function translateConfiguredTranscript(
@@ -252,66 +222,11 @@ async function translateConfiguredTranscript(
 	onProgress?: TranscriptTranslationProgressHandler,
 	signal?: AbortSignal
 ): Promise<string[]> {
-	let automaticRetryCount = 0;
-	while (true) {
-		const {
-			assistant,
-			responseLanguage,
-			executionMode,
-			transcriptTranslationSessionKey,
-			transcriptTranslationPromptCharLimit
-		} = await loadConfiguredAssistant({
-			transcriptTranslationSegments: segments,
-			transcriptTargetLanguage,
-			transcriptCheckpointScope
-		});
-		const targetLanguage = transcriptTargetLanguage?.trim() || responseLanguage;
-		try {
-			const translations = await assistant.translateTranscript(
-				segments,
-				targetLanguage,
-				onProgress,
-				signal
-			);
-			if (
-				transcriptTranslationSessionKey
-				&& translations.length === segments.length
-				&& translations.every(translation => translation.trim())
-			) {
-				transcriptTranslationPromptLimits.delete(transcriptTranslationSessionKey);
-			}
-			return translations;
-		} catch (error) {
-			const timeoutRetryKey = transcriptTranslationSessionKey;
-			const timeoutRetryLimit = transcriptTranslationPromptCharLimit;
-			if (
-				timeoutRetryKey
-				&& timeoutRetryLimit
-				&& executionMode !== 'api'
-				&& isCliTimeoutError(error)
-				&& !signal?.aborted
-			) {
-				if (
-					timeoutRetryLimit > MIN_CLI_TRANSCRIPT_TRANSLATION_PROMPT_CHAR_LIMIT
-					&& automaticRetryCount < MAX_AUTOMATIC_TRANSCRIPT_TIMEOUT_RETRIES
-				) {
-					automaticRetryCount += 1;
-					reduceTranscriptTranslationPromptLimit(timeoutRetryKey, timeoutRetryLimit);
-					continue;
-				}
-				throw new LanguageLearningRequestError(
-					'failed',
-					getMessage('readerTranscriptTranslationBatchFailed'),
-					{
-						...(error instanceof LanguageLearningRequestError ? error.details : {}),
-						mode: executionMode,
-						automaticBatchRetry: true
-					}
-				);
-			}
-			throw error;
-		}
-	}
+	const { assistant, responseLanguage } = await loadConfiguredAssistant();
+	const targetLanguage = transcriptTargetLanguage?.trim() || responseLanguage;
+	return assistant.translateTranscript(segments, targetLanguage, onProgress, signal, {
+		scope: transcriptCheckpointScope?.trim() || `shared:${targetLanguage}`
+	});
 }
 
 export const configuredLanguageLearning = {
@@ -328,10 +243,10 @@ export const configuredLanguageLearning = {
 					? 'interpreterExecutionModeCodex'
 					: 'interpreterExecutionModeApi'),
 			promptCharLimit: mode === 'grok'
-				? GROK_JAPANESE_READING_PROMPT_CHAR_LIMIT
+				? TRANSCRIPT_GROUP_BUDGETS['cli-grok'].reading
 				: mode === 'codex'
-					? CODEX_JAPANESE_READING_PROMPT_CHAR_LIMIT
-					: 6000
+					? TRANSCRIPT_GROUP_BUDGETS['cli-codex'].reading
+					: TRANSCRIPT_GROUP_BUDGETS.api.translate
 		};
 	},
 
@@ -341,30 +256,15 @@ export const configuredLanguageLearning = {
 
 	async loadTranscriptTranslations(segments: string[]): Promise<string[] | undefined> {
 		const settings = await loadSettings();
-		const responseLanguage = settings.readerSettings.learningResponseLanguage.trim()
-			|| (typeof navigator !== 'undefined' ? navigator.language : '')
-			|| 'English';
-		const translations = await createTranslationCheckpointStore(
-			`shared:${responseLanguage}`
-		).load(segments);
-		return translations?.length === segments.length
-			&& translations.every(translation => translation.trim())
-			? [...translations]
-			: undefined;
+		return loadCompletedTranslations(`shared:${resolveResponseLanguage(settings)}`, segments);
 	},
 
 	async loadJapaneseTranscriptTranslations(segments: string[]): Promise<string[] | undefined> {
-		const translations = await createTranslationCheckpointStore(
-			JAPANESE_TRANSLATION_CHECKPOINT_SCOPE
-		).load(segments);
-		return translations?.length === segments.length
-			&& translations.every(translation => translation.trim())
-			? [...translations]
-			: undefined;
+		return loadCompletedTranslations(JAPANESE_TRANSLATION_CHECKPOINT_SCOPE, segments);
 	},
 
 	async loadJapaneseReadings(segments: string[]): Promise<TranscriptReadingSegments | undefined> {
-		const readings = await createJapaneseReadingCheckpointStore('shared').load(segments);
+		const readings = await loadCompletedTranscriptJob('reading', { ...JAPANESE_READING_JOB_IDENTITY }, segments);
 		return readings && isCompleteTranscriptReadings(readings, segments)
 			? cloneTranscriptReadings(readings)
 			: undefined;
@@ -372,23 +272,29 @@ export const configuredLanguageLearning = {
 
 	async saveTranscriptTranslations(segments: string[], translations: string[]): Promise<void> {
 		if (translations.length !== segments.length) return;
-		const { transcriptTranslationCheckpoints } = await loadConfiguredAssistant();
-		await transcriptTranslationCheckpoints.save(segments, [...translations]);
+		const settings = await loadSettings();
+		await saveTranscriptJob(
+			'translate',
+			transcriptTranslationJobIdentity(`shared:${resolveResponseLanguage(settings)}`),
+			segments,
+			[...translations]
+		);
 	},
 
 	async saveJapaneseReadings(segments: string[], readings: TranscriptReadingSegments): Promise<void> {
 		if (readings.length !== segments.length) return;
-		const { japaneseReadingCheckpoints } = await loadConfiguredAssistant({
-			japaneseReadingSegments: segments
-		});
-		await japaneseReadingCheckpoints.save(segments, cloneTranscriptReadings(readings));
+		await saveTranscriptJob('reading', { ...JAPANESE_READING_JOB_IDENTITY }, segments, cloneTranscriptReadings(readings));
 	},
 
 	async clearJapaneseReadings(segments: string[]): Promise<void> {
-		const { japaneseReadingCheckpoints } = await loadConfiguredAssistant({
-			japaneseReadingSegments: segments
-		});
-		await japaneseReadingCheckpoints.clear(segments);
+		// The record of these texts, and the job of the subset the personal dictionary leaves to the
+		// model, which is what the next annotation of these texts starts.
+		const local = resolveJapaneseReadingsFromDictionary(segments, await listJapaneseReadingDictionary());
+		const unresolved = local.unresolvedIndexes.map(index => segments[index]);
+		await clearTranscriptJob('reading', { ...JAPANESE_READING_JOB_IDENTITY }, segments);
+		if (unresolved.length > 0 && unresolved.length < segments.length) {
+			await clearTranscriptJob('reading', { ...JAPANESE_READING_JOB_IDENTITY }, unresolved);
+		}
 	},
 
 	async transformContent(content: string, instruction: string, signal?: AbortSignal): Promise<string> {
@@ -420,11 +326,7 @@ export const configuredLanguageLearning = {
 			return local.readings;
 		}
 		const unresolvedSegments = local.unresolvedIndexes.map(index => segments[index]);
-		const {
-			assistant,
-			japaneseReadingSessionKey,
-			japaneseReadingPromptCharLimit
-		} = await loadConfiguredAssistant({ japaneseReadingSegments: unresolvedSegments });
+		const { assistant } = await loadConfiguredAssistant();
 		const mergeReadings = (generated: TranscriptReadingSegments): TranscriptReadingSegments => {
 			const withOverrides = applyJapaneseReadingDictionary(generated, dictionary);
 			const merged = cloneTranscriptReadings(local.readings);
@@ -433,40 +335,18 @@ export const configuredLanguageLearning = {
 			});
 			return merged;
 		};
-		try {
-			const readings = await assistant.annotateJapaneseTranscript(
-				unresolvedSegments,
-				progress => onProgress?.({
-					...progress,
-					completedSegments: segments.length - unresolvedSegments.length + progress.completedSegments,
-					totalSegments: segments.length,
-					readings: mergeReadings(progress.readings)
-				}),
-				signal
-			);
-			const merged = mergeReadings(readings);
-			if (japaneseReadingSessionKey && isCompleteTranscriptReadings(merged, segments)) {
-				japaneseReadingPromptLimits.delete(japaneseReadingSessionKey);
-			}
-			return merged;
-		} catch (error) {
-			if (
-				japaneseReadingSessionKey
-				&& japaneseReadingPromptCharLimit
-				&& isCliTimeoutError(error)
-			) {
-				reduceJapaneseReadingPromptLimit(
-					japaneseReadingSessionKey,
-					japaneseReadingPromptCharLimit
-				);
-				const message = `${error.message} ${getMessage('readerJapaneseReadingsTimeoutRetry')}`;
-				if (error instanceof LanguageLearningRequestError) {
-					throw new LanguageLearningRequestError(error.code, message, error.details);
-				}
-				throw new Error(message);
-			}
-			throw error;
-		}
+		// The job covers only what the dictionary left unresolved, under the shared readings identity.
+		const readings = await assistant.annotateJapaneseTranscript(
+			unresolvedSegments,
+			progress => onProgress?.({
+				...progress,
+				completedSegments: segments.length - unresolvedSegments.length + progress.completedSegments,
+				totalSegments: segments.length,
+				readings: mergeReadings(progress.readings)
+			}),
+			signal
+		);
+		return mergeReadings(readings);
 	},
 
 	async translateTranscript(

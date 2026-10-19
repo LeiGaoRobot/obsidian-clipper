@@ -372,7 +372,7 @@ try {
 	if (
 		storedSettings.local?.language !== 'zh_CN'
 		|| storedSettings.sync?.reader_settings?.transcriptLayout !== 'focus'
-		|| Object.keys(storedSettings.session || {}).length !== 2
+		|| Object.keys(storedSettings.session || {}).length !== Object.keys(checkpointState).length
 	) {
 		throw new Error(`Chrome did not persist the E2E settings fixture: ${JSON.stringify(storedSettings)}`);
 	}

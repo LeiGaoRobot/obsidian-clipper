@@ -5,8 +5,11 @@ import {
 	TranscriptReadingProgress,
 	TranscriptReadingSegments,
 	TranscriptReadingToken,
+	TranscriptBatchProgress,
 	TranscriptTranslationProgress,
-	isCompleteTranscriptReadings
+	isCompleteTranscriptReadings,
+	isCompleteTranscriptTranslationSegment,
+	isCompleteTranscriptTranslations
 } from './language-learning';
 import {
 	isRequestCancelled,
@@ -903,6 +906,12 @@ export function wireTranscriptLanguageLearning({
 		progressStatus.textContent = message;
 		progressStatus.hidden = false;
 	};
+	// A group backing off after a rate limit shows the wait; the next progress replaces it.
+	const setTaskProgressStatus = (progress: TranscriptBatchProgress, label: string) => {
+		setProgressStatus(progress.retry
+			? getMessage('readerTranscriptRetrying', String(Math.max(1, Math.ceil(progress.retry.delayMs / 1000))))
+			: label);
+	};
 	let elapsedTimer: number | undefined;
 	const updateExecutionInfo = async (taskTexts: string[]) => {
 		try {
@@ -960,7 +969,7 @@ export function wireTranscriptLanguageLearning({
 	let restorePromise: Promise<void> = Promise.resolve();
 	let restoreComplete = !restoreBilingualSubtitles && !restoreJapaneseReadings;
 	const persistTranslations = () => {
-		if (translationValues.every(translation => translation.trim())) {
+		if (isCompleteTranscriptTranslations(translationValues, originalTexts)) {
 			cacheTranslations(originalTexts, resolvedResponseLanguage, translationValues);
 		}
 		void tools.saveTranscriptTranslations?.(originalTexts, [...translationValues]);
@@ -1026,7 +1035,7 @@ export function wireTranscriptLanguageLearning({
 		updateTranslationEditing();
 	};
 	const applyTranslations = (translations: string[]) => {
-		if (translations.some(translation => !translation.trim())) {
+		if (!isCompleteTranscriptTranslations(translations, originalTexts)) {
 			throw new Error(getMessage('readerTranslationIncomplete'));
 		}
 		renderTranslations(translations, true);
@@ -1047,7 +1056,9 @@ export function wireTranscriptLanguageLearning({
 		if (signal.aborted) return;
 		if (wasRestoring && translationsVisible) return;
 		const taskIndexes = getTaskIndexes();
-		const selectedRangeLoaded = taskIndexes.every(index => translationValues[index]?.trim());
+		const selectedRangeLoaded = taskIndexes.every(index => (
+			isCompleteTranscriptTranslationSegment(translationValues[index], originalTexts[index])
+		));
 		if (selectedRangeLoaded) {
 			translationsVisible = !translationsVisible;
 			if (!translationsVisible) translationEditMode = false;
@@ -1085,17 +1096,17 @@ export function wireTranscriptLanguageLearning({
 				String(progress.completed),
 				String(progress.total)
 			]);
-			setProgressStatus(label);
+			setTaskProgressStatus(progress, label);
 		};
 		try {
 			throwIfRequestAborted(requestController.signal);
 			const translations = await tools.translateTranscript(taskTexts, setTranslationProgress, requestController.signal);
 			throwIfRequestAborted(requestController.signal);
-			if (translations.some(translation => !translation.trim())) {
+			if (!isCompleteTranscriptTranslations(translations, taskTexts)) {
 				throw new Error(getMessage('readerTranslationIncomplete'));
 			}
 			const merged = mergeTranslations(taskIndexes, translations);
-			const complete = merged.every(translation => translation.trim());
+			const complete = isCompleteTranscriptTranslations(merged, originalTexts);
 			renderTranslations(merged, complete);
 			if (complete) cacheTranslations(originalTexts, resolvedResponseLanguage, merged);
 			onPreferenceChange?.('bilingualSubtitles', true);
@@ -1161,7 +1172,7 @@ export function wireTranscriptLanguageLearning({
 		: japaneseTranslationValues[index];
 	const getAllReadingSourceTexts = (): string[] => originalTexts.map((_, index) => getReadingSourceText(index));
 	const hasAllReadingSourceTexts = (): boolean => sourceIsJapanese
-		|| japaneseTranslationValues.every(text => text.trim());
+		|| isCompleteTranscriptTranslations(japaneseTranslationValues, originalTexts);
 	const hasCompleteFullReadings = (readings: TranscriptReadingSegments | null): readings is TranscriptReadingSegments => {
 		if (!readings || !hasAllReadingSourceTexts()) return false;
 		return isCompleteTranscriptReadings(readings, getAllReadingSourceTexts());
@@ -1181,7 +1192,7 @@ export function wireTranscriptLanguageLearning({
 	const hasCompleteReadings = (indexes: number[]) => Boolean(japaneseReadings)
 		&& indexes.every(index => {
 			const sourceText = getReadingSourceText(index);
-			if (!sourceIsJapanese && !sourceText.trim()) return false;
+			if (!sourceIsJapanese && !isCompleteTranscriptTranslationSegment(sourceText, originalTexts[index])) return false;
 			return isCompleteTranscriptReadings(
 				[japaneseReadings?.[index] || []],
 				[sourceText]
@@ -1208,9 +1219,8 @@ export function wireTranscriptLanguageLearning({
 		}
 		if (hasCompleteFullReadings(readings)) {
 			cacheJapaneseReadings(getAllReadingSourceTexts(), readings);
-		} else {
-			const readingTexts = getAllReadingSourceTexts();
-			if (readingTexts.every(text => text.trim())) removeCachedJapaneseReadings(readingTexts);
+		} else if (hasAllReadingSourceTexts()) {
+			removeCachedJapaneseReadings(getAllReadingSourceTexts());
 		}
 		const taskIndexes = getTaskIndexes();
 		const checkpointIndexes = taskIndexes.includes(segmentIndex) && hasCompleteReadings(taskIndexes)
@@ -1257,7 +1267,7 @@ export function wireTranscriptLanguageLearning({
 		lastTaskProgress = { completed: progress.completed, total: progress.total };
 		taskProgress.max = Math.max(1, progress.total);
 		taskProgress.value = progress.completed;
-		setProgressStatus(getMessage('readerJapaneseTranslationProgress', [
+		setTaskProgressStatus(progress, getMessage('readerJapaneseTranslationProgress', [
 			String(progress.completed),
 			String(progress.total)
 		]));
@@ -1268,14 +1278,12 @@ export function wireTranscriptLanguageLearning({
 	): Promise<string[]> => {
 		if (sourceIsJapanese) return taskIndexes.map(index => originalTexts[index]);
 		const existing = taskIndexes.map(index => japaneseTranslationValues[index]);
-		if (existing.every(text => text.trim())) return existing;
+		const sourceTexts = taskIndexes.map(index => originalTexts[index]);
+		if (isCompleteTranscriptTranslations(existing, sourceTexts)) return existing;
 		if (getTaskRange() === 'all') {
 			const localTranslations = getCachedJapaneseTranslations(originalTexts)
 				?? await tools.loadJapaneseTranscriptTranslations?.(originalTexts);
-			if (
-				localTranslations?.length === originalTexts.length
-				&& localTranslations.every(translation => translation.trim())
-			) {
+			if (localTranslations && isCompleteTranscriptTranslations(localTranslations, originalTexts)) {
 				japaneseTranslationValues = [...localTranslations];
 				cacheJapaneseTranslations(originalTexts, localTranslations);
 				return taskIndexes.map(index => localTranslations[index]);
@@ -1284,25 +1292,18 @@ export function wireTranscriptLanguageLearning({
 		if (!tools.translateTranscriptToJapanese) {
 			throw new Error(getMessage('readerTranslationIncomplete'));
 		}
-		const sourceTexts = taskIndexes.map(index => originalTexts[index]);
 		const translations = await tools.translateTranscriptToJapanese(
 			sourceTexts,
 			setJapaneseTranslationProgress,
 			requestController.signal
 		);
-		if (
-			translations.length !== taskIndexes.length
-			|| translations.some(translation => !translation.trim())
-		) {
+		if (!isCompleteTranscriptTranslations(translations, sourceTexts)) {
 			throw new Error(getMessage('readerTranslationIncomplete'));
 		}
 		taskIndexes.forEach((sourceIndex, scopedIndex) => {
 			japaneseTranslationValues[sourceIndex] = translations[scopedIndex];
 		});
-		if (
-			getTaskRange() === 'all'
-			&& japaneseTranslationValues.every(translation => translation.trim())
-		) {
+		if (getTaskRange() === 'all' && isCompleteTranscriptTranslations(japaneseTranslationValues, originalTexts)) {
 			cacheJapaneseTranslations(originalTexts, japaneseTranslationValues);
 		}
 		return [...translations];
@@ -1328,7 +1329,7 @@ export function wireTranscriptLanguageLearning({
 				String(progress.completedSegments),
 				String(progress.totalSegments)
 			]);
-			setProgressStatus(label);
+			setTaskProgressStatus(progress, label);
 		};
 		try {
 			throwIfRequestAborted(requestController.signal);
@@ -1406,8 +1407,13 @@ export function wireTranscriptLanguageLearning({
 			}
 			remainingReadings[index] = [];
 		});
-		if (hasAllReadingSourceTexts()) removeCachedJapaneseReadings(getAllReadingSourceTexts());
+		const allReadingTexts = hasAllReadingSourceTexts() ? getAllReadingSourceTexts() : null;
+		if (allReadingTexts) removeCachedJapaneseReadings(allReadingTexts);
 		await tools.clearJapaneseReadings?.(taskTexts);
+		// A saved record of the whole transcript still holds the old readings of this range.
+		if (allReadingTexts && taskIndexes.length !== originalTexts.length) {
+			await tools.clearJapaneseReadings?.(allReadingTexts);
+		}
 		japaneseReadings = remainingReadings.some(tokens => tokens.length > 0)
 			? remainingReadings
 			: null;
@@ -1553,10 +1559,7 @@ export function wireTranscriptLanguageLearning({
 			} else {
 				const savedJapaneseTranslations = getCachedJapaneseTranslations(originalTexts)
 					?? await tools.loadJapaneseTranscriptTranslations?.(originalTexts);
-				if (
-					savedJapaneseTranslations?.length === originalTexts.length
-					&& savedJapaneseTranslations.every(translation => translation.trim())
-				) {
+				if (savedJapaneseTranslations && isCompleteTranscriptTranslations(savedJapaneseTranslations, originalTexts)) {
 					japaneseTranslationValues = [...savedJapaneseTranslations];
 					cacheJapaneseTranslations(originalTexts, savedJapaneseTranslations);
 					readingTexts = savedJapaneseTranslations;

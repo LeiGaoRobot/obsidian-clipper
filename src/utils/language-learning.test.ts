@@ -1,15 +1,21 @@
-import { describe, expect, test, vi } from 'vitest';
-import type { AiTaskInput, AiTaskOutput, TranscriptSegment } from '../ai/contracts';
+import { describe, expect, test } from 'vitest';
+import type { AiTaskInput, AiTaskOutput } from '../ai/contracts';
 import { AiError } from '../ai/errors';
+import type {
+	TranscriptJobInput,
+	TranscriptJobProgress,
+	TranscriptJobResult,
+	TranscriptJobRetry
+} from '../ai/job-client';
+import type { TranscriptJobTask } from '../ai/job-identity';
 import {
 	createLanguageLearningAssistant,
 	isCompleteTranscriptReadings,
+	isCompleteTranscriptTranslations,
 	LanguageLearningTask,
+	RunLanguageLearningJob,
 	SendLanguageLearningRequest,
-	TranscriptReadingCheckpointStore,
 	TranscriptReadingProgress,
-	TranscriptReadingSegments,
-	TranscriptTranslationCheckpointStore,
 	TranscriptTranslationProgress,
 	replaceTextSelection
 } from './language-learning';
@@ -53,31 +59,60 @@ const READING_INSTRUCTION = [
 	'Split mixed kanji and kana into separate tokens so every kanji has its own reading.'
 ].join('\n');
 
-function segmentsOf(call: FakeCall): TranscriptSegment[] {
-	return (call.input as AiTaskInput<'translate'>).segments;
+interface FakeJobCall {
+	task: TranscriptJobTask;
+	input: TranscriptJobInput;
+	signal?: AbortSignal;
 }
 
-function idsOf(call: FakeCall): number[] {
-	return segmentsOf(call).map(segment => segment.id);
+interface FakeJobScript {
+	/** Progress reports and retry notices the fake gateway sends before it settles. */
+	events?: Array<
+		| { progress: Omit<TranscriptJobProgress, 'values'> & { values: unknown[] } }
+		| { retry: TranscriptJobRetry }
+	>;
+	status?: 'completed' | 'incomplete';
+	values: unknown[];
+	reject?: unknown;
 }
 
-function translateEach(input: AiTaskInput<'translate'>): TranscriptSegment[] {
-	return input.segments.map(({ id }) => ({ id, text: `T${id}` }));
+// A fake background job: records each call, replays scripted events, then settles.
+function fakeJobs(script: (call: FakeJobCall) => FakeJobScript) {
+	const calls: FakeJobCall[] = [];
+	const runJob = (async (task: TranscriptJobTask, input: TranscriptJobInput, options: {
+		signal?: AbortSignal;
+		onProgress?: (progress: TranscriptJobProgress) => void;
+		onRetry?: (retry: TranscriptJobRetry) => void;
+	}) => {
+		const call = { task, input, signal: options.signal };
+		calls.push(call);
+		const { events = [], status = 'completed', values, reject } = script(call);
+		for (const event of events) {
+			if ('progress' in event) options.onProgress?.(event.progress as TranscriptJobProgress);
+			else options.onRetry?.(event.retry);
+		}
+		if (reject) throw reject;
+		const total = input.segments.length;
+		return {
+			status,
+			values,
+			results: [],
+			attempts: { requests: 1, retries: 0, splits: 0 },
+			completedGroups: 1,
+			totalGroups: 1,
+			completedSegments: total,
+			totalSegments: total
+		} as unknown as TranscriptJobResult;
+	}) as RunLanguageLearningJob;
+	return { runJob, calls };
 }
 
-function memoryTranslationCheckpoints(initial?: string[]) {
-	let checkpoint = initial ? [...initial] : undefined;
-	const store: TranscriptTranslationCheckpointStore = {
-		load: vi.fn(async () => (checkpoint ? [...checkpoint] : undefined)),
-		save: vi.fn(async (_segments: string[], translations: string[]) => {
-			checkpoint = [...translations];
-		}),
-		clear: vi.fn(async () => {
-			checkpoint = undefined;
-		})
-	};
-	return { store, current: () => checkpoint };
-}
+const counts = (completedGroups: number, totalGroups: number, completedSegments: number, totalSegments: number) => ({
+	completedGroups,
+	totalGroups,
+	completedSegments,
+	totalSegments
+});
 
 describe('Language learning assistant', () => {
 	test('user can transform clipped content with a direct AI instruction', async () => {
@@ -146,15 +181,10 @@ describe('Language learning assistant', () => {
 		});
 	});
 
-	test('bilingual transcript translations stay aligned when the model reorders segments', async () => {
-		const { sendRequest, calls } = fakeModel({
-			translate: () => [
-				{ id: 2, text: '再见。' },
-				{ id: 0, text: '你好。' },
-				{ id: 1, text: '你好吗？' }
-			]
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest);
+	test('translates a whole transcript as one background job with index ids and the shared scope', async () => {
+		const { runJob, calls } = fakeJobs(() => ({ values: ['你好。', '你好吗？', '再见。'] }));
+		const { sendRequest, calls: requests } = fakeModel({});
+		const assistant = createLanguageLearningAssistant(sendRequest, { runJob });
 
 		const translations = await assistant.translateTranscript(
 			['Hello.', 'How are you?', 'Bye.'],
@@ -162,6 +192,7 @@ describe('Language learning assistant', () => {
 		);
 
 		expect(translations).toEqual(['你好。', '你好吗？', '再见。']);
+		expect(requests).toHaveLength(0);
 		expect(calls).toHaveLength(1);
 		expect(calls[0].task).toBe('translate');
 		expect(calls[0].input).toEqual({
@@ -171,41 +202,64 @@ describe('Language learning assistant', () => {
 				{ id: 1, text: 'How are you?' },
 				{ id: 2, text: 'Bye.' }
 			],
-			maxTokens: 1600
+			identity: { namespace: 'translations', scope: 'shared:Simplified Chinese' }
 		});
 	});
 
-	test('an incomplete translation group leaves missing segments empty and a retry requests only them', async () => {
-		const checkpoints = memoryTranslationCheckpoints();
-		const { sendRequest, calls } = fakeModel({
-			translate: (input, callIndex) => callIndex === 0
-				? [{ id: 1, text: 'T1' }]
-				: translateEach(input)
+	test('a translation job can use a caller scope, such as the fixed Japanese stage', async () => {
+		const { runJob, calls } = fakeJobs(() => ({ values: ['こんにちは。'] }));
+		const assistant = createLanguageLearningAssistant(fakeModel({}).sendRequest, { runJob });
+
+		await assistant.translateTranscript(['Hello.'], 'Japanese', undefined, undefined, {
+			scope: 'japanese-readings:Japanese'
 		});
-		const assistant = createLanguageLearningAssistant(sendRequest, {
-			transcriptTranslationCheckpoints: checkpoints.store
-		});
-		const segments = ['First.', 'Second.', 'Third.'];
+
+		expect(calls[0].input.identity).toEqual({ namespace: 'translations', scope: 'japanese-readings:Japanese' });
+		expect(calls[0].input.instruction).toContain('Translate each transcript segment into Japanese.');
+	});
+
+	test('maps job progress to translation progress and surfaces a retry backoff', async () => {
+		const { runJob } = fakeJobs(() => ({
+			events: [
+				{ progress: { ...counts(0, 2, 0, 3), values: ['', '', ''] } },
+				{ progress: { ...counts(1, 2, 2, 3), values: ['T0', 'T1', ''] } },
+				{ retry: { code: 'rate-limited', status: 429, delayMs: 2500, attempt: 1 } },
+				{ progress: { ...counts(2, 2, 3, 3), values: ['T0', 'T1', 'T2'] } }
+			],
+			values: ['T0', 'T1', 'T2']
+		}));
+		const assistant = createLanguageLearningAssistant(fakeModel({}).sendRequest, { runJob });
 		const progress: TranscriptTranslationProgress[] = [];
 
-		const partial = await assistant.translateTranscript(segments, 'Simplified Chinese', next => progress.push(next));
+		await assistant.translateTranscript(['A', 'B', 'C'], 'Simplified Chinese', next => progress.push(next));
 
-		expect(partial).toEqual(['', 'T1', '']);
-		expect(partial.every(translation => translation.trim())).toBe(false);
-		expect(progress[progress.length - 1]).toEqual({ completed: 1, total: 1, translations: ['', 'T1', ''] });
-		expect(checkpoints.current()).toEqual(['', 'T1', '']);
-
-		const completed = await assistant.translateTranscript(segments, 'Simplified Chinese');
-
-		expect(completed).toEqual(['T0', 'T1', 'T2']);
-		expect(calls).toHaveLength(2);
-		expect(segmentsOf(calls[1])).toEqual([
-			{ id: 0, text: 'First.' },
-			{ id: 2, text: 'Third.' }
+		expect(progress).toEqual([
+			{ completed: 0, total: 2, translations: ['', '', ''] },
+			{ completed: 1, total: 2, translations: ['T0', 'T1', ''] },
+			{ completed: 1, total: 2, translations: ['T0', 'T1', ''], retry: { delayMs: 2500, attempt: 1 } },
+			{ completed: 2, total: 2, translations: ['T0', 'T1', 'T2'] }
 		]);
 	});
 
-	test('annotates Japanese kanji with aligned hiragana readings', async () => {
+	test('an incomplete translation job resolves with aligned gaps', async () => {
+		const { runJob } = fakeJobs(() => ({ status: 'incomplete', values: ['', 'T1', ''] }));
+		const assistant = createLanguageLearningAssistant(fakeModel({}).sendRequest, { runJob });
+		const segments = ['First.', 'Second.', 'Third.'];
+
+		const partial = await assistant.translateTranscript(segments, 'Simplified Chinese');
+
+		expect(partial).toEqual(['', 'T1', '']);
+		expect(isCompleteTranscriptTranslations(partial, segments)).toBe(false);
+	});
+
+	test('a translation is complete when every non-blank source has text', () => {
+		expect(isCompleteTranscriptTranslations(['你好', ''], ['Hello', ''])).toBe(true);
+		expect(isCompleteTranscriptTranslations(['你好', ''], ['Hello', '  '])).toBe(true);
+		expect(isCompleteTranscriptTranslations(['你好', ' '], ['Hello', 'World'])).toBe(false);
+		expect(isCompleteTranscriptTranslations(['你好'], ['Hello', 'World'])).toBe(false);
+	});
+
+	test('annotates Japanese readings as one background job under the shared readings identity', async () => {
 		const tokens = [
 			{ text: '私', reading: 'わたし' },
 			{ text: 'は', reading: '' },
@@ -214,376 +268,87 @@ describe('Language learning assistant', () => {
 			{ text: '勉強', reading: 'べんきょう' },
 			{ text: 'します。', reading: '' }
 		];
-		const { sendRequest, calls } = fakeModel({ reading: () => [{ id: 0, tokens }] });
-		const assistant = createLanguageLearningAssistant(sendRequest);
+		const { runJob, calls } = fakeJobs(() => ({ values: [tokens, []] }));
+		const assistant = createLanguageLearningAssistant(fakeModel({}).sendRequest, { runJob });
+		const segments = ['私は日本語を勉強します。', ''];
 
-		const readings = await assistant.annotateJapaneseTranscript(['私は日本語を勉強します。']);
+		const readings = await assistant.annotateJapaneseTranscript(segments);
 
-		expect(readings).toEqual([tokens]);
+		expect(readings).toEqual([tokens, []]);
+		expect(isCompleteTranscriptReadings(readings, segments)).toBe(true);
 		expect(calls).toHaveLength(1);
 		expect(calls[0].task).toBe('reading');
 		expect(calls[0].input).toEqual({
 			instruction: READING_INSTRUCTION,
-			segments: [{ id: 0, text: '私は日本語を勉強します。' }],
-			maxTokens: 2000
+			segments: [{ id: 0, text: '私は日本語を勉強します。' }, { id: 1, text: '' }],
+			identity: { namespace: 'japanese-readings', scope: 'shared' }
 		});
 	});
 
-	test('Japanese reading batches request a source-length output budget', async () => {
-		const { sendRequest, calls } = fakeModel({
-			reading: input => input.segments.map(({ id, text }) => ({ id, tokens: [{ text, reading: 'ひ' }] }))
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest, { japaneseReadingPromptCharLimit: 10000 });
-
-		await assistant.annotateJapaneseTranscript(['日'.repeat(600), '本'.repeat(600)]);
-		await assistant.annotateJapaneseTranscript(['語'.repeat(4000)]);
-
-		expect(calls.map(call => (call.input as AiTaskInput<'reading'>).maxTokens)).toEqual([6000, 16000]);
-	});
-
-	test('Japanese reading groups default to a smaller prompt than translation groups', async () => {
-		const { sendRequest, calls } = fakeModel({
-			reading: input => input.segments.map(({ id, text }) => ({ id, tokens: [{ text, reading: 'ひ' }] }))
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest);
-
-		await assistant.annotateJapaneseTranscript(['日'.repeat(1000), '本'.repeat(1000), '語'.repeat(1000)]);
-
-		expect(calls.map(idsOf)).toEqual([[0], [1], [2]]);
-	});
-
-	test('keeps Japanese readings aligned and drops readings that do not reproduce the source', async () => {
-		const segments = ['私は', '日本語', '勉強', 'です。'];
-		const { sendRequest } = fakeModel({
-			reading: () => [
-				// Out of order and correct.
-				{ id: 3, tokens: [{ text: 'です。', reading: '' }] },
-				// Does not reproduce the source text.
-				{ id: 0, tokens: [{ text: '私', reading: 'わたし' }] },
-				// Kanji token without a reading.
-				{ id: 1, tokens: [{ text: '日本語', reading: ' ' }] },
-				{ id: 2, tokens: [{ text: '勉', reading: 'べん' }, { text: '強', reading: 'きょう' }] }
-			]
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest);
+	test('maps job progress to reading progress, including segment counts and retries', async () => {
+		const first = [{ text: '日本', reading: 'にほん' }];
+		const { runJob } = fakeJobs(() => ({
+			events: [
+				{ progress: { ...counts(0, 2, 0, 2), values: [[], []] } },
+				{ retry: { code: 'provider-error', status: 503, delayMs: 900, attempt: 2 } },
+				{ progress: { ...counts(1, 2, 1, 2), values: [first, []] } }
+			],
+			status: 'incomplete',
+			values: [first, []]
+		}));
+		const assistant = createLanguageLearningAssistant(fakeModel({}).sendRequest, { runJob });
 		const progress: TranscriptReadingProgress[] = [];
 
-		const readings = await assistant.annotateJapaneseTranscript(segments, next => progress.push(next));
+		const readings = await assistant.annotateJapaneseTranscript(['日本', '語'], next => progress.push(next));
 
-		expect(readings).toEqual([
-			[],
-			[],
-			[{ text: '勉', reading: 'べん' }, { text: '強', reading: 'きょう' }],
-			[{ text: 'です。', reading: '' }]
-		]);
-		expect(isCompleteTranscriptReadings(readings, segments)).toBe(false);
-		expect(progress[progress.length - 1]).toMatchObject({ completed: 1, total: 1, completedSegments: 2, totalSegments: 4 });
-	});
-
-	test('missing Japanese reading segments stay empty and are never reported complete', async () => {
-		const segments = ['日本', '語'];
-		const { sendRequest } = fakeModel({
-			reading: () => [{ id: 1, tokens: [{ text: '語', reading: 'ご' }] }]
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest);
-
-		const readings = await assistant.annotateJapaneseTranscript(segments);
-
-		expect(readings).toEqual([[], [{ text: '語', reading: 'ご' }]]);
-		expect(isCompleteTranscriptReadings(readings, segments)).toBe(false);
-	});
-
-	test('reports progress for sequential Japanese reading batches', async () => {
-		const progress: TranscriptReadingProgress[] = [];
-		const segments = ['日'.repeat(600), '本'.repeat(600)];
-		const { sendRequest, calls } = fakeModel({
-			reading: input => input.segments.map(({ id, text }) => ({ id, tokens: [{ text, reading: 'ひ' }] }))
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest, { japaneseReadingPromptCharLimit: 1000 });
-
-		await assistant.annotateJapaneseTranscript(segments, next => progress.push(next));
-
-		expect(calls.map(idsOf)).toEqual([[0], [1]]);
+		expect(readings).toEqual([first, []]);
+		expect(isCompleteTranscriptReadings(readings, ['日本', '語'])).toBe(false);
 		expect(progress).toEqual([
 			{ completed: 0, total: 2, completedSegments: 0, totalSegments: 2, readings: [[], []] },
-			{
-				completed: 1,
-				total: 2,
-				completedSegments: 1,
-				totalSegments: 2,
-				readings: [[{ text: segments[0], reading: 'ひ' }], []]
-			},
-			{
-				completed: 2,
-				total: 2,
-				completedSegments: 2,
-				totalSegments: 2,
-				readings: [
-					[{ text: segments[0], reading: 'ひ' }],
-					[{ text: segments[1], reading: 'ひ' }]
-				]
-			}
+			{ completed: 0, total: 2, completedSegments: 0, totalSegments: 2, readings: [[], []], retry: { delayMs: 900, attempt: 2 } },
+			{ completed: 1, total: 2, completedSegments: 1, totalSegments: 2, readings: [first, []] }
 		]);
 	});
 
-	test('retains completed Japanese reading checkpoints so a later Reader can reuse them', async () => {
-		let checkpoint: TranscriptReadingSegments | undefined;
-		const clear = vi.fn();
-		const checkpoints: TranscriptReadingCheckpointStore = {
-			load: async () => checkpoint,
-			save: async (_segments, readings) => {
-				checkpoint = readings.map(tokens => tokens.map(token => ({ ...token })));
-			},
-			clear: async () => {
-				clear();
-				checkpoint = undefined;
-			}
-		};
-		const { sendRequest, calls } = fakeModel({
-			reading: () => [{ id: 0, tokens: [{ text: '日本語', reading: 'にほんご' }] }]
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest, {
-			japaneseReadingCheckpoints: checkpoints
-		});
+	test('passes the abort signal to the job and surfaces a job error', async () => {
+		const controller = new AbortController();
+		const failure = new AiError('auth', { status: 401 });
+		const { runJob, calls } = fakeJobs(() => ({ values: [], reject: failure }));
+		const assistant = createLanguageLearningAssistant(fakeModel({}).sendRequest, { runJob });
 
-		await assistant.annotateJapaneseTranscript(['日本語']);
-		await assistant.annotateJapaneseTranscript(['日本語']);
+		await expect(assistant.translateTranscript(['A'], 'Simplified Chinese', undefined, controller.signal))
+			.rejects.toBe(failure);
+		expect(calls[0].signal).toBe(controller.signal);
+	});
 
+	test('does not start a job when already cancelled, and rejects a result that arrives after cancel', async () => {
+		const controller = new AbortController();
+		const { runJob, calls } = fakeJobs(() => {
+			controller.abort();
+			return { values: ['T0'] };
+		});
+		const assistant = createLanguageLearningAssistant(fakeModel({}).sendRequest, { runJob });
+
+		await expect(assistant.translateTranscript(['A'], 'Simplified Chinese', undefined, controller.signal))
+			.rejects.toBeInstanceOf(RequestCancelledError);
+		await expect(assistant.annotateJapaneseTranscript(['日本'], undefined, controller.signal))
+			.rejects.toBeInstanceOf(RequestCancelledError);
 		expect(calls).toHaveLength(1);
-		expect(checkpoint).toEqual([[{ text: '日本語', reading: 'にほんご' }]]);
-		expect(clear).not.toHaveBeenCalled();
 	});
 
-	test('resumes Japanese readings by requesting only segments without a complete checkpoint', async () => {
-		const segments = ['日本', '語', '勉強'];
-		const checkpoints: TranscriptReadingCheckpointStore = {
-			load: async () => [
-				[{ text: '日本', reading: 'にほん' }],
-				[{ text: '語', reading: '' }],
-				[]
-			],
-			save: vi.fn(),
-			clear: vi.fn()
-		};
-		const { sendRequest, calls } = fakeModel({
-			reading: input => input.segments.map(({ id, text }) => ({ id, tokens: [{ text, reading: 'よみ' }] }))
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest, { japaneseReadingCheckpoints: checkpoints });
+	test('an empty transcript needs no job', async () => {
+		const { runJob, calls } = fakeJobs(() => ({ values: [] }));
+		const assistant = createLanguageLearningAssistant(fakeModel({}).sendRequest, { runJob });
 
-		const readings = await assistant.annotateJapaneseTranscript(segments);
-
-		expect(calls.map(idsOf)).toEqual([[1, 2]]);
-		expect(readings).toEqual([
-			[{ text: '日本', reading: 'にほん' }],
-			[{ text: '語', reading: 'よみ' }],
-			[{ text: '勉強', reading: 'よみ' }]
-		]);
+		await expect(assistant.translateTranscript([], 'Simplified Chinese')).resolves.toEqual([]);
+		await expect(assistant.annotateJapaneseTranscript([])).resolves.toEqual([]);
+		expect(calls).toHaveLength(0);
 	});
 
-	test('long transcripts are translated in bounded provider requests', async () => {
-		const { sendRequest, calls } = fakeModel({
-			translate: input => input.segments.map(({ id }) => ({ id, text: id === 0 ? '第一段' : '第二段' }))
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest);
+	test('transcript tasks need a job runner', async () => {
+		const assistant = createLanguageLearningAssistant(fakeModel({}).sendRequest);
 
-		const translations = await assistant.translateTranscript(
-			['A'.repeat(3500), 'B'.repeat(3500)],
-			'Simplified Chinese'
-		);
-
-		expect({
-			translations,
-			ids: calls.map(idsOf),
-			maxTokens: calls.map(call => (call.input as AiTaskInput<'translate'>).maxTokens)
-		}).toEqual({
-			translations: ['第一段', '第二段'],
-			ids: [[0], [1]],
-			// ceil(3500 * 1.2 + 1 segment * 15)
-			maxTokens: [4215, 4215]
-		});
-	});
-
-	test('packs atomic segments greedily under the prompt limit and isolates an oversized segment', async () => {
-		const limit = 400;
-		const segments = [
-			...Array.from({ length: 6 }, (_value, index) => `Short segment number ${index}.`),
-			'X'.repeat(600),
-			...Array.from({ length: 4 }, (_value, index) => `Tail segment ${index}.`)
-		];
-		const { sendRequest, calls } = fakeModel({ translate: translateEach });
-		const assistant = createLanguageLearningAssistant(sendRequest, { transcriptTranslationPromptCharLimit: limit });
-
-		const translations = await assistant.translateTranscript(segments, 'Simplified Chinese');
-
-		const segmentLength = (segment: TranscriptSegment) => JSON.stringify(segment).length + 1;
-		const groupLength = (group: TranscriptSegment[]) => TRANSLATION_INSTRUCTION.length
-			+ group.reduce((total, segment) => total + segmentLength(segment), 0);
-		const groups = calls.map(segmentsOf);
-
-		expect(translations).toEqual(segments.map((_segment, id) => `T${id}`));
-		expect(groups.length).toBeGreaterThan(2);
-		// Every segment is sent once, whole, in source order, with its source index as id.
-		expect(groups.flat()).toEqual(segments.map((text, id) => ({ id, text })));
-		for (const group of groups) {
-			if (group.length > 1) expect(groupLength(group)).toBeLessThanOrEqual(limit);
-		}
-		// Greedy: the next group's first segment would not have fit in the previous group.
-		groups.slice(1).forEach((group, index) => {
-			expect(groupLength(groups[index]) + segmentLength(group[0])).toBeGreaterThan(limit);
-		});
-		expect(groups.find(group => group.some(segment => segment.id === 6))).toEqual([
-			{ id: 6, text: 'X'.repeat(600) }
-		]);
-	});
-
-	test('reports translation progress for sequential batches', async () => {
-		const progress: TranscriptTranslationProgress[] = [];
-		const { sendRequest } = fakeModel({
-			translate: input => input.segments.map(({ id }) => ({ id, text: id === 0 ? '第一段' : '第二段' }))
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest);
-		const segments = ['A'.repeat(3500), 'B'.repeat(3500)];
-
-		await assistant.translateTranscript(segments, 'Simplified Chinese', next => progress.push(next));
-
-		expect(progress).toEqual([
-			{ completed: 0, total: 2, translations: ['', ''] },
-			{ completed: 1, total: 2, translations: ['第一段', ''] },
-			{ completed: 2, total: 2, translations: ['第一段', '第二段'] }
-		]);
-	});
-
-	test('resumes translation from an asynchronous checkpoint and saves each completed batch', async () => {
-		const checkpoints = memoryTranslationCheckpoints(['第一段', '']);
-		const { sendRequest, calls } = fakeModel({ translate: () => [{ id: 1, text: '第二段' }] });
-		const assistant = createLanguageLearningAssistant(sendRequest, {
-			transcriptTranslationCheckpoints: checkpoints.store
-		});
-		const progress: TranscriptTranslationProgress[] = [];
-
-		const translations = await assistant.translateTranscript(
-			['First.', 'Second.'],
-			'Simplified Chinese',
-			next => progress.push(next)
-		);
-
-		expect(translations).toEqual(['第一段', '第二段']);
-		expect(calls).toHaveLength(1);
-		expect(segmentsOf(calls[0])).toEqual([{ id: 1, text: 'Second.' }]);
-		expect(checkpoints.store.save).toHaveBeenCalledWith(
-			['First.', 'Second.'],
-			['第一段', '第二段']
-		);
-		expect(progress).toEqual([
-			{ completed: 0, total: 1, translations: ['第一段', ''] },
-			{ completed: 1, total: 1, translations: ['第一段', '第二段'] }
-		]);
-	});
-
-	test('ignores reply items for segments that were not requested', async () => {
-		const checkpoints = memoryTranslationCheckpoints(['第一段', '']);
-		const { sendRequest } = fakeModel({
-			translate: () => [{ id: 0, text: 'overwritten' }, { id: 1, text: '第二段' }, { id: 5, text: 'extra' }]
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest, {
-			transcriptTranslationCheckpoints: checkpoints.store
-		});
-
-		await expect(assistant.translateTranscript(['First.', 'Second.'], 'Simplified Chinese'))
-			.resolves.toEqual(['第一段', '第二段']);
-
-		const reading = fakeModel({
-			reading: () => [
-				{ id: 0, tokens: [{ text: '今日', reading: 'こんにち' }] },
-				{ id: 1, tokens: [{ text: '日本', reading: 'にほん' }] }
-			]
-		});
-		const readings = await createLanguageLearningAssistant(reading.sendRequest, {
-			japaneseReadingCheckpoints: {
-				load: async () => [[{ text: '今日', reading: 'きょう' }], []],
-				save: vi.fn(),
-				clear: vi.fn()
-			}
-		}).annotateJapaneseTranscript(['今日', '日本']);
-		expect(readings).toEqual([[{ text: '今日', reading: 'きょう' }], [{ text: '日本', reading: 'にほん' }]]);
-	});
-
-	test('a rejected group stops the transcript job and keeps earlier groups checkpointed', async () => {
-		const checkpoints = memoryTranslationCheckpoints();
-		const badResponse = new AiError('bad-response', { detail: 'segments were not an array' });
-		const { sendRequest, calls } = fakeModel({
-			translate: (input, callIndex) => {
-				if (callIndex === 1) throw badResponse;
-				return translateEach(input);
-			}
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest, {
-			transcriptTranslationCheckpoints: checkpoints.store
-		});
-		const segments = ['A'.repeat(3500), 'B'.repeat(3500), 'C'.repeat(3500)];
-		const progress: TranscriptTranslationProgress[] = [];
-
-		await expect(assistant.translateTranscript(segments, 'Simplified Chinese', next => progress.push(next)))
-			.rejects.toBe(badResponse);
-
-		expect(calls.map(idsOf)).toEqual([[0], [1]]);
-		expect(checkpoints.current()).toEqual(['T0', '', '']);
-		expect(progress[progress.length - 1]).toEqual({ completed: 1, total: 3, translations: ['T0', '', ''] });
-
-		const translations = await assistant.translateTranscript(segments, 'Simplified Chinese');
-
-		expect(translations).toEqual(['T0', 'T1', 'T2']);
-		expect(calls.slice(2).map(idsOf)).toEqual([[1], [2]]);
-	});
-
-	test('a rejected Japanese reading group stops the job and keeps earlier groups checkpointed', async () => {
-		let checkpoint: TranscriptReadingSegments | undefined;
-		const checkpoints: TranscriptReadingCheckpointStore = {
-			load: async () => checkpoint,
-			save: async (_segments, readings) => {
-				checkpoint = readings;
-			},
-			clear: async () => {
-				checkpoint = undefined;
-			}
-		};
-		const segments = ['日'.repeat(600), '本'.repeat(600)];
-		const { sendRequest, calls } = fakeModel({
-			reading: (input, callIndex) => {
-				if (callIndex === 1) throw new AiError('bad-response');
-				return input.segments.map(({ id, text }) => ({ id, tokens: [{ text, reading: 'ひ' }] }));
-			}
-		});
-		const assistant = createLanguageLearningAssistant(sendRequest, {
-			japaneseReadingPromptCharLimit: 1000,
-			japaneseReadingCheckpoints: checkpoints
-		});
-
-		await expect(assistant.annotateJapaneseTranscript(segments)).rejects.toBeInstanceOf(AiError);
-		expect(checkpoint).toEqual([[{ text: segments[0], reading: 'ひ' }], []]);
-
-		const readings = await assistant.annotateJapaneseTranscript(segments);
-
-		expect(isCompleteTranscriptReadings(readings, segments)).toBe(true);
-		expect(calls.map(idsOf)).toEqual([[0], [1], [1]]);
-	});
-
-	test('stops before the next transcript batch when cancelled', async () => {
-		const abortController = new AbortController();
-		const { sendRequest, calls } = fakeModel({ translate: () => [] });
-		const assistant = createLanguageLearningAssistant(sendRequest);
-
-		await expect(assistant.translateTranscript(
-			['A'.repeat(3500), 'B'.repeat(3500)],
-			'Simplified Chinese',
-			next => {
-				if (next.completed === 1) abortController.abort();
-			},
-			abortController.signal
-		)).rejects.toBeInstanceOf(RequestCancelledError);
-
-		expect(calls).toHaveLength(1);
-		expect(calls[0].signal).toBe(abortController.signal);
+		await expect(assistant.translateTranscript(['A'], 'Simplified Chinese')).rejects.toThrow('background job runner');
 	});
 
 	test('AI edits replace only the selected clipped text', () => {

@@ -1,16 +1,19 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { Settings } from '../types/types';
 import { AiError } from '../ai/errors';
+import { transcriptJobId, type TranscriptJobIdentity, type TranscriptJobTask } from '../ai/job-identity';
+import type { TranscriptSegment } from '../ai/contracts';
 import { RequestCancelledError } from './request-cancellation';
-import type { AiTaskInput } from '../ai/contracts';
 
 const mocks = vi.hoisted(() => ({
 	loadSettings: vi.fn(),
 	runAiTask: vi.fn(),
-	storageSessionGet: vi.fn(),
-	storageSessionSet: vi.fn(),
-	storageSessionRemove: vi.fn(),
-	storageSessionState: {} as Record<string, unknown>,
+	runTranscriptJob: vi.fn(),
+	loadTranscriptCheckpoint: vi.fn(),
+	saveTranscriptCheckpoint: vi.fn(),
+	clearTranscriptCheckpoint: vi.fn(),
+	// The model behind the fake background job: answers the ids the job still needs.
+	executeJob: vi.fn(),
 	storageLocalGet: vi.fn(),
 	storageLocalSet: vi.fn(),
 	storageLocalState: {} as Record<string, unknown>,
@@ -23,11 +26,6 @@ vi.mock('./browser-polyfill', () => ({
 	default: {
 		runtime: {},
 		storage: {
-			session: {
-				get: mocks.storageSessionGet,
-				set: mocks.storageSessionSet,
-				remove: mocks.storageSessionRemove
-			},
 			local: {
 				get: mocks.storageLocalGet,
 				set: mocks.storageLocalSet
@@ -36,6 +34,13 @@ vi.mock('./browser-polyfill', () => ({
 	}
 }));
 vi.mock('../ai/client', () => ({ runAiTask: mocks.runAiTask }));
+vi.mock('../ai/job-client', async importOriginal => ({
+	...await importOriginal<typeof import('../ai/job-client')>(),
+	runTranscriptJob: mocks.runTranscriptJob,
+	loadTranscriptCheckpoint: mocks.loadTranscriptCheckpoint,
+	saveTranscriptCheckpoint: mocks.saveTranscriptCheckpoint,
+	clearTranscriptCheckpoint: mocks.clearTranscriptCheckpoint
+}));
 vi.mock('./storage-utils', () => ({
 	loadSettings: mocks.loadSettings,
 	saveSettings: mocks.saveSettings
@@ -44,6 +49,7 @@ vi.mock('./clipboard-utils', () => ({ copyToClipboard: mocks.copyToClipboard }))
 vi.mock('./obsidian-note-creator', () => ({ saveToObsidian: mocks.saveToObsidian }));
 vi.mock('./i18n', () => ({ getMessage: (key: string) => key }));
 
+import { withJobAttempts } from '../ai/job-client';
 import { configuredLanguageLearning } from './language-learning-runtime';
 import type { TranscriptReadingProgress } from './language-learning';
 
@@ -104,10 +110,103 @@ function aiResult(output: unknown, connectionKind = 'openai-compatible') {
 	return { output, connectionKind };
 }
 
-type SegmentsInput = AiTaskInput<'translate'>;
+type JobValue = string | Array<{ text: string; reading: string }>;
 
-function idsOf(input: SegmentsInput): number[] {
-	return input.segments.map(segment => segment.id);
+interface FakeJobRecord {
+	task: TranscriptJobTask;
+	status: 'running' | 'completed' | 'incomplete' | 'failed';
+	values: JobValue[];
+}
+
+// A stand-in for the background gateway: records by job id, reuse of earlier results, and one
+// executeJob call for the segments still missing, with values aligned like the real client.
+const records = new Map<string, FakeJobRecord>();
+
+function isEmptySource(task: TranscriptJobTask, text: string): boolean {
+	return task === 'reading' ? text === '' : text.trim() === '';
+}
+
+function hasValue(value: JobValue | undefined): boolean {
+	return Array.isArray(value) ? value.length > 0 : Boolean(value?.trim());
+}
+
+function emptyValue(task: TranscriptJobTask): JobValue {
+	return task === 'translate' ? '' : [];
+}
+
+function isDone(task: TranscriptJobTask, segments: TranscriptSegment[], values: JobValue[]): boolean {
+	return segments.every(({ id, text }) => isEmptySource(task, text) || hasValue(values[id]));
+}
+
+function installFakeJobGateway() {
+	records.clear();
+	mocks.runTranscriptJob.mockImplementation(async (
+		task: TranscriptJobTask,
+		input: { instruction: string; segments: TranscriptSegment[]; identity: TranscriptJobIdentity },
+		options: { signal?: AbortSignal; onProgress?: (progress: unknown) => void } = {}
+	) => {
+		const id = transcriptJobId(task, input.identity, input.segments);
+		const values = input.segments.map(({ id: index }) => records.get(id)?.values[index] ?? emptyValue(task));
+		const missing = input.segments.filter(({ id: index, text }) => !isEmptySource(task, text) && !hasValue(values[index]));
+		const report = (completedGroups: number) => options.onProgress?.({
+			completedGroups,
+			totalGroups: missing.length > 0 ? 1 : 0,
+			completedSegments: input.segments.filter(({ id: index, text }) => isEmptySource(task, text) || hasValue(values[index])).length,
+			totalSegments: input.segments.length,
+			values: values.map(value => (Array.isArray(value) ? value.map(token => ({ ...token })) : value))
+		});
+		report(0);
+		if (missing.length > 0) {
+			let items: Array<{ id: number; text?: string; tokens?: JobValue }>;
+			try {
+				items = await mocks.executeJob(task, { instruction: input.instruction, segments: missing }, options);
+			} catch (error) {
+				records.set(id, { task, status: 'failed', values });
+				throw error;
+			}
+			for (const item of items) {
+				if (missing.some(segment => segment.id === item.id)) values[item.id] = (item.text ?? item.tokens) as JobValue;
+			}
+			report(1);
+		}
+		const status = isDone(task, input.segments, values) ? 'completed' : 'incomplete';
+		records.set(id, { task, status, values });
+		return { status, values, results: [], attempts: { requests: missing.length > 0 ? 1 : 0, retries: 0, splits: 0 } };
+	});
+	mocks.loadTranscriptCheckpoint.mockImplementation(async (
+		task: TranscriptJobTask,
+		identity: TranscriptJobIdentity,
+		segments: TranscriptSegment[]
+	) => {
+		const record = records.get(transcriptJobId(task, identity, segments));
+		return record ? { status: record.status, values: [...record.values], completedSegments: 0, totalSegments: segments.length } : undefined;
+	});
+	mocks.saveTranscriptCheckpoint.mockImplementation(async (
+		task: TranscriptJobTask,
+		identity: TranscriptJobIdentity,
+		segments: TranscriptSegment[],
+		values: JobValue[]
+	) => {
+		records.set(transcriptJobId(task, identity, segments), {
+			task,
+			status: isDone(task, segments, values) ? 'completed' : 'incomplete',
+			values: [...values]
+		});
+		return true;
+	});
+	mocks.clearTranscriptCheckpoint.mockImplementation(async (
+		task: TranscriptJobTask,
+		identity: TranscriptJobIdentity,
+		segments: TranscriptSegment[]
+	) => records.delete(transcriptJobId(task, identity, segments)));
+}
+
+function segmentsOf(texts: string[]): TranscriptSegment[] {
+	return texts.map((text, id) => ({ id, text }));
+}
+
+function requestedIds(): number[][] {
+	return mocks.executeJob.mock.calls.map(call => (call[1] as { segments: TranscriptSegment[] }).segments.map(segment => segment.id));
 }
 
 // Mirrors what toAiError builds from a Host NativeCliExecutionError timeout.
@@ -119,31 +218,24 @@ function cliTimeout(mode: string, seconds: number) {
 	});
 }
 
+const READINGS = { namespace: 'japanese-readings', scope: 'shared' };
+
 describe('Configured language learning runtime', () => {
 	beforeEach(() => {
 		mocks.loadSettings.mockReset();
 		mocks.runAiTask.mockReset();
-		mocks.storageSessionGet.mockReset();
-		mocks.storageSessionSet.mockReset();
-		mocks.storageSessionRemove.mockReset();
+		mocks.runTranscriptJob.mockReset();
+		mocks.loadTranscriptCheckpoint.mockReset();
+		mocks.saveTranscriptCheckpoint.mockReset();
+		mocks.clearTranscriptCheckpoint.mockReset();
+		mocks.executeJob.mockReset();
 		mocks.storageLocalGet.mockReset();
 		mocks.storageLocalSet.mockReset();
 		mocks.saveSettings.mockReset();
 		mocks.copyToClipboard.mockReset();
 		mocks.saveToObsidian.mockReset();
-		Object.keys(mocks.storageSessionState).forEach(key => delete mocks.storageSessionState[key]);
 		Object.keys(mocks.storageLocalState).forEach(key => delete mocks.storageLocalState[key]);
-		mocks.storageSessionGet.mockImplementation(async (key?: string | string[] | null) => {
-			if (key == null) return { ...mocks.storageSessionState };
-			const keys = Array.isArray(key) ? key : [key];
-			return Object.fromEntries(keys.map(item => [item, mocks.storageSessionState[item]]));
-		});
-		mocks.storageSessionSet.mockImplementation(async (values: Record<string, unknown>) => {
-			Object.assign(mocks.storageSessionState, values);
-		});
-		mocks.storageSessionRemove.mockImplementation(async (key: string | string[]) => {
-			(Array.isArray(key) ? key : [key]).forEach(item => delete mocks.storageSessionState[item]);
-		});
+		installFakeJobGateway();
 		mocks.storageLocalGet.mockImplementation(async (key: string) => ({
 			[key]: mocks.storageLocalState[key]
 		}));
@@ -177,6 +269,13 @@ describe('Configured language learning runtime', () => {
 		const translations = await configuredLanguageLearning.translateTranscript(['Hello.']);
 
 		expect(translations).toEqual(['你好。']);
+		expect(mocks.saveTranscriptCheckpoint).toHaveBeenCalledWith(
+			'translate',
+			{ namespace: 'translations', scope: 'shared:Simplified Chinese' },
+			[{ id: 0, text: 'Hello.' }],
+			['你好。']
+		);
+		expect(mocks.executeJob).not.toHaveBeenCalled();
 		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
@@ -186,11 +285,10 @@ describe('Configured language learning runtime', () => {
 			...settings,
 			interpreterEnabled: false
 		});
-		mocks.runAiTask.mockClear();
 
 		await expect(configuredLanguageLearning.loadTranscriptTranslations(['Hello.']))
 			.resolves.toEqual(['你好。']);
-		expect(mocks.runAiTask).not.toHaveBeenCalled();
+		expect(mocks.runTranscriptJob).not.toHaveBeenCalled();
 	});
 
 	test('reuses completed transcript work after an explicit engine switch', async () => {
@@ -206,20 +304,47 @@ describe('Configured language learning runtime', () => {
 
 		await expect(configuredLanguageLearning.translateTranscript(['Hello.']))
 			.resolves.toEqual(['你好。']);
+		expect(mocks.executeJob).not.toHaveBeenCalled();
+	});
+
+	test('translates a transcript as one background job under the response-language scope', async () => {
+		mocks.executeJob.mockImplementation(async (_task: string, input: { segments: TranscriptSegment[] }) => (
+			input.segments.map(({ id }) => ({ id, text: `T${id}` }))
+		));
+		const progress: unknown[] = [];
+
+		await expect(configuredLanguageLearning.translateTranscript(['A', 'B'], next => progress.push(next)))
+			.resolves.toEqual(['T0', 'T1']);
+
+		expect(mocks.runTranscriptJob).toHaveBeenCalledOnce();
+		expect(mocks.runTranscriptJob).toHaveBeenCalledWith(
+			'translate',
+			{
+				instruction: expect.stringContaining('Translate each transcript segment into Simplified Chinese.'),
+				segments: [{ id: 0, text: 'A' }, { id: 1, text: 'B' }],
+				identity: { namespace: 'translations', scope: 'shared:Simplified Chinese' }
+			},
+			expect.objectContaining({ onProgress: expect.any(Function), onRetry: expect.any(Function) })
+		);
+		expect(progress).toEqual([
+			{ completed: 0, total: 1, translations: ['', ''] },
+			{ completed: 1, total: 1, translations: ['T0', 'T1'] }
+		]);
 		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
 	test('translates transcript to fixed Japanese without colliding with the configured response language', async () => {
-		mocks.runAiTask.mockResolvedValue(aiResult([{ id: 0, text: 'こんにちは、世界。' }]));
+		mocks.executeJob.mockResolvedValue([{ id: 0, text: 'こんにちは、世界。' }]);
 
 		await expect(configuredLanguageLearning.translateTranscriptToJapanese(['Hello world.']))
 			.resolves.toEqual(['こんにちは、世界。']);
 
-		expect(mocks.runAiTask).toHaveBeenCalledWith(
+		expect(mocks.runTranscriptJob).toHaveBeenCalledWith(
 			'translate',
 			expect.objectContaining({
 				instruction: expect.stringContaining('Translate each transcript segment into Japanese.'),
-				segments: [{ id: 0, text: 'Hello world.' }]
+				segments: [{ id: 0, text: 'Hello world.' }],
+				identity: { namespace: 'translations', scope: 'japanese-readings:Japanese' }
 			}),
 			expect.anything()
 		);
@@ -238,25 +363,49 @@ describe('Configured language learning runtime', () => {
 			}
 		});
 		await configuredLanguageLearning.saveTranscriptTranslations(['Hello world.'], ['手動の普通訳。']);
-		mocks.runAiTask.mockResolvedValue(aiResult([{ id: 0, text: '固定の日本語訳。' }]));
-		mocks.runAiTask.mockClear();
+		mocks.executeJob.mockResolvedValue([{ id: 0, text: '固定の日本語訳。' }]);
 
 		await expect(configuredLanguageLearning.translateTranscriptToJapanese(['Hello world.']))
 			.resolves.toEqual(['固定の日本語訳。']);
-		expect(mocks.runAiTask).toHaveBeenCalledOnce();
+		expect(mocks.executeJob).toHaveBeenCalledOnce();
 		await expect(configuredLanguageLearning.loadTranscriptTranslations(['Hello world.']))
 			.resolves.toEqual(['手動の普通訳。']);
 	});
 
 	test('loads saved Japanese transcript translation without an enabled Interpreter', async () => {
-		mocks.runAiTask.mockResolvedValue(aiResult([{ id: 0, text: '日本語です。' }]));
+		mocks.executeJob.mockResolvedValue([{ id: 0, text: '日本語です。' }]);
 		await configuredLanguageLearning.translateTranscriptToJapanese(['This is Japanese.']);
 		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterEnabled: false });
-		mocks.runAiTask.mockClear();
+		mocks.runTranscriptJob.mockClear();
 
 		await expect(configuredLanguageLearning.loadJapaneseTranscriptTranslations(['This is Japanese.']))
 			.resolves.toEqual(['日本語です。']);
-		expect(mocks.runAiTask).not.toHaveBeenCalled();
+		expect(mocks.runTranscriptJob).not.toHaveBeenCalled();
+	});
+
+	test('restores only completed records and never starts or resumes a job', async () => {
+		const segments = ['Hello.', 'Bye.'];
+		const id = transcriptJobId('translate', { namespace: 'translations', scope: 'shared:Simplified Chinese' }, segmentsOf(segments));
+		for (const status of ['running', 'incomplete', 'failed'] as const) {
+			records.set(id, { task: 'translate', status, values: ['你好。', '再见。'] });
+			await expect(configuredLanguageLearning.loadTranscriptTranslations(segments)).resolves.toBeUndefined();
+		}
+		records.set(id, { task: 'translate', status: 'completed', values: ['你好。', '再见。'] });
+		await expect(configuredLanguageLearning.loadTranscriptTranslations(segments)).resolves.toEqual(['你好。', '再见。']);
+
+		mocks.loadTranscriptCheckpoint.mockRejectedValue(new AiError('network'));
+		await expect(configuredLanguageLearning.loadTranscriptTranslations(segments)).resolves.toBeUndefined();
+		await expect(configuredLanguageLearning.loadJapaneseTranscriptTranslations(segments)).resolves.toBeUndefined();
+		await expect(configuredLanguageLearning.loadJapaneseReadings(['日本語'])).resolves.toBeUndefined();
+		expect(mocks.runTranscriptJob).not.toHaveBeenCalled();
+		expect(mocks.executeJob).not.toHaveBeenCalled();
+	});
+
+	test('a completed translation counts blank source segments as complete', async () => {
+		await configuredLanguageLearning.saveTranscriptTranslations(['Hello.', ''], ['你好。', '']);
+
+		await expect(configuredLanguageLearning.loadTranscriptTranslations(['Hello.', '']))
+			.resolves.toEqual(['你好。', '']);
 	});
 
 	test('clears a saved Japanese reading before explicit regeneration', async () => {
@@ -265,16 +414,24 @@ describe('Configured language learning runtime', () => {
 			{ text: '日本語', reading: 'にほんご' }
 		]]);
 		await configuredLanguageLearning.clearJapaneseReadings(segments);
-		mocks.runAiTask.mockResolvedValue(aiResult([{ id: 0, tokens: [{ text: '日本語', reading: 'にっぽんご' }] }]));
+		mocks.executeJob.mockResolvedValue([{ id: 0, tokens: [{ text: '日本語', reading: 'にっぽんご' }] }]);
 
 		await expect(configuredLanguageLearning.annotateJapaneseTranscript(segments)).resolves.toEqual([[
 			{ text: '日本語', reading: 'にっぽんご' }
 		]]);
-		expect(mocks.runAiTask).toHaveBeenCalledWith(
-			'reading',
-			expect.objectContaining({ segments: [{ id: 0, text: '日本語' }] }),
-			expect.anything()
-		);
+		expect(mocks.clearTranscriptCheckpoint).toHaveBeenCalledWith('reading', READINGS, [{ id: 0, text: '日本語' }]);
+		expect(requestedIds()).toEqual([[0]]);
+	});
+
+	test('regeneration also clears the job of the subset the personal dictionary leaves unresolved', async () => {
+		await configuredLanguageLearning.saveJapaneseReadingOverride('日本語', 'にほんご');
+
+		await configuredLanguageLearning.clearJapaneseReadings(['日本語です。', '漢字']);
+
+		expect(mocks.clearTranscriptCheckpoint.mock.calls).toEqual([
+			['reading', READINGS, [{ id: 0, text: '日本語です。' }, { id: 1, text: '漢字' }]],
+			['reading', READINGS, [{ id: 0, text: '漢字' }]]
+		]);
 	});
 
 	test('loads saved Japanese readings without requiring an enabled Interpreter', async () => {
@@ -285,11 +442,34 @@ describe('Configured language learning runtime', () => {
 			...settings,
 			interpreterEnabled: false
 		});
-		mocks.runAiTask.mockClear();
 
 		await expect(configuredLanguageLearning.loadJapaneseReadings(segments))
 			.resolves.toEqual(readings);
-		expect(mocks.runAiTask).not.toHaveBeenCalled();
+		expect(mocks.runTranscriptJob).not.toHaveBeenCalled();
+	});
+
+	test('saving readings is a checkpoint of the full set under the shared readings identity', async () => {
+		const segments = ['日本語', ''];
+		const readings = [[{ text: '日本語', reading: 'にほんご' }], []];
+
+		await configuredLanguageLearning.saveJapaneseReadings(segments, readings);
+
+		expect(mocks.saveTranscriptCheckpoint).toHaveBeenCalledWith(
+			'reading',
+			READINGS,
+			[{ id: 0, text: '日本語' }, { id: 1, text: '' }],
+			readings
+		);
+		await expect(configuredLanguageLearning.loadJapaneseReadings(segments)).resolves.toEqual(readings);
+	});
+
+	test('a refused or failed save stays silent', async () => {
+		mocks.saveTranscriptCheckpoint.mockRejectedValue(new AiError('network'));
+
+		await expect(configuredLanguageLearning.saveJapaneseReadings(['日本'], [[{ text: '日本', reading: 'にほん' }]]))
+			.resolves.toBeUndefined();
+		await expect(configuredLanguageLearning.saveTranscriptTranslations(['Hello.'], ['你好。']))
+			.resolves.toBeUndefined();
 	});
 
 	test('reuses personal Japanese readings without sending an AI request', async () => {
@@ -301,10 +481,53 @@ describe('Configured language learning runtime', () => {
 			{ text: '日本語', reading: 'にほんご' },
 			{ text: 'です。', reading: '' }
 		]]);
+		expect(mocks.runTranscriptJob).not.toHaveBeenCalled();
 		expect(mocks.runAiTask).not.toHaveBeenCalled();
 		expect(await configuredLanguageLearning.listJapaneseReadingDictionary()).toEqual([
 			expect.objectContaining({ surface: '日本語', reading: 'にほんご' })
 		]);
+	});
+
+	test('runs the reading job only on segments the dictionary leaves unresolved and merges them back', async () => {
+		await configuredLanguageLearning.saveJapaneseReadingOverride('日本語', 'にほんご');
+		mocks.executeJob.mockResolvedValue([{ id: 0, tokens: [{ text: '漢字', reading: 'かんじ' }] }]);
+		const progress: TranscriptReadingProgress[] = [];
+
+		const readings = await configuredLanguageLearning.annotateJapaneseTranscript(
+			['日本語です。', '漢字'],
+			next => progress.push(next)
+		);
+
+		expect(mocks.runTranscriptJob).toHaveBeenCalledWith(
+			'reading',
+			expect.objectContaining({ segments: [{ id: 0, text: '漢字' }], identity: READINGS }),
+			expect.anything()
+		);
+		expect(readings).toEqual([
+			[{ text: '日本語', reading: 'にほんご' }, { text: 'です。', reading: '' }],
+			[{ text: '漢字', reading: 'かんじ' }]
+		]);
+		expect(progress.map(({ readings: _readings, ...item }) => item)).toEqual([
+			{ completed: 0, total: 1, completedSegments: 1, totalSegments: 2 },
+			{ completed: 1, total: 1, completedSegments: 2, totalSegments: 2 }
+		]);
+		expect(progress[1].readings).toEqual(readings);
+	});
+
+	test('passes a retry backoff through the merged reading progress', async () => {
+		mocks.runTranscriptJob.mockImplementation(async (_task, input: { segments: TranscriptSegment[] }, options: {
+			onProgress?: (progress: unknown) => void;
+			onRetry?: (retry: unknown) => void;
+		}) => {
+			options.onProgress?.({ completedGroups: 0, totalGroups: 1, completedSegments: 0, totalSegments: 1, values: [[]] });
+			options.onRetry?.({ code: 'rate-limited', status: 429, delayMs: 4000, attempt: 1 });
+			return { status: 'completed', values: [[{ text: input.segments[0].text, reading: 'かんじ' }]] };
+		});
+		const progress: TranscriptReadingProgress[] = [];
+
+		await configuredLanguageLearning.annotateJapaneseTranscript(['漢字'], next => progress.push(next));
+
+		expect(progress[1]).toMatchObject({ completed: 0, total: 1, retry: { delayMs: 4000, attempt: 1 } });
 	});
 
 	test('stores vocabulary locally and supports copy and Obsidian note actions', async () => {
@@ -367,8 +590,8 @@ describe('Configured language learning runtime', () => {
 		);
 	});
 
-	test('sends Japanese reading work through the extension background', async () => {
-		mocks.runAiTask.mockResolvedValue(aiResult([{ id: 0, tokens: [{ text: '日本語', reading: 'にほんご' }] }]));
+	test('sends Japanese reading work through the background job', async () => {
+		mocks.executeJob.mockResolvedValue([{ id: 0, tokens: [{ text: '日本語', reading: 'にほんご' }] }]);
 
 		const progress: TranscriptReadingProgress[] = [];
 		const output = await configuredLanguageLearning.annotateJapaneseTranscript(
@@ -382,199 +605,65 @@ describe('Configured language learning runtime', () => {
 			{ completed: 1, total: 1, completedSegments: 1, totalSegments: 1 }
 		]);
 		expect(progress[1].readings).toEqual([[{ text: '日本語', reading: 'にほんご' }]]);
-		expect(mocks.storageSessionSet).toHaveBeenCalled();
-		expect(mocks.runAiTask).toHaveBeenCalledWith(
+		expect(mocks.runTranscriptJob).toHaveBeenCalledWith(
 			'reading',
-			expect.objectContaining({
+			{
 				instruction: expect.stringContaining('Annotate each Japanese transcript segment'),
-				segments: [{ id: 0, text: '日本語' }]
-			}),
+				segments: [{ id: 0, text: '日本語' }],
+				identity: READINGS
+			},
 			expect.anything()
 		);
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
-	test('uses smaller Japanese reading batches for local CLI execution', async () => {
-		mocks.loadSettings.mockResolvedValue({
-			...settings,
-			interpreterExecutionMode: 'grok'
-		});
-		const segmentA = '日'.repeat(800);
-		const segmentB = '本'.repeat(800);
-		mocks.runAiTask.mockImplementation((_task: string, input: SegmentsInput) => Promise.resolve(aiResult(
-			input.segments.map(({ id, text }) => ({ id, tokens: [{ text, reading: 'ひ' }] }))
-		)));
-		const progress: TranscriptReadingProgress[] = [];
-
-		const output = await configuredLanguageLearning.annotateJapaneseTranscript(
-			[segmentA, segmentB],
-			next => progress.push(next)
-		);
-
-		expect(output.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([800, 800]);
-		expect(output.map(tokens => tokens[0]?.reading ?? '')).toEqual(['ひ', 'ひ']);
-		expect(progress.map(({ readings: _readings, ...item }) => item)).toEqual([
-			{ completed: 0, total: 2, completedSegments: 0, totalSegments: 2 },
-			{ completed: 1, total: 2, completedSegments: 1, totalSegments: 2 },
-			{ completed: 2, total: 2, completedSegments: 2, totalSegments: 2 }
-		]);
-		expect(mocks.runAiTask).toHaveBeenCalledTimes(2);
-		expect(mocks.runAiTask.mock.calls.map(call => idsOf(call[1]))).toEqual([[0], [1]]);
-	});
-
-	test('keeps the larger Japanese reading batch for Codex CLI', async () => {
-		mocks.loadSettings.mockResolvedValue({
-			...settings,
-			interpreterExecutionMode: 'codex'
-		});
-		const segments = ['日'.repeat(800), '本'.repeat(800)];
-		mocks.runAiTask.mockImplementation((_task: string, input: SegmentsInput) => Promise.resolve(aiResult(
-			input.segments.map(({ id, text }) => ({ id, tokens: [{ text, reading: 'ひ' }] }))
-		)));
-
-		const output = await configuredLanguageLearning.annotateJapaneseTranscript(segments);
-
-		expect(output.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([800, 800]);
-		expect(mocks.runAiTask).toHaveBeenCalledTimes(1);
-		expect(mocks.runAiTask).toHaveBeenCalledWith(
-			'reading',
-			expect.objectContaining({
-				segments: [{ id: 0, text: segments[0] }, { id: 1, text: segments[1] }]
-			}),
-			expect.anything()
-		);
-	});
-
-	test('automatically reduces Codex translation batches after a timeout', async () => {
-		mocks.loadSettings.mockResolvedValue({
-			...settings,
-			interpreterExecutionMode: 'codex'
-		});
-		const segments = ['A'.repeat(2500), 'B'.repeat(2500)];
-		const requestedIds: number[][] = [];
-		let timedOut = false;
-		mocks.runAiTask.mockImplementation((_task: string, input: SegmentsInput) => {
-			const ids = idsOf(input);
-			requestedIds.push(ids);
-			if (!timedOut && ids.length === 2) {
-				timedOut = true;
-				return Promise.reject(cliTimeout('codex', 300));
-			}
-			return Promise.resolve(aiResult(input.segments.map(({ id }) => ({
-				id,
-				text: id === 0 ? '第一段' : '第二段'
-			}))));
-		});
-
-		const translations = await configuredLanguageLearning.translateTranscript(segments);
-
-		expect(translations).toEqual(['第一段', '第二段']);
-		expect(requestedIds).toEqual([[0, 1], [0], [1]]);
-	});
-
-	test('hides an exhausted local translation timeout behind a retryable error', async () => {
-		mocks.loadSettings.mockResolvedValue({
-			...settings,
-			interpreterExecutionMode: 'codex'
-		});
-		mocks.runAiTask.mockRejectedValue(cliTimeout('codex', 300));
+	test('a CLI timeout after automatic splits asks the learner to continue the remaining batches', async () => {
+		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterExecutionMode: 'codex' });
+		mocks.executeJob.mockRejectedValue(withJobAttempts(cliTimeout('codex', 300), { requests: 4, retries: 0, splits: 3 }));
 
 		await expect(configuredLanguageLearning.translateTranscript(['always fails']))
 			.rejects.toMatchObject({
 				code: 'failed',
-				message: 'readerTranscriptTranslationBatchFailed'
+				message: 'readerTranscriptTranslationBatchFailed',
+				details: expect.objectContaining({ mode: 'codex', automaticBatchRetry: true, aiCode: 'timeout' })
 			});
-		expect(mocks.runAiTask).toHaveBeenCalledTimes(4);
-		expect(mocks.runAiTask.mock.calls[3][0]).toBe('translate');
+		await expect(configuredLanguageLearning.annotateJapaneseTranscript(['漢字']))
+			.rejects.toMatchObject({
+				code: 'failed',
+				message: 'readerTranscriptTranslationBatchFailed',
+				details: expect.objectContaining({ automaticBatchRetry: true })
+			});
 	});
 
-	test('reduces Japanese reading batch size on explicit retry after a Grok timeout', async () => {
-		mocks.loadSettings.mockResolvedValue({
-			...settings,
-			interpreterExecutionMode: 'grok'
-		});
-		const segments = ['日'.repeat(500), '本'.repeat(500)];
-		const requestedIds: number[][] = [];
-		mocks.runAiTask.mockImplementation((_task: string, input: SegmentsInput) => {
-			const ids = idsOf(input);
-			requestedIds.push(ids);
-			if (ids.length === 2) {
-				return Promise.reject(cliTimeout('grok', 300));
-			}
-			return Promise.resolve(aiResult(input.segments.map(({ id, text }) => ({
-				id,
-				tokens: [{ text, reading: 'ひ' }]
-			}))));
-		});
+	test('a CLI timeout without splits keeps the localized CLI timeout card', async () => {
+		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterExecutionMode: 'grok' });
+		mocks.executeJob.mockRejectedValue(withJobAttempts(cliTimeout('grok', 120), { requests: 1, retries: 0, splits: 0 }));
 
-		await expect(configuredLanguageLearning.annotateJapaneseTranscript(segments))
-			.rejects.toThrow(/aiErrorTimeoutBody.*readerJapaneseReadingsTimeoutRetry/);
-		const readings = await configuredLanguageLearning.annotateJapaneseTranscript(segments);
+		const error = await configuredLanguageLearning.annotateJapaneseTranscript(['漢字']).catch(caught => caught);
 
-		expect(readings.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([500, 500]);
-		expect(requestedIds).toEqual([[0, 1], [0], [1]]);
+		expect(error).toMatchObject({
+			name: 'LanguageLearningRequestError',
+			code: 'timeout',
+			details: expect.objectContaining({ mode: 'grok', timeoutSeconds: 120 })
+		});
+		expect(error.details.automaticBatchRetry).toBeUndefined();
+		expect(error.message).not.toContain('readerJapaneseReadingsTimeoutRetry');
 	});
 
-	test('retries only Japanese reading segments missing after a failed batch', async () => {
-		mocks.loadSettings.mockResolvedValue({
-			...settings,
-			interpreterExecutionMode: 'grok'
-		});
-		const segments = [
-			'日'.repeat(500),
-			'本'.repeat(500),
-			'語'.repeat(500)
-		];
-		const requestedIds: number[][] = [];
-		mocks.runAiTask.mockImplementation((_task: string, input: SegmentsInput) => {
-			requestedIds.push(idsOf(input));
-			if (requestedIds.length === 2) {
-				return Promise.reject(cliTimeout('grok', 300));
-			}
-			// The gateway contract returns only requested ids.
-			return Promise.resolve(aiResult(input.segments.map(({ id, text }) => ({
-				id,
-				tokens: [{ text, reading: requestedIds.length === 3 ? 'にゅー' : 'ひ' }]
-			}))));
-		});
+	test('an API timeout of a transcript job is not mapped to a batch failure', async () => {
+		mocks.executeJob.mockRejectedValue(withJobAttempts(
+			new AiError('timeout', { detail: 'provider timed out' }),
+			{ requests: 1, retries: 0, splits: 0 }
+		));
 
-		await expect(configuredLanguageLearning.annotateJapaneseTranscript(segments))
-			.rejects.toThrow('aiErrorTimeoutBody');
-		const retryProgress: TranscriptReadingProgress[] = [];
-		const readings = await configuredLanguageLearning.annotateJapaneseTranscript(
-			segments,
-			next => retryProgress.push(next)
-		);
-
-		expect(readings.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([500, 500, 500]);
-		expect(requestedIds).toEqual([[0, 1], [2], [2]]);
-		expect(readings.map(tokens => tokens[0].reading)).toEqual(['ひ', 'ひ', 'にゅー']);
-		expect(retryProgress.map(({ readings: _readings, ...item }) => item)).toEqual([
-			{ completed: 0, total: 1, completedSegments: 2, totalSegments: 3 },
-			{ completed: 1, total: 1, completedSegments: 3, totalSegments: 3 }
-		]);
-	});
-
-	test('persists completed translation batches and retries only missing segments', async () => {
-		const segments = ['A'.repeat(3500), 'B'.repeat(3500)];
-		const requestedIds: number[][] = [];
-		mocks.runAiTask.mockImplementation((_task: string, input: SegmentsInput) => {
-			requestedIds.push(idsOf(input));
-			if (requestedIds.length === 2) {
-				return Promise.reject(new AiError('timeout', { detail: 'provider timed out' }));
-			}
-			return Promise.resolve(aiResult(input.segments.map(({ id }) => ({
-				id,
-				text: id === 0 ? '第一段' : '第二段'
-			}))));
-		});
-
-		await expect(configuredLanguageLearning.translateTranscript(segments))
+		await expect(configuredLanguageLearning.translateTranscript(['A']))
 			.rejects.toMatchObject({ code: 'failed', message: 'aiErrorTimeoutBody' });
-		const translations = await configuredLanguageLearning.translateTranscript(segments);
+	});
 
-		expect(translations).toEqual(['第一段', '第二段']);
-		expect(requestedIds).toEqual([[0], [1], [1]]);
-		expect(mocks.storageSessionSet).toHaveBeenCalled();
+	test('a cancelled transcript job surfaces as RequestCancelledError', async () => {
+		mocks.executeJob.mockRejectedValue(new AiError('cancelled'));
+
+		await expect(configuredLanguageLearning.translateTranscript(['A'])).rejects.toBeInstanceOf(RequestCancelledError);
 	});
 
 	test('passes the abort signal to the AI gateway and surfaces cancellation', async () => {

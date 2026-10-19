@@ -64,39 +64,68 @@ export function createYouTubeTranscriptFixtureHtml(title, code) {
 </body></html>`;
 }
 
-const checkpointPrefix = 'languageLearningTranscriptCheckpointV1:';
+// Reader restore reads completed transcript job records from storage.session through the `ai`
+// Port. Keep the key prefixes, record shape, and hash in sync with src/ai/job-store.ts and
+// src/ai/job-identity.ts.
+const jobKeyPrefix = 'aiJob:';
+const jobInputKeyPrefix = 'aiJobInput:';
 
-function hashText(value) {
-	let hash = 2166136261;
-	for (let index = 0; index < value.length; index += 1) {
-		hash ^= value.charCodeAt(index);
-		hash = Math.imul(hash, 16777619);
+// cyrb53 (public domain, bryc), copied from src/ai/job-identity.ts.
+function cyrb53(text, seed = 0) {
+	let h1 = 0xdeadbeef ^ seed;
+	let h2 = 0x41c6ce57 ^ seed;
+	for (let index = 0; index < text.length; index += 1) {
+		const char = text.charCodeAt(index);
+		h1 = Math.imul(h1 ^ char, 2654435761);
+		h2 = Math.imul(h2 ^ char, 1597334677);
 	}
-	return (hash >>> 0).toString(36);
+	h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+	h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+	h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+	h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+	return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 
-function checkpointEntry(namespace, scope, value) {
-	const id = `${namespace}:${hashText(JSON.stringify([scope, transcriptSegments]))}`;
+function hashSegments(scope, texts) {
+	return cyrb53(JSON.stringify([scope, texts])).toString(36);
+}
+
+function completedJobEntry(task, namespace, scope, values) {
+	const segmentHash = hashSegments(scope, transcriptSegments);
+	const id = `job:${task}:${namespace}:${segmentHash}`;
+	const now = Date.now();
 	return {
-		[`${checkpointPrefix}${id}`]: {
+		[`${jobKeyPrefix}${id}`]: {
+			v: 1,
 			id,
-			namespace,
-			scope,
-			segments: [...transcriptSegments],
-			value,
-			updatedAt: Date.now()
+			task,
+			identity: { namespace, scope },
+			segmentCount: transcriptSegments.length,
+			segmentHash,
+			status: 'completed',
+			results: Object.fromEntries(values.map((value, index) => [String(index), value])),
+			attempts: { requests: 1, retries: 0, splits: 0 },
+			createdAt: now,
+			updatedAt: now
+		},
+		[`${jobInputKeyPrefix}${id}`]: {
+			instruction: '',
+			segments: [...transcriptSegments]
 		}
 	};
 }
 
+/** Completed translation and reading jobs for the fixture transcript, keyed as the job store writes them. */
 export function createTranscriptCheckpointState() {
 	return {
-		...checkpointEntry(
+		...completedJobEntry(
+			'translate',
 			'translations',
 			'shared:Simplified Chinese',
 			[...transcriptTranslations]
 		),
-		...checkpointEntry(
+		...completedJobEntry(
+			'reading',
 			'japanese-readings',
 			'shared',
 			transcriptReadings.map(tokens => tokens.map(token => ({ ...token })))

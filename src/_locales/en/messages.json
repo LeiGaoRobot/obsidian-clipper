@@ -1092,11 +1092,11 @@
 	"readerJapaneseTranslationProgress": {
 		"message": "Translating to Japanese ($1/$2)…"
 	},
-	"readerJapaneseReadingsTimeoutRetry": {
-		"message": "Completed segments were kept. Retry will continue with smaller batches."
-	},
 	"readerTranscriptTranslationBatchFailed": {
 		"message": "Some transcript batches could not be completed. Retry to continue."
+	},
+	"readerTranscriptRetrying": {
+		"message": "Provider busy, retrying in $1 s…"
 	},
 	"readerAiCancelled": {
 		"message": "AI request cancelled."
