@@ -939,12 +939,6 @@
 	"interpreter": {
 		"message": "解释器"
 	},
-	"interpreterExecutionMode": {
-		"message": "执行模式"
-	},
-	"interpreterExecutionModeApi": {
-		"message": "API 提供商"
-	},
 	"interpreterExecutionModeCodex": {
 		"message": "Codex CLI"
 	},
@@ -1243,30 +1237,6 @@
 	"readerBilingualSubtitlesRestoreDescription": {
 		"message": "已有完整翻译时自动显示；缺失内容不会自动调用 AI 生成。"
 	},
-	"readerCliConfig": {
-		"message": "$1 尚未配置，请检查本机 Host 配置后重试。"
-	},
-	"readerCliFailed": {
-		"message": "$1 未能完成此任务。你可以重试或切换执行模式。"
-	},
-	"readerCliInvalid": {
-		"message": "$1 请求无效。请重新构建扩展并重装 Native Messaging Host。"
-	},
-	"readerCliLaunchFailed": {
-		"message": "无法启动 $1，请确认它已安装并完成登录。"
-	},
-	"readerCliProtocolMismatch": {
-		"message": "扩展与 Native Messaging Host 版本不一致，请重新安装 Host。"
-	},
-	"readerCliResponseTooLarge": {
-		"message": "$1 返回的数据过多，请选择更小的字幕范围重试。"
-	},
-	"readerCliTimeout": {
-		"message": "$1 在 $2 秒内未完成。已保留完成的字幕段。"
-	},
-	"readerCliUnavailable": {
-		"message": "$1 不可用，请检查 Native Messaging Host 和 CLI 安装。"
-	},
 	"readerBlendImages": {
 		"message": "融合图片"
 	},
@@ -1387,9 +1357,6 @@
 	"readerRegenerateReadingsConfirm": {
 		"message": "要重新生成日语读音吗？这会再次发起 AI 请求。"
 	},
-	"readerRetry": {
-		"message": "重试"
-	},
 	"readerContinueRemaining": {
 		"message": "继续剩余内容（已完成 $1/$2）"
 	},
@@ -1509,9 +1476,6 @@
 	},
 	"readerTaskRangeNextFiveMinutes": {
 		"message": "接下来 5 分钟"
-	},
-	"readerTechnicalDetails": {
-		"message": "技术详情"
 	},
 	"readerTheme": {
 		"message": "主题"

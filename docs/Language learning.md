@@ -47,6 +47,8 @@ The AI editing controls appear in the extension popup and side panel when AI fea
 
 The preview stores a snapshot of the clipping. If the clipping changes before you select **Apply**, Web Clipper rejects the stale preview and asks you to generate it again.
 
+While the preview is being generated, select **Cancel** next to **Preview AI edit** to stop the request. The clipping is not changed. If the request fails, an error card says what went wrong and what to do next. **Try again** sends the same text and instruction again and previews the result against the same snapshot. When the fix is in Settings, such as a missing or rejected API key or a Native Messaging Host that is not installed, the card also offers **Open AI settings**, which opens the **AI** section of Web Clipper settings. Select **Technical details** to see the provider's raw message.
+
 ## Read YouTube and Bilibili transcripts bilingually
 
 Open Reader on a YouTube page that has an available transcript or open the in-page Reader on a public Bilibili video with an available timed subtitle track in Chromium or Firefox, then select **Bilingual subtitles** in the transcript controls. For Bilibili, Web Clipper prefers an available Chinese track, including Bilibili-generated AI subtitles, and otherwise uses another unlocked track. Loading a Bilibili subtitle is separate from Interpreter and does not create a model request.
@@ -75,9 +77,9 @@ Long transcripts are processed in batches, with smaller batches for Japanese rea
 
 When an API provider reports that it is rate limited (HTTP 429) or has a temporary server error (HTTP 500, 502, 503, 504, or 529), Web Clipper waits and retries that batch automatically, up to two times per batch and within a limit for the whole job. The task bar shows how long it will wait, such as *Provider busy, retrying in 5 s…*. Web Clipper waits at least as long as the provider's `Retry-After` header asks, and does not retry when the provider asks for more than 60 seconds. Quota, authentication, and network errors, and API request timeouts, are never retried automatically.
 
-After a local CLI timeout, for translations and Japanese readings alike, Web Clipper automatically halves the batch size and continues with the remaining segments, up to three times per run and not below a safe minimum, without showing an intermediate timeout card. If the smaller batches still time out, the error card offers **Continue remaining**, which keeps the smaller batch size.
+After a local CLI timeout, for translations and Japanese readings alike, Web Clipper automatically halves the batch size and continues with the remaining segments, up to three times per run and not below a safe minimum, without showing an intermediate timeout card. If the smaller batches still time out, the error card says that some batches could not be completed and offers **Continue remaining**, which sends only the remaining part with the smaller batch size.
 
-The job runs in the extension background, not in the Reader page. Closing or reloading the Reader tab does not stop it: completed batches keep being saved. When you return, selecting the same action for the same range joins the running job or shows its saved result instead of starting over. Selecting **Cancel**, or loading another transcript in the same Reader, stops the job. If the browser stops the extension background while a job runs, Web Clipper resumes the job when the background starts again within 10 minutes and sends only the missing batches; an older job is kept as incomplete for **Continue remaining**.
+The job runs in the extension background, not in the Reader page. Closing or reloading the Reader tab does not stop it: completed batches keep being saved. When you return, selecting the same action for the same range joins the running job or shows its saved result instead of starting over. Selecting **Cancel**, loading another transcript in the same Reader, or navigating the Reader to an article without a transcript stops the job. If the browser stops the extension background while a job runs, Web Clipper resumes the job when the background starts again within 10 minutes and sends only the missing batches; an older job is kept as incomplete for **Continue remaining**.
 
 After readings load—even for **Current segment** or **Next 5 minutes**—select **Edit readings**, edit a reading directly above its kanji, then select **Done editing**. Select **Regenerate readings** when the model chose the wrong reading; this explicitly reruns reading generation for the selected range while preserving readings outside that range. Corrections are stored with the transcript's session result and in your persistent personal reading dictionary. Known words are reused in later transcripts, and a segment whose kanji are all covered by the dictionary is annotated locally without an AI request.
 
@@ -103,13 +105,21 @@ The Learning Center supports search, word/sentence filters, multi-select removal
 
 Select a phrase, sentence, or text spanning adjacent transcript segments. Then select **Explain with AI** next to the selection.
 
-The explanation includes a natural translation, the grammar structure, and important expressions in context. The same response language, selection kind, text, and context are cached for the current Reader session, so reopening the same explanation does not create another model request. Changing the response language creates a new explanation instead of reusing one in the previous language. New explanations can be cancelled and failed explanations can be retried from the card.
+The explanation includes a natural translation, the grammar structure, and important expressions in context. The same response language, selection kind, text, and context are cached for the current Reader session, so reopening the same explanation does not create another model request. Changing the response language creates a new explanation instead of reusing one in the previous language. A new explanation can be cancelled with **Cancel** in the task bar, and a failed explanation can be retried from its error card.
 
 The selection action also works with touch selection on mobile browsers that support Reader transcripts. While an explanation or error card is open, the Reader behind it is inactive and keyboard focus stays inside the card. Press Escape to close it and return focus to the control that opened it.
 
 ## Model selection and requests
 
 Each language-learning task uses the model **Settings → AI → Task routing** names for it: **AI edit** for AI edits, **Subtitle translation** for bilingual transcripts, **Japanese readings** for readings (and the Japanese translation before them), and **Explanations** for word and sentence explanations. A task set to **Use default** uses the default model. When a Reader request fails, the error card lists your enabled models; **Switch and retry** routes the task that failed to the chosen model and runs it again. A Codex CLI model's model ID and reasoning effort apply to each of its requests; effort availability depends on the selected model, and higher effort can take longer and use more tokens.
+
+The Reader error card shows what went wrong and what to do next, with the provider's raw message under **Technical details**. Its actions are:
+
+- **Try again** runs the same request again: the same transcript range or the same selection. After a transcript job completed part of its range, the button reads **Continue remaining** and sends only the missing segments.
+- **Switch and retry**, next to a list of your enabled models, as described above. The list starts on the model the failed request used.
+- **Open AI settings**, when the fix is in Settings, such as a missing or rejected API key, AI features that are not set up, or a Native Messaging Host or CLI that is not installed. It opens the **AI** section of Web Clipper settings in a new tab.
+
+The card's buttons respond only to your own clicks, not to clicks generated by the web page.
 
 All provider and local CLI requests run in the extension background. API keys are not inserted into the page or transcript DOM. A local CLI connection sends the relevant content to the local Native Messaging Host and then to the selected CLI.
 
@@ -126,7 +136,7 @@ Applying, cancelling, undoing, hiding, or showing an existing result does not ma
 > [!warning] Transcript jobs can create several billable requests
 > One transcript action can send several batch requests to a hosted API provider at the same time. Each automatic retry after a rate limit or temporary provider error is a separate request that the provider may bill, and a job that resumes after an extension background restart sends its remaining batches without another click. Use **AI range** to limit the work, and select **Cancel** to stop further requests.
 
-Cancelling a Reader request stops the extension from waiting for or applying that result. For a transcript job, it also stops further batches and any retry wait; completed batches stay saved. In API mode it aborts the provider fetch. In local CLI mode, protocol version 5 sends cancellation over the same Native Messaging port; the Host terminates the selected CLI process and force-kills it if it does not exit promptly.
+The task bar shows **Cancel** while a transcript task or an explanation runs, and selecting it stops both. Cancelling a Reader request stops the extension from waiting for or applying that result. For a transcript job, it also stops further batches and any retry wait; completed batches stay saved. In API mode it aborts the provider fetch. In local CLI mode, protocol version 5 sends cancellation over the same Native Messaging port; the Host terminates the selected CLI process and force-kills it if it does not exit promptly.
 
 ## Troubleshoot language learning
 
@@ -134,7 +144,7 @@ Cancelling a Reader request stops the extension from waiting for or applying tha
 
 Confirm that **Enable AI features** is on in **Settings → AI**, and that **Task routing** names an enabled model for **AI edit** or as the default model. For a local CLI, confirm that the Native Messaging Host is installed and the CLI is installed and authenticated. Reload the popup after changing AI settings.
 
-For a local CLI, a protocol mismatch error means the extension was rebuilt without reinstalling the Host. A configuration error means the CLI's executable was not detected at install time or no longer exists.
+For a local CLI, **Local CLI host is out of date** means the extension was rebuilt without reinstalling the Host. **CLI not found** means the CLI's executable was not detected at install time or no longer exists; install the CLI, then run the install command again.
 
 ### Transcript language controls are missing
 

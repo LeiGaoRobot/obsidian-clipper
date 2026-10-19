@@ -939,12 +939,6 @@
 	"interpreter": {
 		"message": "Interpreter"
 	},
-	"interpreterExecutionMode": {
-		"message": "Execution mode"
-	},
-	"interpreterExecutionModeApi": {
-		"message": "API provider"
-	},
 	"interpreterExecutionModeCodex": {
 		"message": "Codex CLI"
 	},
@@ -1243,30 +1237,6 @@
 	"readerBilingualSubtitlesRestoreDescription": {
 		"message": "Show completed translations when they are already saved. Missing translations are never generated automatically."
 	},
-	"readerCliConfig": {
-		"message": "$1 is not configured. Check the local host configuration and try again."
-	},
-	"readerCliFailed": {
-		"message": "$1 could not complete this task. You can retry or switch execution mode."
-	},
-	"readerCliInvalid": {
-		"message": "The $1 request was invalid. Rebuild the extension and reinstall the Native Messaging Host."
-	},
-	"readerCliLaunchFailed": {
-		"message": "$1 could not be started. Confirm that it is installed and signed in."
-	},
-	"readerCliProtocolMismatch": {
-		"message": "The extension and Native Messaging Host versions do not match. Reinstall the host."
-	},
-	"readerCliResponseTooLarge": {
-		"message": "$1 returned too much data. Retry a smaller transcript range."
-	},
-	"readerCliTimeout": {
-		"message": "$1 did not finish within $2 seconds. Completed segments were kept."
-	},
-	"readerCliUnavailable": {
-		"message": "$1 is unavailable. Check the Native Messaging Host and CLI installation."
-	},
 	"readerBlendImages": {
 		"message": "Blend images"
 	},
@@ -1387,9 +1357,6 @@
 	"readerRegenerateReadingsConfirm": {
 		"message": "Generate the Japanese readings again? This will make another AI request."
 	},
-	"readerRetry": {
-		"message": "Retry"
-	},
 	"readerContinueRemaining": {
 		"message": "Continue remaining ($1/$2 complete)"
 	},
@@ -1509,9 +1476,6 @@
 	},
 	"readerTaskRangeNextFiveMinutes": {
 		"message": "Next 5 minutes"
-	},
-	"readerTechnicalDetails": {
-		"message": "Technical details"
 	},
 	"readerTheme": {
 		"message": "Theme"
