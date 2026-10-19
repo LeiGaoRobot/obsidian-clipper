@@ -77,6 +77,108 @@
 	"aiLanguageToolsRequireInterpreter": {
 		"message": "请先启用解释器并配置模型，再使用 AI 语言学习工具。"
 	},
+	"aiErrorNotConfiguredTitle": {
+		"message": "AI 尚未配置"
+	},
+	"aiErrorNotConfiguredBody": {
+		"message": "请在设置中启用解释器，并选择一个模型。"
+	},
+	"aiErrorCredentialMissingTitle": {
+		"message": "缺少 API 密钥"
+	},
+	"aiErrorCredentialMissingBody": {
+		"message": "此连接在本设备上还没有 API 密钥，请在设置中填写。"
+	},
+	"aiErrorAuthTitle": {
+		"message": "API 密钥 无效"
+	},
+	"aiErrorAuthBody": {
+		"message": "提供商拒绝了这个 API 密钥，请在设置中检查或更换。"
+	},
+	"aiErrorModelUnavailableTitle": {
+		"message": "模型不可用"
+	},
+	"aiErrorModelUnavailableBody": {
+		"message": "提供商找不到这个模型，或你的账号无权使用。请检查模型 ID，或换一个模型。"
+	},
+	"aiErrorRateLimitedTitle": {
+		"message": "请求过于频繁"
+	},
+	"aiErrorRateLimitedBody": {
+		"message": "提供商暂时限制了请求频率，请稍后重试。"
+	},
+	"aiErrorQuotaTitle": {
+		"message": "额度或余额不足"
+	},
+	"aiErrorQuotaBody": {
+		"message": "提供商账号的额度或余额已用完。请检查套餐或账单，或换一个模型。"
+	},
+	"aiErrorTimeoutTitle": {
+		"message": "请求超时"
+	},
+	"aiErrorTimeoutBody": {
+		"message": "模型响应时间过长，请重试。"
+	},
+	"aiErrorNetworkTitle": {
+		"message": "网络错误"
+	},
+	"aiErrorNetworkBody": {
+		"message": "无法连接到提供商。请检查网络和 基础 URL 后重试。"
+	},
+	"aiErrorHostMissingTitle": {
+		"message": "本地 CLI Host 未安装"
+	},
+	"aiErrorHostMissingBody": {
+		"message": "Native Messaging Host 未安装或无法启动。请复制安装命令，在终端中运行一次，然后重新加载扩展。"
+	},
+	"aiErrorHostOutdatedTitle": {
+		"message": "本地 CLI Host 版本过旧"
+	},
+	"aiErrorHostOutdatedBody": {
+		"message": "已安装的 Native Messaging Host 比扩展旧。请复制安装命令，重新运行一次。"
+	},
+	"aiErrorHostUnsupportedTitle": {
+		"message": "此浏览器不支持本地 CLI"
+	},
+	"aiErrorHostUnsupportedBody": {
+		"message": "此浏览器无法运行本地 CLI，请改用 API 模型。"
+	},
+	"aiErrorCliMissingTitle": {
+		"message": "找不到 CLI"
+	},
+	"aiErrorCliMissingBody": {
+		"message": "Native Messaging Host 找不到或无法启动这个 CLI。请先安装它，再重新运行安装命令，让 Host 记录其路径。"
+	},
+	"aiErrorCliNotAuthenticatedTitle": {
+		"message": "CLI 未登录"
+	},
+	"aiErrorCliNotAuthenticatedBody": {
+		"message": "请先在终端中登录这个 CLI，然后重试。"
+	},
+	"aiErrorBadResponseTitle": {
+		"message": "无法读取响应"
+	},
+	"aiErrorBadResponseBody": {
+		"message": "模型返回的内容格式不符合预期。请重试，或换一个模型。"
+	},
+	"aiErrorIncompleteTitle": {
+		"message": "结果不完整"
+	},
+	"aiErrorIncompleteBody": {
+		"message": "部分内容缺失。选择“继续”，只请求缺失的部分。"
+	},
+	"aiErrorCancelledTitle": {
+		"message": "已取消"
+	},
+	"aiErrorCancelledBody": {
+		"message": "请求已取消。"
+	},
+	"aiErrorProviderErrorTitle": {
+		"message": "提供商返回错误"
+	},
+	"aiErrorProviderErrorBody": {
+		"message": "提供商返回了错误。请稍后重试，或查看详情。"
+	},
 	"aiLanguageToolsRequireModel": {
 		"message": "请先启用一个解释器模型，再使用 AI 语言学习工具。"
 	},

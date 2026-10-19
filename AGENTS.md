@@ -20,6 +20,7 @@ Keep changes surgical. Match the existing TypeScript, SCSS, localization, and Ob
 | `src/utils/transcript-language-learning.ts` | YouTube Reader bilingual and explanation UI | Remote calls must follow trusted user actions |
 | `src/utils/language-learning-service.ts` | Background configuration checks and model selection | Use only stored, enabled Interpreter models |
 | `src/utils/llm-client.ts` | Provider request construction and response parsing | Must remain DOM-free and safe in an MV3 service worker |
+| `src/ai/` | AI redesign domain core: connection kinds, derived v2 settings view, `resolveProfile`, `AiError` | No DOM, storage, or browser runtime dependencies, except `error-messages.ts` (UI-side i18n). See `docs/superpowers/specs/2026-10-19-ai-subsystem-redesign-design.md` |
 
 The network client is also re-exported from `src/utils/interpreter.ts` for the existing Interpreter interface. Keep the implementation in `llm-client.ts`; do not duplicate provider logic in UI modules.
 

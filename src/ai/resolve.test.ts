@@ -1,0 +1,146 @@
+import { describe, expect, test } from 'vitest';
+import type { Settings } from '../types/types';
+import { assessLanguageLearningReadiness } from '../utils/language-learning-readiness';
+import { deriveAiSettings, LEGACY_CODEX_PROFILE_ID } from './settings-view';
+import { resolveProfile, resolveResponseLanguage } from './resolve';
+import type { AiSettingsView } from './types';
+
+function view(overrides: Partial<AiSettingsView> = {}): AiSettingsView {
+	return {
+		enabled: true,
+		connections: [
+			{ id: 'anthropic', kind: 'anthropic', label: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1/messages', apiKeyRequired: true },
+			{ id: 'ollama', kind: 'ollama', label: 'Ollama', baseUrl: 'http://127.0.0.1:11434/api/chat', apiKeyRequired: false },
+			{ id: 'codex', kind: 'cli-codex', label: 'Codex CLI' }
+		],
+		profiles: [
+			{ id: 'claude', connectionId: 'anthropic', model: 'claude', label: 'Claude', enabled: true },
+			{ id: 'llama', connectionId: 'ollama', model: 'llama', label: 'Llama', enabled: true },
+			{ id: 'codex-high', connectionId: 'codex', label: 'Codex', options: { reasoningEffort: 'high' }, enabled: true },
+			{ id: 'off', connectionId: 'anthropic', model: 'x', label: 'Off', enabled: false },
+			{ id: 'orphan', connectionId: 'deleted', model: 'x', label: 'Orphan', enabled: true }
+		],
+		routing: { defaultProfileId: 'claude', taskProfiles: {} },
+		interpreter: { autoRun: false, defaultPromptContext: '' },
+		credentials: { anthropic: 'sk-ant' },
+		nativeMessaging: 'port',
+		...overrides
+	};
+}
+
+function routed(defaultProfileId: string | undefined, taskProfiles: AiSettingsView['routing']['taskProfiles'] = {}) {
+	return { routing: { defaultProfileId, taskProfiles } };
+}
+
+describe('resolveProfile', () => {
+	test('resolves the default profile with its connection and credential', () => {
+		const result = resolveProfile(view(), 'translate');
+		expect(result).toMatchObject({
+			ok: true,
+			profile: { id: 'claude' },
+			connection: { id: 'anthropic' },
+			credential: 'sk-ant'
+		});
+	});
+
+	test('lets a task override beat the default', () => {
+		const result = resolveProfile(view(routed('claude', { reading: 'codex-high' })), 'reading');
+		expect(result).toMatchObject({ ok: true, profile: { id: 'codex-high' } });
+		expect(resolveProfile(view(routed('claude', { reading: 'codex-high' })), 'explain'))
+			.toMatchObject({ ok: true, profile: { id: 'claude' } });
+	});
+
+	test('does not require a credential for a keyless connection', () => {
+		const result = resolveProfile(view(routed('llama')), 'edit');
+		expect(result.ok).toBe(true);
+		expect(result.ok && result.credential).toBeUndefined();
+	});
+
+	test.each([
+		['disabled AI', { enabled: false }, 'not-configured', 'disabled'],
+		['no profile', routed(undefined), 'not-configured', 'no-profile'],
+		['a disabled profile', routed('off'), 'not-configured', 'profile-unavailable'],
+		['an unknown profile', routed('missing'), 'not-configured', 'profile-unavailable'],
+		['a missing connection', routed('orphan'), 'not-configured', 'connection-missing'],
+		['no Native Messaging', { ...routed('codex-high'), nativeMessaging: 'none' as const }, 'host-unsupported', undefined],
+		['a missing key', { credentials: { anthropic: '  ' } }, 'credential-missing', undefined]
+	])('rejects %s', (_label, overrides, code, reason) => {
+		const result = resolveProfile(view(overrides as Partial<AiSettingsView>), 'interpret');
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error.code).toBe(code);
+			expect(result.error.reason).toBe(reason);
+		}
+	});
+
+	test('rejects a connection without a base URL', () => {
+		const base = view();
+		base.connections[0] = { ...base.connections[0], baseUrl: ' ' };
+		const result = resolveProfile(base, 'interpret');
+		expect(result.ok || result.error).toMatchObject({ code: 'not-configured', reason: 'base-url-missing', connectionId: 'anthropic' });
+	});
+});
+
+describe('resolveResponseLanguage', () => {
+	test('prefers the configured language, then the browser language', () => {
+		expect(resolveResponseLanguage(view({ routing: { taskProfiles: {}, responseLanguage: 'Japanese' } }), 'en')).toBe('Japanese');
+		expect(resolveResponseLanguage(view(), 'en')).toBe('en');
+		expect(resolveResponseLanguage(view(), '')).toBe('English');
+	});
+});
+
+describe('v1 parity', () => {
+	function v1(overrides: Partial<Settings>): Settings {
+		return {
+			interpreterEnabled: true,
+			interpreterAutoRun: false,
+			defaultPromptContext: '',
+			interpreterExecutionMode: 'api',
+			providers: [
+				{ id: 'p-key', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', apiKey: 'sk', apiKeyRequired: true },
+				{ id: 'p-nokey', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', apiKey: '', apiKeyRequired: true },
+				{ id: 'p-local', name: 'Ollama', baseUrl: 'http://127.0.0.1:11434/api/chat', apiKey: '' },
+				{ id: 'p-nourl', name: 'Custom', baseUrl: '  ', apiKey: 'k' }
+			],
+			models: [],
+			readerSettings: { learningResponseLanguage: '' },
+			...overrides
+		} as unknown as Settings;
+	}
+
+	const model = (id: string, providerId: string, enabled = true) => ({
+		id, providerId, providerModelId: id, name: id, enabled
+	});
+
+	test.each([
+		['a keyed model', { models: [model('m', 'p-key')] }],
+		['a model missing its key', { models: [model('m', 'p-nokey')] }],
+		['a keyless local model', { models: [model('m', 'p-local')] }],
+		['a model without a base URL', { models: [model('m', 'p-nourl')] }],
+		['a model on a deleted provider', { models: [model('m', 'gone')] }],
+		['no enabled model', { models: [model('m', 'p-key', false)] }],
+		['a stale selection', { interpreterModel: 'old', models: [model('m', 'p-nokey'), model('n', 'p-key')] }],
+		['a valid selection', { interpreterModel: 'n', models: [model('m', 'p-nokey'), model('n', 'p-key')] }],
+		['disabled Interpreter', { interpreterEnabled: false, models: [model('m', 'p-key')] }]
+	])('matches API readiness for %s', (_label, overrides) => {
+		const settings = v1(overrides as Partial<Settings>);
+		const resolved = resolveProfile(deriveAiSettings(settings, { nativeMessaging: 'port' }), 'translate');
+		expect(resolved.ok).toBe(assessLanguageLearningReadiness(settings).ready);
+	});
+
+	test('resolves the Grok profile in Grok mode on Safari-style Native Messaging', () => {
+		const settings = v1({ interpreterExecutionMode: 'grok' });
+		const resolved = resolveProfile(deriveAiSettings(settings, { nativeMessaging: 'message' }), 'translate');
+		expect(resolved).toMatchObject({ ok: true, connection: { kind: 'cli-grok' } });
+	});
+
+	test('resolves the Codex profile in Codex mode', () => {
+		const settings = v1({ interpreterExecutionMode: 'codex', interpreterCodexModel: 'gpt-codex' });
+		const resolved = resolveProfile(deriveAiSettings(settings, { nativeMessaging: 'port' }), 'interpret');
+		expect(resolved).toMatchObject({
+			ok: true,
+			profile: { id: LEGACY_CODEX_PROFILE_ID, model: 'gpt-codex' },
+			connection: { kind: 'cli-codex' }
+		});
+	});
+});

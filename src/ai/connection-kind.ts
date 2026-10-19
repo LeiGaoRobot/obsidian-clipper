@@ -1,0 +1,67 @@
+import type { CliConnectionKind, ConnectionKind } from './types';
+
+export interface ConnectionKindSource {
+	// Optional because imported or legacy stored providers may omit them.
+	name?: string;
+	baseUrl?: string;
+	presetId?: string;
+}
+
+// Bundled catalog presets whose wire protocol is not OpenAI-compatible.
+const PRESET_KINDS: Record<string, ConnectionKind> = {
+	anthropic: 'anthropic',
+	'azure-openai': 'azure-openai',
+	huggingface: 'huggingface',
+	ollama: 'ollama',
+	perplexity: 'perplexity',
+	deepseek: 'openai-compatible',
+	'google-gemini': 'openai-compatible',
+	meta: 'openai-compatible',
+	openai: 'openai-compatible',
+	openrouter: 'openai-compatible',
+	xai: 'openai-compatible'
+};
+
+function kindFromUrl(baseUrl = ''): ConnectionKind | undefined {
+	let url: URL;
+	try {
+		url = new URL(baseUrl);
+	} catch {
+		return undefined;
+	}
+	const host = url.hostname.toLowerCase();
+	if (host === 'api.anthropic.com') return 'anthropic';
+	if (host.endsWith('.openai.azure.com')) return 'azure-openai';
+	if (host === 'huggingface.co' || host.endsWith('.huggingface.co')) return 'huggingface';
+	if (host === 'api.perplexity.ai') return 'perplexity';
+	// Ollama's native chat endpoint. Its /v1 endpoint is OpenAI-compatible.
+	if (url.pathname.replace(/\/+$/, '') === '/api/chat') return 'ollama';
+	return undefined;
+}
+
+// The provider-name rules llm-client.ts has always used, in its branch order.
+function kindFromLegacyRules({ name = '', baseUrl = '' }: ConnectionKindSource): ConnectionKind | undefined {
+	const lowerName = name.toLowerCase();
+	if (lowerName.includes('hugging')) return 'huggingface';
+	if (baseUrl.includes('openai.azure.com')) return 'azure-openai';
+	if (lowerName.includes('anthropic')) return 'anthropic';
+	if (lowerName.includes('perplexity')) return 'perplexity';
+	if (lowerName.includes('ollama')) return 'ollama';
+	return undefined;
+}
+
+export function inferConnectionKind(source: ConnectionKindSource): ConnectionKind {
+	const presetKind = source.presetId
+		? PRESET_KINDS[source.presetId]
+		: undefined;
+	return presetKind
+		?? kindFromUrl(source.baseUrl)
+		// Parity with v1: a provider named "Ollama" still uses the native wire format even on
+		// Ollama's OpenAI-compatible /v1 path. The Phase 2 adapter should prefer the path.
+		?? kindFromLegacyRules(source)
+		?? 'openai-compatible';
+}
+
+export function isCliKind(kind: ConnectionKind): kind is CliConnectionKind {
+	return kind === 'cli-codex' || kind === 'cli-grok';
+}

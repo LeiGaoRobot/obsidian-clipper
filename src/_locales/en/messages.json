@@ -77,6 +77,108 @@
 	"aiLanguageToolsRequireInterpreter": {
 		"message": "Enable Interpreter and configure a model before using AI language tools."
 	},
+	"aiErrorNotConfiguredTitle": {
+		"message": "AI isn't set up"
+	},
+	"aiErrorNotConfiguredBody": {
+		"message": "Enable interpreter and choose a model in Settings."
+	},
+	"aiErrorCredentialMissingTitle": {
+		"message": "API key missing"
+	},
+	"aiErrorCredentialMissingBody": {
+		"message": "This connection needs an API key on this device. Add it in Settings."
+	},
+	"aiErrorAuthTitle": {
+		"message": "API key rejected"
+	},
+	"aiErrorAuthBody": {
+		"message": "The provider rejected the API key. Check or replace it in Settings."
+	},
+	"aiErrorModelUnavailableTitle": {
+		"message": "Model not available"
+	},
+	"aiErrorModelUnavailableBody": {
+		"message": "The provider couldn't find this model, or your account can't use it. Check the model ID or choose another model."
+	},
+	"aiErrorRateLimitedTitle": {
+		"message": "Too many requests"
+	},
+	"aiErrorRateLimitedBody": {
+		"message": "The provider is limiting requests right now. Wait a moment, then try again."
+	},
+	"aiErrorQuotaTitle": {
+		"message": "Quota or credit used up"
+	},
+	"aiErrorQuotaBody": {
+		"message": "Your provider account has run out of quota or credit. Check your plan or billing, or choose another model."
+	},
+	"aiErrorTimeoutTitle": {
+		"message": "Request timed out"
+	},
+	"aiErrorTimeoutBody": {
+		"message": "The model took too long to respond. Try again."
+	},
+	"aiErrorNetworkTitle": {
+		"message": "Network error"
+	},
+	"aiErrorNetworkBody": {
+		"message": "Couldn't reach the provider. Check your connection and the base URL, then try again."
+	},
+	"aiErrorHostMissingTitle": {
+		"message": "Local CLI host not installed"
+	},
+	"aiErrorHostMissingBody": {
+		"message": "The Native Messaging Host isn't installed or couldn't start. Copy the install command, run it once in Terminal, then reload the extension."
+	},
+	"aiErrorHostOutdatedTitle": {
+		"message": "Local CLI host is out of date"
+	},
+	"aiErrorHostOutdatedBody": {
+		"message": "The installed Native Messaging Host is older than this extension. Copy the install command and run it again."
+	},
+	"aiErrorHostUnsupportedTitle": {
+		"message": "Local CLIs aren't supported here"
+	},
+	"aiErrorHostUnsupportedBody": {
+		"message": "This browser can't run local CLIs. Choose an API model instead."
+	},
+	"aiErrorCliMissingTitle": {
+		"message": "CLI not found"
+	},
+	"aiErrorCliMissingBody": {
+		"message": "The Native Messaging Host couldn't find or start this CLI. Install it, then run the install command again so the Host records its path."
+	},
+	"aiErrorCliNotAuthenticatedTitle": {
+		"message": "CLI not signed in"
+	},
+	"aiErrorCliNotAuthenticatedBody": {
+		"message": "Sign in to this CLI in Terminal, then try again."
+	},
+	"aiErrorBadResponseTitle": {
+		"message": "Couldn't read the response"
+	},
+	"aiErrorBadResponseBody": {
+		"message": "The model's response wasn't in the expected format. Try again, or choose another model."
+	},
+	"aiErrorIncompleteTitle": {
+		"message": "Result incomplete"
+	},
+	"aiErrorIncompleteBody": {
+		"message": "Some parts are missing. Choose Continue to request only the missing parts."
+	},
+	"aiErrorCancelledTitle": {
+		"message": "Cancelled"
+	},
+	"aiErrorCancelledBody": {
+		"message": "The request was cancelled."
+	},
+	"aiErrorProviderErrorTitle": {
+		"message": "Provider error"
+	},
+	"aiErrorProviderErrorBody": {
+		"message": "The provider returned an error. Try again later, or check the details."
+	},
 	"aiLanguageToolsRequireModel": {
 		"message": "Enable an Interpreter model before using AI language tools."
 	},
