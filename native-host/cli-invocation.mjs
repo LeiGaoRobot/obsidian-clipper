@@ -22,15 +22,14 @@ const CODEX_ARGUMENTS = [
 	'never',
 	'--sandbox',
 	'read-only',
-	'--skip-git-repo-check',
-	'-'
+	'--skip-git-repo-check'
 ];
 
 /**
- * @param {{ mode: 'grok' | 'codex', prompt: string, model?: string, effort?: string }} request
+ * @param {{ mode: 'grok' | 'codex', prompt: string, model?: string, effort?: string, outputSchemaPath?: string }} request
  * @returns {{ args: string[], input: string }}
  */
-export function buildCliArguments({ mode, prompt, model, effort }) {
+export function buildCliArguments({ mode, prompt, model, effort, outputSchemaPath }) {
 	if (mode === 'grok') {
 		return { args: ['--single', prompt, ...GROK_ARGUMENTS], input: '' };
 	}
@@ -39,7 +38,10 @@ export function buildCliArguments({ mode, prompt, model, effort }) {
 			'exec',
 			...(model ? ['--model', model] : []),
 			...(effort ? ['-c', `model_reasoning_effort="${effort}"`] : []),
-			...CODEX_ARGUMENTS
+			...CODEX_ARGUMENTS,
+			...(outputSchemaPath ? ['--output-schema', outputSchemaPath] : []),
+			// The prompt arrives on stdin; `-` must stay last.
+			'-'
 		],
 		input: prompt
 	};

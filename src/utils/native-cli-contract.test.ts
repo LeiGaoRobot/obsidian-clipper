@@ -3,8 +3,10 @@ import { buildExecutionPrompt } from './cli-execution-contract';
 import {
 	buildNativeCliCancelRequest,
 	buildNativeCliHealthRequest,
+	buildNativeCliPromptRequest,
 	buildNativeCliRequest,
 	isNativeCliRequest,
+	MAX_OUTPUT_SCHEMA_CHARS,
 	NATIVE_CLI_HOST_NAME,
 	NATIVE_CLI_PROTOCOL_VERSION
 } from './native-cli-contract';
@@ -156,6 +158,77 @@ describe('Native CLI contract', () => {
 			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
 			requestId: 'health-1',
 			mode: 'grok'
+		});
+	});
+
+	describe('output schema', () => {
+		const schema = { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'] };
+		const executeRequest = {
+			type: 'executeCli',
+			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+			requestId: 'request-schema',
+			mode: 'codex',
+			prompt: 'prompt'
+		};
+
+		test('builds a request from an already rendered prompt', () => {
+			expect(buildNativeCliPromptRequest('codex', 'Rendered prompt', {
+				requestId: 'request-prompt',
+				model: 'gpt-5.6-sol',
+				effort: 'high',
+				outputSchema: schema
+			})).toEqual({
+				type: 'executeCli',
+				protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+				requestId: 'request-prompt',
+				mode: 'codex',
+				prompt: 'Rendered prompt',
+				model: 'gpt-5.6-sol',
+				effort: 'high',
+				outputSchema: schema
+			});
+			expect(buildNativeCliPromptRequest('grok', 'Rendered prompt', { requestId: 'request-grok' })).toEqual({
+				type: 'executeCli',
+				protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+				requestId: 'request-grok',
+				mode: 'grok',
+				prompt: 'Rendered prompt'
+			});
+		});
+
+		test('keeps the context builder delegating to the rendered-prompt builder', () => {
+			const prompts = [{ key: 'prompt_1', prompt: 'Summarize this', filters: '' }];
+			expect(buildNativeCliRequest('codex', 'Page content', prompts, { requestId: 'request-1', effort: 'low' }))
+				.toEqual(buildNativeCliPromptRequest('codex', buildExecutionPrompt('Page content', prompts), {
+					requestId: 'request-1',
+					effort: 'low'
+				}));
+		});
+
+		test('rejects invalid or non-Codex output schemas', () => {
+			expect(() => buildNativeCliPromptRequest('grok', 'prompt', { outputSchema: schema }))
+				.toThrow(new TypeError('Output schemas require Codex execution mode.'));
+			expect(() => buildNativeCliPromptRequest('codex', 'prompt', { outputSchema: [] as never }))
+				.toThrow('Output schema must be a JSON object.');
+			expect(() => buildNativeCliPromptRequest('codex', 'prompt', {
+				outputSchema: { description: 'x'.repeat(MAX_OUTPUT_SCHEMA_CHARS) }
+			})).toThrow('Output schema must serialize to at most 20000 characters.');
+			expect(() => buildNativeCliPromptRequest('grok', 'prompt', { model: 'gpt-5.6-sol' }))
+				.toThrow('Codex model overrides require Codex execution mode.');
+		});
+
+		test('validates output schemas at the extension boundary', () => {
+			const padding = MAX_OUTPUT_SCHEMA_CHARS - JSON.stringify({ description: '' }).length;
+			expect(isNativeCliRequest({ ...executeRequest, outputSchema: schema })).toBe(true);
+			expect(isNativeCliRequest({ ...executeRequest, outputSchema: { description: 'x'.repeat(padding) } })).toBe(true);
+			expect(isNativeCliRequest({ ...executeRequest, mode: 'grok', outputSchema: schema })).toBe(false);
+			expect(isNativeCliRequest({ ...executeRequest, outputSchema: [schema] })).toBe(false);
+			expect(isNativeCliRequest({ ...executeRequest, outputSchema: null })).toBe(false);
+			expect(isNativeCliRequest({ ...executeRequest, outputSchema: 'schema' })).toBe(false);
+			expect(isNativeCliRequest({
+				...executeRequest,
+				outputSchema: { description: 'x'.repeat(padding + 1) }
+			})).toBe(false);
 		});
 	});
 });

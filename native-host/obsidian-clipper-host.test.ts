@@ -1,10 +1,18 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildCliInvocation } from '../src/utils/cli-execution';
 // @ts-expect-error The Native Messaging host intentionally remains a standalone ESM script.
-import { HEARTBEAT_INTERVAL_MS, createCliInvocation, runCli, validateRequest } from './obsidian-clipper-host.mjs';
+import {
+	HEARTBEAT_INTERVAL_MS,
+	MAX_OUTPUT_SCHEMA_CHARS,
+	createCliInvocation,
+	runCli,
+	validateRequest
+} from './obsidian-clipper-host.mjs';
+// @ts-expect-error The argv module intentionally remains a standalone ESM script.
+import { buildCliArguments } from './cli-invocation.mjs';
 // @ts-expect-error The installer intentionally remains a standalone ESM script.
 import { installNativeHost } from '../scripts/install-native-host.mjs';
 import { NATIVE_CLI_PROTOCOL_VERSION } from '../src/utils/native-cli-contract';
@@ -415,5 +423,232 @@ describe('Obsidian Web Clipper native host', () => {
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}
+	});
+
+	describe('Codex output schema', () => {
+		const schema = {
+			type: 'object',
+			properties: { answer: { type: 'string' } },
+			required: ['answer'],
+			additionalProperties: false
+		};
+		const baseRequest = {
+			type: 'executeCli',
+			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+			requestId: 'request-schema',
+			mode: 'codex',
+			prompt: 'prompt'
+		};
+		const schemaDirectories = () => new Set(readdirSync(os.tmpdir())
+			.filter(name => name.startsWith('obsidian-clipper-schema-')));
+		const newSchemaDirectories = (before: Set<string>) => Array.from(schemaDirectories())
+			.filter(name => !before.has(name));
+
+		/** Writes a fake CLI that records argv, the schema file content and its permissions. */
+		function createRecordingCli(directory: string, tail: string) {
+			const executable = path.join(directory, 'recording-cli');
+			const files = {
+				args: path.join(directory, 'args'),
+				schema: path.join(directory, 'schema-copy'),
+				mode: path.join(directory, 'schema-mode'),
+				ready: path.join(directory, 'ready')
+			};
+			writeFileSync(executable, [
+				'#!/bin/sh',
+				`printf '%s\\n' "$@" > '${files.args}'`,
+				'previous=""',
+				'for argument in "$@"; do',
+				'  if [ "$previous" = "--output-schema" ]; then',
+				`    cat "$argument" > '${files.schema}'`,
+				`    ls -l "$argument" | cut -c1-10 > '${files.mode}'`,
+				'  fi',
+				'  previous="$argument"',
+				'done',
+				`touch '${files.ready}'`,
+				tail,
+				''
+			].join('\n'));
+			chmodSync(executable, 0o755);
+			return { executable, files };
+		}
+
+		function recordedArgs(file: string): string[] {
+			return readFileSync(file, 'utf8').split('\n').slice(0, -1);
+		}
+
+		async function waitForFile(file: string) {
+			for (let attempt = 0; attempt < 250 && !existsSync(file); attempt++) {
+				await new Promise(resolve => setTimeout(resolve, 20));
+			}
+			expect(existsSync(file)).toBe(true);
+		}
+
+		test.each([
+			{ name: 'a Codex object schema', request: { mode: 'codex', outputSchema: schema }, expected: null },
+			{
+				name: 'a Grok schema',
+				request: { mode: 'grok', outputSchema: schema },
+				expected: 'Output schemas require Codex execution mode.'
+			},
+			{
+				name: 'an array schema',
+				request: { mode: 'codex', outputSchema: [schema] },
+				expected: 'Output schema must be a JSON object.'
+			},
+			{
+				name: 'a null schema',
+				request: { mode: 'codex', outputSchema: null },
+				expected: 'Output schema must be a JSON object.'
+			},
+			{
+				name: 'a string schema',
+				request: { mode: 'codex', outputSchema: '{"type":"object"}' },
+				expected: 'Output schema must be a JSON object.'
+			},
+			{
+				name: 'an oversized schema',
+				request: { mode: 'codex', outputSchema: { description: 'x'.repeat(MAX_OUTPUT_SCHEMA_CHARS) } },
+				expected: 'Output schema must serialize to at most 20000 characters.'
+			}
+		])('validates $name at the Native Host boundary', ({ request, expected }) => {
+			expect(validateRequest({ ...baseRequest, ...request })).toBe(expected);
+		});
+
+		test('accepts a schema that serializes to exactly the limit', () => {
+			const padding = MAX_OUTPUT_SCHEMA_CHARS - JSON.stringify({ description: '' }).length;
+			const outputSchema = { description: 'x'.repeat(padding) };
+			expect(JSON.stringify(outputSchema)).toHaveLength(MAX_OUTPUT_SCHEMA_CHARS);
+			expect(validateRequest({ ...baseRequest, outputSchema })).toBeNull();
+		});
+
+		test('places --output-schema before the trailing stdin marker for Codex only', () => {
+			expect(buildCliArguments({
+				mode: 'codex',
+				prompt: 'prompt',
+				model: 'gpt-5.6-sol',
+				outputSchemaPath: '/tmp/schema-dir/schema.json'
+			}).args).toEqual([
+				'exec',
+				'--model',
+				'gpt-5.6-sol',
+				'--ephemeral',
+				'--color',
+				'never',
+				'--sandbox',
+				'read-only',
+				'--skip-git-repo-check',
+				'--output-schema',
+				'/tmp/schema-dir/schema.json',
+				'-'
+			]);
+			expect(buildCliArguments({ mode: 'grok', prompt: 'prompt', outputSchemaPath: '/tmp/schema.json' }).args)
+				.not.toContain('--output-schema');
+		});
+
+		test('ignores a schema path smuggled into the request itself', () => {
+			const config = { grokPath: '/usr/local/bin/grok', codexPath: '/usr/local/bin/codex' };
+			expect(createCliInvocation({ mode: 'codex', prompt: 'p', outputSchemaPath: '/etc/passwd' }, config).args)
+				.not.toContain('--output-schema');
+			expect(createCliInvocation({ mode: 'codex', prompt: 'p' }, config, '/tmp/d/schema.json').args.slice(-3))
+				.toEqual(['--output-schema', '/tmp/d/schema.json', '-']);
+		});
+
+		test('writes the schema to a private temp file and removes it after success', async () => {
+			const directory = mkdtempSync(path.join(os.tmpdir(), 'obsidian-clipper-host-'));
+			const { executable, files } = createRecordingCli(directory, 'cat > /dev/null\necho \'{"answer":"ok"}\'');
+			try {
+				await expect(runCli({ ...baseRequest, outputSchema: schema }, {
+					grokPath: executable,
+					codexPath: executable
+				}, () => {})).resolves.toMatchObject({ stdout: '{"answer":"ok"}\n' });
+
+				const args = recordedArgs(files.args);
+				const schemaPath = args[args.indexOf('--output-schema') + 1];
+				expect(args.at(-1)).toBe('-');
+				expect(path.basename(schemaPath)).toBe('schema.json');
+				expect(path.basename(path.dirname(schemaPath))).toMatch(/^obsidian-clipper-schema-/);
+				expect(readFileSync(files.schema, 'utf8')).toBe(JSON.stringify(schema));
+				expect(readFileSync(files.mode, 'utf8').trim()).toBe('-rw-------');
+				expect(existsSync(path.dirname(schemaPath))).toBe(false);
+			} finally {
+				rmSync(directory, { recursive: true, force: true });
+			}
+		});
+
+		test('removes the schema file after a failing CLI', async () => {
+			const directory = mkdtempSync(path.join(os.tmpdir(), 'obsidian-clipper-host-'));
+			const { executable, files } = createRecordingCli(directory, 'cat > /dev/null\necho boom >&2\nexit 3');
+			try {
+				await expect(runCli({ ...baseRequest, outputSchema: schema }, {
+					grokPath: executable,
+					codexPath: executable
+				}, () => {})).rejects.toMatchObject({ code: 'cli-failed' });
+
+				const args = recordedArgs(files.args);
+				const schemaPath = args[args.indexOf('--output-schema') + 1];
+				expect(existsSync(path.dirname(schemaPath))).toBe(false);
+			} finally {
+				rmSync(directory, { recursive: true, force: true });
+			}
+		});
+
+		test('removes the schema file after a cancelled CLI', async () => {
+			const directory = mkdtempSync(path.join(os.tmpdir(), 'obsidian-clipper-host-'));
+			const { executable, files } = createRecordingCli(
+				directory,
+				'trap "exit 0" TERM\nwhile true; do sleep 1; done'
+			);
+			let cancel: (() => void) | undefined;
+			try {
+				const request = runCli({ ...baseRequest, outputSchema: schema }, {
+					grokPath: executable,
+					codexPath: executable
+				}, (terminate: () => void) => { cancel = terminate; });
+				await waitForFile(files.ready);
+				const args = recordedArgs(files.args);
+				const schemaPath = args[args.indexOf('--output-schema') + 1];
+				expect(existsSync(schemaPath)).toBe(true);
+				cancel?.();
+
+				await expect(request).rejects.toMatchObject({ code: 'cancelled' });
+				expect(existsSync(path.dirname(schemaPath))).toBe(false);
+			} finally {
+				rmSync(directory, { recursive: true, force: true });
+			}
+		});
+
+		test('cancels before spawning when cancellation arrives during schema setup', async () => {
+			const directory = mkdtempSync(path.join(os.tmpdir(), 'obsidian-clipper-host-'));
+			const { executable, files } = createRecordingCli(directory, 'cat > /dev/null');
+			const before = schemaDirectories();
+			let cancel: (() => void) | undefined;
+			try {
+				const request = runCli({ ...baseRequest, outputSchema: schema }, {
+					grokPath: executable,
+					codexPath: executable
+				}, (terminate: () => void) => { cancel = terminate; });
+				cancel?.();
+
+				await expect(request).rejects.toMatchObject({ code: 'cancelled' });
+				expect(existsSync(files.args)).toBe(false);
+				expect(newSchemaDirectories(before)).toEqual([]);
+			} finally {
+				rmSync(directory, { recursive: true, force: true });
+			}
+		});
+
+		test('removes the schema file when the CLI cannot be launched', async () => {
+			const directory = mkdtempSync(path.join(os.tmpdir(), 'obsidian-clipper-host-'));
+			const before = schemaDirectories();
+			try {
+				await expect(runCli({ ...baseRequest, outputSchema: schema }, {
+					grokPath: null,
+					codexPath: path.join(directory, 'missing-cli')
+				}, () => {})).rejects.toMatchObject({ code: 'launch-failed' });
+				expect(newSchemaDirectories(before)).toEqual([]);
+			} finally {
+				rmSync(directory, { recursive: true, force: true });
+			}
+		});
 	});
 });

@@ -1,7 +1,7 @@
 import type { CodexReasoningEffort, PromptVariable } from '../../types/types';
-import { parsePromptResponses } from '../../utils/cli-execution-contract';
+import { buildExecutionPrompt, parsePromptResponses } from '../../utils/cli-execution-contract';
 import type { NativeCliHeartbeat, NativeCliHostResponse, NativeCliRequest } from '../../utils/native-cli-contract';
-import { buildNativeCliRequest } from '../../utils/native-cli-contract';
+import { buildNativeCliPromptRequest } from '../../utils/native-cli-contract';
 import { sendNativeCliRequest } from '../../utils/native-cli-service';
 import { AiError, toAiError } from '../errors';
 import type { CliConnectionKind } from '../types';
@@ -12,6 +12,15 @@ export interface CliPromptCall {
 	effort?: CodexReasoningEffort;
 	context: string;
 	prompts: PromptVariable[];
+}
+
+export interface CliRenderedPromptCall {
+	kind: CliConnectionKind;
+	model?: string;
+	effort?: CodexReasoningEffort;
+	prompt: string;
+	/** Codex only; ignored for Grok. */
+	outputSchema?: Record<string, unknown>;
 }
 
 export type SendNativeCliRequest = (
@@ -27,15 +36,15 @@ export interface CliCallOptions {
 	send?: SendNativeCliRequest;
 }
 
-/** Runs one prompt call through the Native Messaging Host and returns responses by prompt key. */
-export async function executeCliCall(call: CliPromptCall, options: CliCallOptions = {}): Promise<Record<string, unknown>> {
+/** Sends one rendered prompt through the Native Messaging Host and returns raw stdout. */
+export async function runCliPrompt(call: CliRenderedPromptCall, options: CliCallOptions = {}): Promise<string> {
 	const mode = call.kind === 'cli-codex' ? 'codex' : 'grok';
-	let stdout: string;
 	try {
-		const request = buildNativeCliRequest(mode, call.context, call.prompts, mode === 'codex'
+		const request = buildNativeCliPromptRequest(mode, call.prompt, mode === 'codex'
 			? {
 				...(call.model ? { model: call.model } : {}),
-				...(call.effort ? { effort: call.effort } : {})
+				...(call.effort ? { effort: call.effort } : {}),
+				...(call.outputSchema ? { outputSchema: call.outputSchema } : {})
 			}
 			: {});
 		const response = await (options.send ?? sendNativeCliRequest)(
@@ -43,10 +52,20 @@ export async function executeCliCall(call: CliPromptCall, options: CliCallOption
 			options.signal,
 			options.onHeartbeat ? heartbeat => options.onHeartbeat?.(heartbeat.elapsedMs) : undefined
 		);
-		stdout = response.stdout || '';
+		return response.stdout || '';
 	} catch (error) {
 		throw toAiError(error, options.connectionId);
 	}
+}
+
+/** Runs one prompt call through the Native Messaging Host and returns responses by prompt key. */
+export async function executeCliCall(call: CliPromptCall, options: CliCallOptions = {}): Promise<Record<string, unknown>> {
+	const stdout = await runCliPrompt({
+		kind: call.kind,
+		...(call.model ? { model: call.model } : {}),
+		...(call.effort ? { effort: call.effort } : {}),
+		prompt: buildExecutionPrompt(call.context, call.prompts)
+	}, options);
 	try {
 		return parsePromptResponses(stdout, call.prompts);
 	} catch (error) {

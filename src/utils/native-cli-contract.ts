@@ -7,6 +7,8 @@ import { normalizeCodexReasoningEffort } from './codex-reasoning-effort';
 
 export const NATIVE_CLI_HOST_NAME = 'com.obsidian.web_clipper';
 export const NATIVE_CLI_PROTOCOL_VERSION = 5;
+/** Matches the Host's `MAX_OUTPUT_SCHEMA_CHARS`. */
+export const MAX_OUTPUT_SCHEMA_CHARS = 20_000;
 
 let nativeCliRequestSequence = 0;
 
@@ -29,6 +31,8 @@ export interface NativeCliRequest {
 	prompt: string;
 	model?: string;
 	effort?: CodexReasoningEffort;
+	/** Codex only: JSON Schema the Host passes to `codex exec --output-schema`. */
+	outputSchema?: Record<string, unknown>;
 	/** Ask the Host for periodic heartbeats. Only valid on a connected port. */
 	heartbeat?: boolean;
 }
@@ -50,6 +54,11 @@ export interface NativeCliRequestOptions {
 	requestId?: string;
 	model?: string;
 	effort?: CodexReasoningEffort;
+}
+
+export interface NativeCliPromptRequestOptions extends NativeCliRequestOptions {
+	/** Codex only. */
+	outputSchema?: Record<string, unknown>;
 }
 
 export interface NativeCliCancelRequest {
@@ -93,6 +102,21 @@ export function isCliExecutionMode(value: unknown): value is CliExecutionMode {
 	return value === 'grok' || value === 'codex';
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+	const prototype = Object.getPrototypeOf(value);
+	return prototype === Object.prototype || prototype === null;
+}
+
+function outputSchemaError(mode: CliExecutionMode, outputSchema: unknown): string | null {
+	if (mode !== 'codex') return 'Output schemas require Codex execution mode.';
+	if (!isPlainObject(outputSchema)) return 'Output schema must be a JSON object.';
+	if (JSON.stringify(outputSchema).length > MAX_OUTPUT_SCHEMA_CHARS) {
+		return `Output schema must serialize to at most ${MAX_OUTPUT_SCHEMA_CHARS} characters.`;
+	}
+	return null;
+}
+
 export function isNativeCliRequest(value: unknown): value is NativeCliRequest {
 	if (!value || typeof value !== 'object') return false;
 	const request = value as Partial<NativeCliRequest>;
@@ -107,6 +131,9 @@ export function isNativeCliRequest(value: unknown): value is NativeCliRequest {
 		request.mode === 'codex'
 		&& normalizeCodexReasoningEffort(request.effort) === request.effort
 	);
+	const validOutputSchema = request.outputSchema === undefined || (
+		isCliExecutionMode(request.mode) && outputSchemaError(request.mode, request.outputSchema) === null
+	);
 	return request.type === 'executeCli'
 		&& request.protocolVersion === NATIVE_CLI_PROTOCOL_VERSION
 		&& typeof request.requestId === 'string'
@@ -116,14 +143,15 @@ export function isNativeCliRequest(value: unknown): value is NativeCliRequest {
 		&& request.prompt.length > 0
 		&& validModel
 		&& validEffort
+		&& validOutputSchema
 		&& (request.heartbeat === undefined || typeof request.heartbeat === 'boolean');
 }
 
-export function buildNativeCliRequest(
+/** Builds an `executeCli` request from an already rendered prompt. */
+export function buildNativeCliPromptRequest(
 	mode: CliExecutionMode,
-	context: string,
-	promptVariables: PromptVariable[],
-	options: NativeCliRequestOptions = {}
+	prompt: string,
+	options: NativeCliPromptRequestOptions = {}
 ): NativeCliRequest {
 	const model = normalizeCodexModel(options.model);
 	if (options.model !== undefined && !model) {
@@ -139,15 +167,29 @@ export function buildNativeCliRequest(
 	if (effort && mode !== 'codex') {
 		throw new TypeError('Codex reasoning effort overrides require Codex execution mode.');
 	}
+	if (options.outputSchema !== undefined) {
+		const error = outputSchemaError(mode, options.outputSchema);
+		if (error) throw new TypeError(error);
+	}
 	return {
 		type: 'executeCli',
 		protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
 		requestId: options.requestId ?? createNativeCliRequestId(),
 		mode,
-		prompt: buildExecutionPrompt(context, promptVariables),
+		prompt,
 		...(model ? { model } : {}),
-		...(effort ? { effort } : {})
+		...(effort ? { effort } : {}),
+		...(options.outputSchema !== undefined ? { outputSchema: options.outputSchema } : {})
 	};
+}
+
+export function buildNativeCliRequest(
+	mode: CliExecutionMode,
+	context: string,
+	promptVariables: PromptVariable[],
+	options: NativeCliRequestOptions = {}
+): NativeCliRequest {
+	return buildNativeCliPromptRequest(mode, buildExecutionPrompt(context, promptVariables), options);
 }
 
 export function buildNativeCliCancelRequest(requestId: string): NativeCliCancelRequest {

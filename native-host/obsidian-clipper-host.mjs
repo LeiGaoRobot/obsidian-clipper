@@ -2,6 +2,7 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,6 +22,7 @@ export const CODEX_REASONING_EFFORTS = new Set([
 export const MAX_PROMPT_CHARS = 750_000;
 export const MAX_REQUEST_BYTES = 4_000_000;
 export const MAX_RESPONSE_BYTES = 900_000;
+export const MAX_OUTPUT_SCHEMA_CHARS = 20_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 export const HEARTBEAT_INTERVAL_MS = 10_000;
 
@@ -55,6 +57,12 @@ function loadConfig() {
 
 function isMode(value) {
 	return value === 'grok' || value === 'codex';
+}
+
+function isPlainObject(value) {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+	const prototype = Object.getPrototypeOf(value);
+	return prototype === Object.prototype || prototype === null;
 }
 
 export function validateRequest(request) {
@@ -95,10 +103,17 @@ export function validateRequest(request) {
 			return 'Codex reasoning effort must be a supported value.';
 		}
 	}
+	if (request.outputSchema !== undefined) {
+		if (request.mode !== 'codex') return 'Output schemas require Codex execution mode.';
+		if (!isPlainObject(request.outputSchema)) return 'Output schema must be a JSON object.';
+		if (JSON.stringify(request.outputSchema).length > MAX_OUTPUT_SCHEMA_CHARS) {
+			return `Output schema must serialize to at most ${MAX_OUTPUT_SCHEMA_CHARS} characters.`;
+		}
+	}
 	return null;
 }
 
-export function createCliInvocation(request, config) {
+export function createCliInvocation(request, config, outputSchemaPath) {
 	const command = request.mode === 'grok' ? config.grokPath : config.codexPath;
 	if (!command) {
 		throw new NativeHostError(
@@ -108,11 +123,53 @@ export function createCliInvocation(request, config) {
 		);
 	}
 
-	return { command, ...buildCliArguments(request) };
+	// Pass known fields only so a request cannot smuggle in `outputSchemaPath`.
+	return {
+		command,
+		...buildCliArguments({
+			mode: request.mode,
+			prompt: request.prompt,
+			model: request.model,
+			effort: request.effort,
+			outputSchemaPath
+		})
+	};
+}
+
+function cancelledError(request) {
+	return new NativeHostError('cancelled', 'The CLI request was cancelled.', { mode: request.mode });
+}
+
+/**
+ * Writes the schema to a fresh private temp directory for the duration of `run`, and removes
+ * the directory however `run` settles. Without a schema, `run` starts synchronously.
+ */
+async function withOutputSchemaFile(outputSchema, run) {
+	if (outputSchema === undefined) return run(undefined);
+	const directory = await mkdtemp(path.join(os.tmpdir(), 'obsidian-clipper-schema-'));
+	try {
+		const schemaPath = path.join(directory, 'schema.json');
+		await writeFile(schemaPath, JSON.stringify(outputSchema), { mode: 0o600, flag: 'wx' });
+		return await run(schemaPath);
+	} finally {
+		// A cleanup failure must not replace the CLI result; `force` already ignores a missing path.
+		await rm(directory, { recursive: true, force: true }).catch(() => {});
+	}
 }
 
 export function runCli(request, config, onStart, onHeartbeat) {
-	const invocation = createCliInvocation(request, config);
+	// Cancellation can arrive while the schema file is still being written, before the child exists.
+	let cancelled = false;
+	let terminate = () => { cancelled = true; };
+	onStart(() => terminate());
+	return withOutputSchemaFile(request.outputSchema, outputSchemaPath => {
+		if (cancelled) throw cancelledError(request);
+		const invocation = createCliInvocation(request, config, outputSchemaPath);
+		return spawnCli(request, invocation, childTerminate => { terminate = childTerminate; }, onHeartbeat);
+	});
+}
+
+function spawnCli(request, invocation, onStart, onHeartbeat) {
 	const executablePath = [
 		path.dirname(process.execPath),
 		path.dirname(invocation.command),
@@ -147,12 +204,7 @@ export function runCli(request, config, onStart, onHeartbeat) {
 				if (!settled) child.kill('SIGKILL');
 			}, 2000);
 		};
-		const terminate = () => terminateWithError(new NativeHostError(
-			'cancelled',
-			'The CLI request was cancelled.',
-			{ mode: request.mode }
-		));
-		onStart(terminate);
+		onStart(() => terminateWithError(cancelledError(request)));
 		timeout = setTimeout(() => {
 			terminateWithError(new NativeHostError(
 				'timeout',
