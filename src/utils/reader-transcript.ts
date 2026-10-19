@@ -131,14 +131,12 @@ interface ScrollHelper {
 	programmaticScroll: () => boolean;
 }
 
-export function wireTranscript(
-	doc: Document,
-	article: HTMLElement,
-	settings: TranscriptSettings,
-	scroll: ScrollHelper,
-	onSettingChange?: TranscriptSettingChange,
-	languageLearning?: TranscriptLanguageLearning
-): void {
+/**
+ * Removes what a wired transcript left on the document: its listeners, the study controls, the
+ * layout observer, and the language-learning card, selection button, and in-flight requests. The
+ * Reader also calls it when it navigates to an article without a transcript.
+ */
+export function cleanupTranscript(doc: Document): void {
 	transcriptEventControllers.get(doc)?.abort();
 	transcriptEventControllers.delete(doc);
 	cleanupTranscriptLanguageLearning(doc);
@@ -147,6 +145,17 @@ export function wireTranscript(
 	clearTranscriptLayoutMode(doc);
 	transcriptLayoutResizeObservers.get(doc)?.disconnect();
 	transcriptLayoutResizeObservers.delete(doc);
+}
+
+export function wireTranscript(
+	doc: Document,
+	article: HTMLElement,
+	settings: TranscriptSettings,
+	scroll: ScrollHelper,
+	onSettingChange?: TranscriptSettingChange,
+	languageLearning?: TranscriptLanguageLearning
+): void {
+	cleanupTranscript(doc);
 	removePreviousTranscriptLayout(article);
 	const transcript = article.querySelector(supportedTranscriptSelector) as HTMLElement | null;
 	if (!transcript) return;

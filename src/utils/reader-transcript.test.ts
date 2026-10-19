@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import * as readerTranscript from './reader-transcript';
 import { createTranscriptClickGuard, wireTranscript } from './reader-transcript';
+import { createReaderTranscriptLoader, type ReaderTranscriptModules } from './reader-transcript-loader';
+import { captureTrustedClicks, flushPromises } from '../reader/learning/test-support';
 
 describe('Transcript click guard', () => {
 	afterEach(() => {
@@ -533,5 +536,107 @@ describe('Transcript layout integration', () => {
 		vi.advanceTimersByTime(350);
 
 		expect(video.currentTime).toBe(0);
+	});
+});
+
+describe('Transcript cleanup on Reader navigation', () => {
+	afterEach(() => {
+		readerTranscript.cleanupTranscript(document);
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	const settings = {
+		pinPlayer: true,
+		autoScroll: true,
+		highlightActiveLine: true,
+		transcriptLayout: 'reading' as const,
+		responseLanguage: 'English'
+	};
+	const scroll = {
+		getStickyOffset: () => 0,
+		scrollTo: () => {},
+		programmaticScroll: () => false
+	};
+	const transcriptArticle = () => {
+		document.body.innerHTML = `
+			<main>
+				<article>
+					<a href="https://www.youtube.com/watch?v=test">Video</a>
+					<div class="youtube transcript">
+						<div class="transcript-segment"><strong><span class="timestamp" data-timestamp="0">0:00</span></strong>Hello world.</div>
+					</div>
+				</article>
+			</main>
+		`;
+		return document.querySelector('article') as HTMLElement;
+	};
+	const plainArticle = () => {
+		const main = document.querySelector('main') as HTMLElement;
+		main.innerHTML = '<article><p>A plain article.</p></article>';
+		return main.querySelector('article') as HTMLElement;
+	};
+
+	test('navigating from a transcript to a plain article removes the learning UI and aborts its request', async () => {
+		vi.stubGlobal('CSS', {});
+		const clicks = captureTrustedClicks();
+		const selectionSignals: AbortSignal[] = [];
+		const addListener = Document.prototype.addEventListener;
+		vi.spyOn(Document.prototype, 'addEventListener').mockImplementation(function (
+			this: Document,
+			type: string,
+			listener: EventListenerOrEventListenerObject,
+			options?: boolean | AddEventListenerOptions
+		) {
+			if (type === 'selectionchange' && typeof options === 'object' && options.signal) selectionSignals.push(options.signal);
+			return addListener.call(this, type, listener, options);
+		});
+		let requestSignal: AbortSignal | undefined;
+		const translateTranscript = vi.fn((_segments: string[], _onProgress?: unknown, signal?: AbortSignal) => {
+			requestSignal = signal;
+			return new Promise<string[]>(() => {});
+		});
+		const load = vi.fn(async () => ({ transcript: readerTranscript, runtime: {} }) as unknown as ReaderTranscriptModules);
+		const loader = createReaderTranscriptLoader(load);
+
+		const article = transcriptArticle();
+		const prepared = await loader.prepare(document, article);
+		prepared?.modules.transcript.wireTranscript(document, article, settings, scroll, undefined, {
+			translateTranscript,
+			annotateJapaneseTranscript: vi.fn(),
+			explainSelection: vi.fn()
+		});
+		await clicks.click(document.querySelector('.player-learning-bilingual'));
+		await flushPromises();
+		clicks.restore();
+		expect(requestSignal?.aborted).toBe(false);
+		expect(document.querySelector('.language-learning-card')).not.toBeNull();
+		expect(document.querySelector('.language-learning-selection-action')).not.toBeNull();
+		expect(selectionSignals).toHaveLength(1);
+
+		await expect(loader.prepare(document, plainArticle())).resolves.toBeUndefined();
+
+		expect(load).toHaveBeenCalledOnce();
+		expect(requestSignal?.aborted).toBe(true);
+		expect(selectionSignals[0].aborted).toBe(true);
+		expect(document.querySelector('.language-learning-card')).toBeNull();
+		expect(document.querySelector('.language-learning-selection-action')).toBeNull();
+		expect(document.documentElement.hasAttribute('data-transcript-layout')).toBe(false);
+	});
+
+	test('cleanupTranscript leaves the document as before the transcript was wired', () => {
+		vi.stubGlobal('CSS', {});
+		const article = transcriptArticle();
+		wireTranscript(document, article, settings, scroll, undefined, {
+			translateTranscript: vi.fn(),
+			annotateJapaneseTranscript: vi.fn(),
+			explainSelection: vi.fn()
+		});
+
+		readerTranscript.cleanupTranscript(document);
+
+		expect(document.querySelector('.language-learning-card')).toBeNull();
+		expect(document.querySelector('.language-learning-selection-action')).toBeNull();
+		expect(document.querySelector('.player-learning-bilingual')).toBeNull();
 	});
 });

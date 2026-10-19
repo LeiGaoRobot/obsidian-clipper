@@ -33,6 +33,7 @@ import { createBilibiliTranscriptElement } from './bilibili-reader';
 import type { BilibiliTranscript } from './bilibili-transcript';
 import { getExtensionBranding, PAGEPICK_NAME } from './extension-branding';
 import { buildOutlineRootMargin } from './reader-outline';
+import { createReaderTranscriptLoader } from './reader-transcript-loader';
 
 // Mobile viewport settings
 const VIEWPORT = 'width=device-width, initial-scale=1, maximum-scale=1';
@@ -194,15 +195,24 @@ export class Reader {
 		await browser.storage.sync.set({ reader_settings: this.settings });
 	}
 
-	private static async wireTranscript(doc: Document, article: HTMLElement): Promise<void> {
-		if (!article.querySelector('.youtube.transcript, .bilibili.transcript')) return;
-		const [transcriptModule, languageLearningModule] = await Promise.all([
+	// The transcript modules load on the first article with a transcript and stay loaded, so later
+	// navigations can clean up what it left behind.
+	private static transcriptLoader = createReaderTranscriptLoader(async () => {
+		const [transcript, runtime] = await Promise.all([
 			import(/* webpackChunkName: 'reader-language-learning' */ './reader-transcript'),
 			import(/* webpackChunkName: 'reader-language-learning' */ './language-learning-runtime')
 		]);
+		return { transcript, runtime };
+	});
+
+	private static async wireTranscript(doc: Document, article: HTMLElement): Promise<void> {
+		const prepared = await this.transcriptLoader.prepare(doc, article);
+		if (!prepared) return;
+		const { transcript: transcriptModule, runtime: languageLearningModule } = prepared.modules;
 		// The response language is an AI setting; a failed read falls back to the browser language.
 		const responseLanguage = await languageLearningModule.loadConfiguredResponseLanguage()
 			.catch(() => navigator.language || 'English');
+		if (!prepared.isCurrent()) return;
 		transcriptModule.wireTranscript(doc, article, { ...this.settings, responseLanguage }, {
 			getStickyOffset: () => this.getStickyOffset(),
 			scrollTo: (y) => this.scrollTo(y),
@@ -1204,6 +1214,9 @@ export class Reader {
 	// Clean up event listeners and DOM elements from the previous page.
 	// Called before updateReaderContent to prevent stale state.
 	private static teardownContent(doc: Document) {
+		// Transcript: the learning card, selection button, listeners, and in-flight requests
+		this.transcriptLoader.cleanup(doc);
+
 		// Outline
 		if (this.observer) {
 			this.observer.disconnect();
