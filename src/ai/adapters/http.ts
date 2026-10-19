@@ -273,6 +273,23 @@ export interface ApiCallOptions {
 	fetchImpl?: typeof fetch;
 }
 
+/**
+ * A `Retry-After` header (delta-seconds or an HTTP-date) as milliseconds from `now`.
+ * Missing, malformed, or past values yield undefined.
+ */
+export function parseRetryAfter(value: string | null | undefined, now = Date.now()): number | undefined {
+	const text = value?.trim();
+	if (!text) return undefined;
+	if (/^\d+$/.test(text)) {
+		const ms = Number(text) * 1000;
+		return ms > 0 && Number.isFinite(ms) ? ms : undefined;
+	}
+	// HTTP-dates always name a day or month; this keeps Date.parse from accepting stray numbers.
+	if (!/[a-z]{3}/i.test(text)) return undefined;
+	const delta = Date.parse(text) - now;
+	return delta > 0 ? delta : undefined;
+}
+
 const OLLAMA_ORIGIN_HINT = 'Ollama cannot process requests originating from a browser extension without setting OLLAMA_ORIGINS. '
 	+ 'See instructions at https://help.obsidian.md/web-clipper/interpreter';
 
@@ -354,7 +371,9 @@ export async function executeApiCall(call: ApiPromptCall, options: ApiCallOption
 			if (call.kind === 'ollama' && response.status === 403) {
 				throw new AiError('provider-error', { ...context, status: 403, detail: OLLAMA_ORIGIN_HINT });
 			}
-			throw classifyHttpStatus(response.status, errorText, { ...context, kind: call.kind });
+			throw classifyHttpStatus(response.status, errorText, { ...context, kind: call.kind }, {
+				retryAfterMs: parseRetryAfter(response.headers.get('retry-after'))
+			});
 		}
 
 		const format = formatFromContentType(response.headers.get('content-type') || '');

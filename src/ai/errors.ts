@@ -60,6 +60,8 @@ export interface AiErrorOptions {
 	nativeCode?: string;
 	/** The limit that expired, for `timeout` errors. */
 	timeoutSeconds?: number;
+	/** The provider's `Retry-After`, as milliseconds from when the response arrived. */
+	retryAfterMs?: number;
 }
 
 export class AiError extends Error {
@@ -71,6 +73,7 @@ export class AiError extends Error {
 	readonly detail?: string;
 	readonly nativeCode?: string;
 	readonly timeoutSeconds?: number;
+	readonly retryAfterMs?: number;
 
 	constructor(code: AiErrorCode, options: AiErrorOptions = {}) {
 		super(options.detail || code);
@@ -83,6 +86,7 @@ export class AiError extends Error {
 		if (options.detail) this.detail = options.detail;
 		if (options.nativeCode) this.nativeCode = options.nativeCode;
 		if (options.timeoutSeconds !== undefined) this.timeoutSeconds = options.timeoutSeconds;
+		if (options.retryAfterMs !== undefined) this.retryAfterMs = options.retryAfterMs;
 	}
 }
 
@@ -155,12 +159,23 @@ export interface HttpErrorContext {
 	kind?: ConnectionKind;
 }
 
-export function classifyHttpStatus(status: number, body = '', context: HttpErrorContext = {}): AiError {
+export interface HttpErrorOptions {
+	/** Parsed `Retry-After` header; see `parseRetryAfter` in adapters/http.ts. */
+	retryAfterMs?: number;
+}
+
+export function classifyHttpStatus(
+	status: number,
+	body = '',
+	context: HttpErrorContext = {},
+	httpOptions: HttpErrorOptions = {}
+): AiError {
 	const detail = body.length > MAX_DETAIL_CHARS ? `${body.slice(0, MAX_DETAIL_CHARS)}…` : body;
 	const options = {
 		status,
 		...(context.connectionId ? { connectionId: context.connectionId } : {}),
-		...(detail ? { detail } : {})
+		...(detail ? { detail } : {}),
+		...(httpOptions.retryAfterMs !== undefined ? { retryAfterMs: httpOptions.retryAfterMs } : {})
 	};
 	// Ollama answers 403 when the extension origin is not in OLLAMA_ORIGINS; no key is involved.
 	if (status === 403 && context.kind === 'ollama') return new AiError('provider-error', options);

@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { ApiConnectionKind } from '../types';
-import { ANTHROPIC_RESPONSE_TOOL, buildApiRequest, executeApiCall, type ApiPromptCall, type ApiStructuredOutput } from './http';
+import {
+	ANTHROPIC_RESPONSE_TOOL,
+	buildApiRequest,
+	executeApiCall,
+	parseRetryAfter,
+	type ApiPromptCall,
+	type ApiStructuredOutput
+} from './http';
 
 const app = { name: 'PagePick for Obsidian', homepageUrl: 'https://home.example' };
 const messages = { system: 'Answer as JSON.', user: 'Page' };
@@ -221,6 +228,21 @@ describe('executeApiCall', () => {
 			.rejects.toMatchObject({ code, status, connectionId: 'c' });
 	});
 
+	test('passes a Retry-After header through on the classified error', async () => {
+		const fetchImpl = vi.fn().mockResolvedValue(new Response('slow down', { status: 429, headers: { 'retry-after': '7' } }));
+		await expect(executeApiCall(call('openai-compatible'), { fetchImpl, connectionId: 'c' }))
+			.rejects.toMatchObject({ code: 'rate-limited', status: 429, retryAfterMs: 7000 });
+	});
+
+	test('leaves retryAfterMs unset without a usable Retry-After header', async () => {
+		for (const headers of [{}, { 'retry-after': 'soon' }] as Record<string, string>[]) {
+			const fetchImpl = vi.fn().mockResolvedValue(new Response('busy', { status: 503, headers }));
+			const error = await executeApiCall(call('openai-compatible'), { fetchImpl }).catch(value => value);
+			expect(error).toMatchObject({ code: 'provider-error', status: 503 });
+			expect(error.retryAfterMs).toBeUndefined();
+		}
+	});
+
 	test('explains an Ollama origin rejection', async () => {
 		const fetchImpl = vi.fn().mockResolvedValue(new Response('Forbidden', { status: 403 }));
 		const error = await executeApiCall(call('ollama'), { fetchImpl }).catch(value => value);
@@ -327,5 +349,34 @@ describe('executeApiCall', () => {
 		aborted.abort();
 		await expect(executeApiCall(call('openai-compatible'), { fetchImpl: fetchImpl as unknown as typeof fetch, signal: aborted.signal }))
 			.rejects.toMatchObject({ code: 'cancelled' });
+	});
+});
+
+describe('parseRetryAfter', () => {
+	const now = Date.parse('2026-10-19T12:00:00Z');
+
+	test('reads delta-seconds', () => {
+		expect(parseRetryAfter('7', now)).toBe(7000);
+		expect(parseRetryAfter(' 120 ', now)).toBe(120_000);
+	});
+
+	test('reads an HTTP-date as the positive delta from now', () => {
+		expect(parseRetryAfter('Mon, 19 Oct 2026 12:00:30 GMT', now)).toBe(30_000);
+		expect(parseRetryAfter('Monday, 19-Oct-26 12:00:05 GMT', now)).toBe(5000);
+	});
+
+	test.each([
+		[null],
+		[undefined],
+		[''],
+		['0'],
+		['-5'],
+		['1.5'],
+		['soon'],
+		['12 34'],
+		['Mon, 19 Oct 2026 11:59:00 GMT'],
+		['Mon, 99 Foo 2026 25:00:00 GMT']
+	])('ignores %j', value => {
+		expect(parseRetryAfter(value, now)).toBeUndefined();
 	});
 });

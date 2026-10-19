@@ -107,6 +107,14 @@ describe('classifyHttpStatus', () => {
 		expect(classifyHttpStatus(403, 'Forbidden', { kind: 'openai-compatible' }).code).toBe('auth');
 	});
 
+	test('carries a parsed Retry-After when the response had one', () => {
+		expect(classifyHttpStatus(429, '', {}, { retryAfterMs: 7000 })).toMatchObject({ code: 'rate-limited', retryAfterMs: 7000 });
+		expect(classifyHttpStatus(503, '', {}, { retryAfterMs: 1000 }).retryAfterMs).toBe(1000);
+		expect('retryAfterMs' in classifyHttpStatus(429, '')).toBe(false);
+		expect('retryAfterMs' in classifyHttpStatus(429, '', {}, { retryAfterMs: undefined })).toBe(false);
+		expect(new AiError('rate-limited', { retryAfterMs: 0 }).retryAfterMs).toBe(0);
+	});
+
 	test('bounds a large response body in the detail', () => {
 		const error = classifyHttpStatus(502, '<html>' + 'x'.repeat(10_000));
 		expect(error.detail!.length).toBeLessThanOrEqual(2001);
