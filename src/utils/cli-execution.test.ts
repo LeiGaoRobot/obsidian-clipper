@@ -109,6 +109,16 @@ describe('CLI execution modes', () => {
 		)).toThrow('did not answer any of: prompt_1');
 	});
 
+	test('rejects a CLI response that leaves out some prompts', () => {
+		expect(() => parsePromptResponses(
+			'{"prompt_1":"done"}',
+			[
+				{ key: 'prompt_1', prompt: 'Summarize this', filters: '' },
+				{ key: 'prompt_2', prompt: 'Tag this', filters: '' }
+			]
+		)).toThrow(expect.objectContaining({ code: 'incomplete', message: 'The reply did not answer: prompt_2.' }));
+	});
+
 	test('skips unrelated JSON emitted before the final response', () => {
 		expect(parsePromptResponses(
 			'{"type":"status"}\n{"prompt_1":"done"}',

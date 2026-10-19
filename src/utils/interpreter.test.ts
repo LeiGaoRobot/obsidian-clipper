@@ -52,7 +52,10 @@ describe('Interpreter', () => {
 			<textarea id="prompt-context">Page context</textarea>
 		`;
 		mocks.generalSettings.interpreterExecutionMode = 'codex';
-		mocks.runAiTask.mockReset().mockResolvedValue({ output: { prompt_1: 'Done' }, connectionKind: 'cli-codex' });
+		mocks.runAiTask.mockReset().mockResolvedValue({
+			output: { responses: { prompt_1: 'Done' }, missing: [] },
+			connectionKind: 'cli-codex'
+		});
 	});
 
 	test('runs CLI modes through the gateway without an explicit profile', async () => {
@@ -64,6 +67,50 @@ describe('Interpreter', () => {
 			{}
 		);
 		expect(document.getElementById('interpreter')?.classList.contains('done')).toBe(true);
+	});
+
+	test('fills answered prompts and marks a partial result without calling it done', async () => {
+		const twoPrompts = { ...template, noteContentFormat: '{{"Summarize"}} {{"Tags"|lower}}' };
+		document.body.insertAdjacentHTML('beforeend',
+			'<textarea id="note-content-field">{{"Summarize"}} / {{"Tags"|lower}}</textarea>');
+		mocks.runAiTask.mockResolvedValue({
+			output: { responses: { prompt_1: 'Done' }, missing: ['prompt_2'] },
+			connectionKind: 'cli-codex'
+		});
+
+		await handleInterpreterUI(twoPrompts, {}, 1, 'https://example.com');
+
+		expect((document.getElementById('note-content-field') as HTMLTextAreaElement).value)
+			.toBe('Done / {{"Tags"|lower}}');
+		const container = document.getElementById('interpreter')!;
+		const button = document.getElementById('interpret-btn') as HTMLButtonElement;
+		expect(container.classList.contains('partial')).toBe(true);
+		expect(container.classList.contains('done')).toBe(false);
+		expect(button.classList.contains('partial')).toBe(true);
+		expect(button.classList.contains('done')).toBe(false);
+		expect(button.textContent).toBe('interpreterpartialstatus');
+		const warning = document.getElementById('interpreter-error') as HTMLDivElement;
+		expect(warning.style.display).toBe('block');
+		expect(warning.classList.contains('warning')).toBe(true);
+		expect(warning.querySelector('strong')?.textContent).toBe('interpreterPartialTitle');
+		expect(Array.from(warning.querySelectorAll('li'), item => item.textContent)).toEqual(['Tags']);
+		expect((document.getElementById('clip-btn') as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	test('clears a previous partial warning when a later run completes', async () => {
+		mocks.runAiTask.mockResolvedValueOnce({
+			output: { responses: {}, missing: ['prompt_1'] },
+			connectionKind: 'cli-codex'
+		});
+		await handleInterpreterUI(template, {}, 1, 'https://example.com');
+		await handleInterpreterUI(template, {}, 1, 'https://example.com');
+
+		const warning = document.getElementById('interpreter-error') as HTMLDivElement;
+		expect(warning.style.display).toBe('none');
+		expect(warning.classList.contains('warning')).toBe(false);
+		expect(document.getElementById('interpreter')?.classList.contains('partial')).toBe(false);
+		expect(document.getElementById('interpreter')?.classList.contains('done')).toBe(true);
+		expect(document.getElementById('interpret-btn')?.classList.contains('partial')).toBe(false);
 	});
 
 	test('passes the selected model as the profile in API mode', async () => {

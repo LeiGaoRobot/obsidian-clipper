@@ -632,6 +632,15 @@
 	"interpreterContext": {
 		"message": "Interpreter context"
 	},
+	"interpreterPartialStatus": {
+		"message": "Partial"
+	},
+	"interpreterPartialTitle": {
+		"message": "Some prompts were not answered."
+	},
+	"interpreterPartialBody": {
+		"message": "The model answered $1 of $2 prompts. The unanswered prompts below stay as placeholders in the note. Fill them in, or add the note to Obsidian as it is. To interpret again, reopen Web Clipper."
+	},
 	"interpreterContextDescription": {
 		"message": "The context used to interpret prompt variables. Overrides the default context defined in $link_start$Interpreter settings$link_end$. Variables can be used here.",
 		"placeholders": {

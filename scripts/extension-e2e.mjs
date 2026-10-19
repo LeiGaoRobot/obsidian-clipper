@@ -529,7 +529,8 @@ try {
 	})`);
 	if (
 		gatewayRun.outcome?.type !== 'result'
-		|| gatewayRun.outcome.output?.prompt_1 !== 'Streamed summary'
+		|| gatewayRun.outcome.output?.responses?.prompt_1 !== 'Streamed summary'
+		|| gatewayRun.outcome.output?.missing?.length !== 0
 		|| !gatewayRun.messages.includes('receiving')
 		|| providerRequests.length !== 1
 		|| providerRequests[0].body.stream !== true

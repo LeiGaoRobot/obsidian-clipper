@@ -200,7 +200,7 @@ interface AiError { code: AiErrorCode; retryable: boolean; connectionId?: string
 
 | Task | Contract |
 | --- | --- |
-| `interpret` | JSON object keyed by prompt variable (unchanged semantics; `replacePromptVariables` only needs `key`, `interpreter.ts:328-357`) |
+| `interpret` | JSON object keyed by prompt variable, parsed to `{ responses, missing }`: the answered keys, plus the requested keys the reply left out, in prompt order (`replacePromptVariables` only needs `key`) |
 | `edit`, `explain` | text, streamed |
 | `translate` | `{ id: number, text: string }[]` |
 | `reading` | aligned token arrays keyed by segment id |
@@ -218,7 +218,7 @@ Structured output is selected by the connection's detected capability:
 
 - **Fallback.** A `400` that mentions `response_format` / schema triggers one fallback to prompt-schema plus the tolerant parser, and the connection is downgraded to `none`. This is a documented, non-billable correction, separate from the D4 retries.
 - **No envelope.** The `prompts_responses` envelope and the regex quote repair are removed. The extension prompt, the Host prompt, and `src/cli.ts` change in the same commit. `parsePromptResponses` already accepts a bare keyed object.
-- **Validation.** A response that fails validation is `bad-response` or `incomplete`. It is never partially accepted as complete, which keeps the transcript alignment invariant.
+- **Validation.** A response that fails validation is `bad-response` or `incomplete`. It is never partially accepted as complete, which keeps the transcript alignment invariant. An `interpret` reply that answers some keys returns them with `missing` set. The Interpreter fills in the answers, leaves the missing prompts as placeholders, and shows a partial state instead of done. `src/cli.ts` cannot mark a missing prompt, so it rejects a partial reply as `incomplete`. A reply that answers no key is `bad-response`.
 
 ## Long jobs
 

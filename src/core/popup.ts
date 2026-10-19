@@ -651,12 +651,18 @@ function logError(message: string, error?: any): void {
 	showError(message);
 }
 
+/** The interpreter left prompts unanswered; the clipper stays visible to show which. */
+class InterpreterPartialError extends Error {}
+
 async function waitForInterpreter(interpretBtn: HTMLButtonElement): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const checkProcessing = () => {
 			if (!interpretBtn.classList.contains('processing')) {
 				if (interpretBtn.classList.contains('done')) {
 					resolve();
+				} else if (interpretBtn.classList.contains('partial')) {
+					// Keep the popup open so the unanswered prompts are seen before saving.
+					reject(new InterpreterPartialError(getMessage('interpreterPartialTitle')));
 				} else if (interpretBtn.classList.contains('error')) {
 					reject(new Error(getMessage('failedToProcessInterpreter')));
 				} else {
@@ -970,7 +976,7 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 				}
 				await handleInterpreterUI(template, variables, currentTabId!, currentUrl, modelConfig);
 
-				if (interpretBtn) {
+				if (interpretBtn && !interpretBtn.classList.contains('partial')) {
 					interpretBtn.classList.add('done');
 					interpretBtn.disabled = true;
 				}
@@ -1345,7 +1351,8 @@ async function handleClipObsidian(): Promise<void> {
 		if (generalSettings.interpreterEnabled && interpretBtn && collectPromptVariables(currentTemplate).length > 0) {
 			if (interpretBtn.classList.contains('processing')) {
 				await waitForInterpreter(interpretBtn);
-			} else if (!interpretBtn.classList.contains('done')) {
+			} else if (!interpretBtn.classList.contains('done') && !interpretBtn.classList.contains('partial')) {
+				// A partial result was already shown with its warning; save the fields as they are.
 				interpretBtn.click();
 				await waitForInterpreter(interpretBtn);
 			}
@@ -1375,7 +1382,7 @@ async function handleClipObsidian(): Promise<void> {
 		}
 	} catch (error) {
 		console.error('Error in handleClipObsidian:', error);
-		showError('failedToSaveFile');
+		if (!(error instanceof InterpreterPartialError)) showError('failedToSaveFile');
 		throw error;
 	}
 }

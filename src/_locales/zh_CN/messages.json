@@ -632,6 +632,15 @@
 	"interpreterContext": {
 		"message": "解释器上下文"
 	},
+	"interpreterPartialStatus": {
+		"message": "部分完成"
+	},
+	"interpreterPartialTitle": {
+		"message": "部分提示词没有得到回答。"
+	},
+	"interpreterPartialBody": {
+		"message": "模型回答了 $2 个提示词中的 $1 个。下面未回答的提示词会以占位符形式保留在笔记中。你可以手动补全，也可以直接按现状添加到 Obsidian。如需重新解读，请重新打开 Web Clipper。"
+	},
 	"interpreterContextDescription": {
 		"message": "用于解释提示变量的上下文。覆盖$link_start$解释器设置$link_end$中定义的默认上下文。此处可以使用变量。",
 		"placeholders": {

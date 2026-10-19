@@ -37,8 +37,17 @@ export interface AiTaskInputs {
 	reading: Budget & { instruction: string; segments: TranscriptSegment[] };
 }
 
+/**
+ * Answers by prompt key. `missing` lists requested keys the reply left out, in prompt order;
+ * callers must treat those prompts as unanswered, never as complete.
+ */
+export interface InterpretOutput {
+	responses: Record<string, string>;
+	missing: string[];
+}
+
 export interface AiTaskOutputs {
-	interpret: Record<string, string>;
+	interpret: InterpretOutput;
 	edit: string;
 	explain: string;
 	translate: TranscriptSegment[];
@@ -258,25 +267,29 @@ function stringifyValue(value: unknown): string {
 	}
 }
 
-function parseInterpret(text: string, input: AiTaskInputs['interpret']): Record<string, string> {
+function parseInterpret(text: string, input: AiTaskInputs['interpret']): InterpretOutput {
 	const keys = input.prompts.map(prompt => prompt.key);
 	const objects = parseJsonCandidates(text).filter(isRecord);
 	if (objects.length === 0) throw badResponse(text, 'The reply did not contain a JSON object.');
+	const answered = (object: Record<string, unknown>) =>
+		keys.filter(key => Object.prototype.hasOwnProperty.call(object, key));
+	// The object answering the most prompts wins; the first one wins ties.
 	let best: Record<string, unknown> | undefined;
-	let bestCount = 0;
+	let bestKeys: string[] = [];
 	for (const object of objects) {
-		const count = keys.filter(key => Object.prototype.hasOwnProperty.call(object, key)).length;
-		if (count === keys.length) {
-			return Object.fromEntries(keys.map(key => [key, stringifyValue(object[key])]));
-		}
-		if (count > bestCount) {
+		const present = answered(object);
+		if (present.length > bestKeys.length) {
 			best = object;
-			bestCount = count;
+			bestKeys = present;
+			if (present.length === keys.length) break;
 		}
 	}
 	if (!best) throw badResponse(text, `The reply did not answer any of: ${keys.join(', ')}.`);
-	const missing = keys.filter(key => !Object.prototype.hasOwnProperty.call(best, key));
-	throw new AiError('incomplete', { detail: `The reply did not answer: ${missing.join(', ')}.` });
+	const answer = best;
+	return {
+		responses: Object.fromEntries(bestKeys.map(key => [key, stringifyValue(answer[key])])),
+		missing: keys.filter(key => !bestKeys.includes(key))
+	};
 }
 
 function itemLists(text: string, field: string): unknown[][] {
@@ -372,8 +385,9 @@ function parseReadings(text: string, input: AiTaskInputs['reading']): SegmentRea
 }
 
 /**
- * Validates a model reply against the task contract. Transcript tasks return only valid items
- * for requested segment ids; callers treat absent segments as missing, never as complete.
+ * Validates a model reply against the task contract. Interpret returns the answered keys with the
+ * missing ones listed; transcript tasks return only valid items for requested segment ids. Callers
+ * treat missing keys and absent segments as unanswered, never as complete.
  */
 export function parseOutput<T extends AiTask>(task: T, input: AiTaskInput<T>, text: string): AiTaskOutput<T> {
 	switch (task) {

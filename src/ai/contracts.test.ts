@@ -87,19 +87,30 @@ describe('parseJsonCandidates', () => {
 describe('parseOutput', () => {
 	test('returns interpret responses by key and stringifies non-string values', () => {
 		expect(parseOutput('interpret', interpret, '{"prompt_1":"a, b","prompt_2":["x","y"]}')).toEqual({
-			prompt_1: 'a, b',
-			prompt_2: '[\n  "x",\n  "y"\n]'
+			responses: { prompt_1: 'a, b', prompt_2: '[\n  "x",\n  "y"\n]' },
+			missing: []
 		});
 	});
 
 	test('skips an unrelated object before the answer', () => {
 		expect(parseOutput('interpret', interpret, 'Plan: {"step":1}\n{"prompt_1":"t","prompt_2":"s"}'))
-			.toEqual({ prompt_1: 't', prompt_2: 's' });
+			.toEqual({ responses: { prompt_1: 't', prompt_2: 's' }, missing: [] });
 	});
 
-	test('reports a partial interpret answer as incomplete and no JSON as a bad response', () => {
-		expect(() => parseOutput('interpret', interpret, '{"prompt_1":"t"}'))
-			.toThrow(expect.objectContaining({ code: 'incomplete', detail: 'The reply did not answer: prompt_2.' }));
+	test('keeps a partial interpret answer and lists the missing keys in prompt order', () => {
+		const three = { ...interpret, prompts: [...interpret.prompts, { key: 'prompt_3', prompt: 'Title' }] };
+		expect(parseOutput('interpret', three, '{"prompt_2":"s","extra":"x"}'))
+			.toEqual({ responses: { prompt_2: 's' }, missing: ['prompt_1', 'prompt_3'] });
+	});
+
+	test('prefers the object that answers the most prompts', () => {
+		expect(parseOutput('interpret', interpret, '{"prompt_1":"draft"} then {"prompt_1":"t","prompt_2":"s"}'))
+			.toEqual({ responses: { prompt_1: 't', prompt_2: 's' }, missing: [] });
+		expect(parseOutput('interpret', interpret, '{"prompt_1":"first"} {"prompt_2":"second"}'))
+			.toEqual({ responses: { prompt_1: 'first' }, missing: ['prompt_2'] });
+	});
+
+	test('reports a reply that answers no prompt or has no JSON as a bad response', () => {
 		expect(() => parseOutput('interpret', interpret, 'I cannot help'))
 			.toThrow(expect.objectContaining({ code: 'bad-response' }));
 		expect(() => parseOutput('interpret', interpret, '{"other":1}'))
@@ -184,6 +195,7 @@ describe('parseOutput', () => {
 	});
 
 	test('finds JSON after a stray quote in leading prose', () => {
-		expect(parseOutput('interpret', interpret, 'He said "hi. {"prompt_1":"A","prompt_2":"B"}')).toEqual({ prompt_1: 'A', prompt_2: 'B' });
+		expect(parseOutput('interpret', interpret, 'He said "hi. {"prompt_1":"A","prompt_2":"B"}'))
+			.toEqual({ responses: { prompt_1: 'A', prompt_2: 'B' }, missing: [] });
 	});
 });

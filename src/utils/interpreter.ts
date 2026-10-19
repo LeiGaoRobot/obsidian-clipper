@@ -184,9 +184,11 @@ export async function handleInterpreterUI(
 		// Hide any previous error message
 		interpreterErrorMessage.style.display = 'none';
 		interpreterErrorMessage.textContent = '';
+		interpreterErrorMessage.classList.remove('warning');
 
-		// Remove any previous done or error classes
-		interpreterContainer?.classList.remove('done', 'error');
+		// Remove any previous done, partial, or error classes
+		interpreterContainer?.classList.remove('done', 'partial', 'error');
+		interpretBtn.classList.remove('done', 'partial', 'error');
 
 		const executionMode = generalSettings.interpreterExecutionMode ?? 'api';
 
@@ -222,16 +224,19 @@ export async function handleInterpreterUI(
 		}, 10);
 
 		// The model select picks the profile for API runs; CLI modes use their own profile.
-		const { output: responses } = await runAiTask('interpret', {
+		const { output: { responses, missing } } = await runAiTask('interpret', {
 			context: contextToUse,
 			prompts: promptVariables
 		}, executionMode === 'api' && modelConfig ? { profileId: modelConfig.id } : {});
-		const promptResponses = promptVariables.map(variable => ({
-			key: variable.key,
-			prompt: variable.prompt,
-			user_response: responses[variable.key]
-		}));
-		debugLog('Interpreter', 'LLM response:', { promptResponses });
+		// Unanswered prompts get no response, so their placeholders stay in the fields.
+		const promptResponses = promptVariables
+			.filter(variable => Object.prototype.hasOwnProperty.call(responses, variable.key))
+			.map(variable => ({
+				key: variable.key,
+				prompt: variable.prompt,
+				user_response: responses[variable.key]
+			}));
+		debugLog('Interpreter', 'LLM response:', { promptResponses, missing });
 
 		// Stop the timer and update UI
 		clearInterval(timerInterval);
@@ -239,15 +244,18 @@ export async function handleInterpreterUI(
 		const totalTime = endTime - startTime;
 		responseTimer.textContent = formatDuration(totalTime);
 
-		// Update button state
-		interpretBtn.textContent = getMessage('done').toLowerCase();
+		// Update button state; a partial result is never marked done
+		const state = missing.length > 0 ? 'partial' : 'done';
+		interpretBtn.textContent = getMessage(state === 'done' ? 'done' : 'interpreterPartialStatus').toLowerCase();
 		interpretBtn.classList.remove('processing');
-		interpretBtn.classList.add('done');
+		interpretBtn.classList.add(state);
 		interpretBtn.disabled = true;
+		interpreterContainer?.classList.add(state);
+		if (state === 'partial') {
+			const unanswered = promptVariables.filter(variable => missing.includes(variable.key));
+			showInterpreterPartial(interpreterErrorMessage, unanswered, promptVariables.length);
+		}
 
-		// Add done class to container
-		interpreterContainer?.classList.add('done');
-		
 		// Update fields with responses
 		replacePromptVariables(promptVariables, promptResponses);
 
@@ -314,6 +322,22 @@ function showInterpreterError(container: HTMLElement, error: unknown): void {
 			? error.message
 			: 'An unknown error occurred while processing the interpreter request.';
 	}
+	container.style.display = 'block';
+}
+
+function showInterpreterPartial(container: HTMLElement, unanswered: PromptVariable[], total: number): void {
+	container.replaceChildren();
+	container.classList.add('warning');
+	const title = document.createElement('strong');
+	title.textContent = getMessage('interpreterPartialTitle');
+	const body = getMessage('interpreterPartialBody', [String(total - unanswered.length), String(total)]);
+	const list = document.createElement('ul');
+	for (const variable of unanswered) {
+		const item = document.createElement('li');
+		item.textContent = variable.prompt;
+		list.append(item);
+	}
+	container.append(title, ` ${body}`, list);
 	container.style.display = 'block';
 }
 

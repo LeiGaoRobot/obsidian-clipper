@@ -1,5 +1,6 @@
 import type { PromptVariable } from '../types/types';
 import { parseOutput, renderCliPrompt, type PromptItem } from '../ai/contracts';
+import { AiError } from '../ai/errors';
 import { applyFilters } from './filters';
 
 export type CliExecutionMode = 'grok' | 'codex';
@@ -58,12 +59,19 @@ export function replacePromptVariables(
 	});
 }
 
-/** Parses CLI stdout against the interpret contract and returns responses by prompt key. */
+/**
+ * Parses CLI stdout against the interpret contract and returns responses by prompt key. The CLI
+ * has no way to mark an unanswered prompt in its output, so a partial reply is rejected.
+ */
 export function parsePromptResponses(
 	output: string,
 	promptVariables: PromptVariable[]
 ): Record<string, unknown> {
-	return parseOutput('interpret', { context: '', prompts: toPromptItems(promptVariables) }, output);
+	const { responses, missing } = parseOutput('interpret', { context: '', prompts: toPromptItems(promptVariables) }, output);
+	if (missing.length > 0) {
+		throw new AiError('incomplete', { detail: `The reply did not answer: ${missing.join(', ')}.` });
+	}
+	return responses;
 }
 
 /** The single CLI prompt for interpret, shared by the Native Host path and `src/cli.ts`. */

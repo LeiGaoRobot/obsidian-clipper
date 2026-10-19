@@ -97,7 +97,7 @@ describe('AI gateway', () => {
 		expect(port.last()).toEqual({
 			type: 'result',
 			jobId: 'job-1',
-			output: { prompt_1: 'A summary' },
+			output: { responses: { prompt_1: 'A summary' }, missing: [] },
 			connectionKind: 'openai-compatible'
 		});
 		expect(deps.executeApi).toHaveBeenCalledWith(
@@ -154,6 +154,18 @@ describe('AI gateway', () => {
 		});
 	});
 
+	test('returns a partial interpret reply with its missing keys', async () => {
+		const twoPrompts = { ...input, prompts: [...input.prompts, { key: 'prompt_2', prompt: 'Tags' }] };
+		const { port } = setup();
+		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input: twoPrompts });
+		await flush();
+
+		expect(port.last()).toMatchObject({
+			type: 'result',
+			output: { responses: { prompt_1: 'A summary' }, missing: ['prompt_2'] }
+		});
+	});
+
 	test('returns text tasks without structured output', async () => {
 		const { deps, port } = setup({ executeApi: vi.fn(async () => ' Revised. ') });
 		port.send({ type: 'start', jobId: 'job-1', task: 'edit', input: { instruction: 'Fix it.', content: 'draft' } });
@@ -173,7 +185,7 @@ describe('AI gateway', () => {
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
 		await flush();
 
-		expect(port.last()).toMatchObject({ type: 'result', output: { prompt_1: 'A summary' } });
+		expect(port.last()).toMatchObject({ type: 'result', output: { responses: { prompt_1: 'A summary' }, missing: [] } });
 		expect(executeApi.mock.calls[0][0].structured).toMatchObject({ mode: 'json_schema' });
 		expect(executeApi.mock.calls[1][0]).not.toHaveProperty('structured');
 		expect(await structuredOutput.get('provider-openai', 'https://api.openai.com/v1/chat/completions')).toBe('none');
@@ -243,7 +255,7 @@ describe('AI gateway', () => {
 		);
 		expect(port.posted.map(message => message.type === 'progress' ? message.phase : message.type))
 			.toEqual(['started', 'heartbeat', 'result']);
-		expect(port.last()).toMatchObject({ output: { prompt_1: 'From CLI' }, connectionKind: 'cli-codex' });
+		expect(port.last()).toMatchObject({ output: { responses: { prompt_1: 'From CLI' }, missing: [] }, connectionKind: 'cli-codex' });
 	});
 
 	test('retries a Codex CLI that does not know --output-schema without it, and remembers', async () => {
@@ -263,7 +275,7 @@ describe('AI gateway', () => {
 
 		expect(executeCli.mock.calls[0][0]).toHaveProperty('outputSchema');
 		expect(executeCli.mock.calls[1][0]).not.toHaveProperty('outputSchema');
-		expect(port.last()).toMatchObject({ type: 'result', output: { prompt_1: 'From CLI' } });
+		expect(port.last()).toMatchObject({ type: 'result', output: { responses: { prompt_1: 'From CLI' }, missing: [] } });
 		expect(await structuredOutput.get('legacy-cli-codex', undefined)).toBe('none');
 	});
 
@@ -276,7 +288,7 @@ describe('AI gateway', () => {
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
 		await flush();
 		expect((executeCli.mock.calls[0] as unknown[])[0]).not.toHaveProperty('outputSchema');
-		expect(port.last()).toMatchObject({ output: { prompt_1: 'From Grok' }, connectionKind: 'cli-grok' });
+		expect(port.last()).toMatchObject({ output: { responses: { prompt_1: 'From Grok' }, missing: [] }, connectionKind: 'cli-grok' });
 	});
 
 	test('reports CLI profiles as unsupported without Native Messaging', async () => {
