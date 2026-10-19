@@ -225,6 +225,24 @@ describe('Language learning popup', () => {
 		expect(fixture.content.value).toBe('Before simple after.');
 	});
 
+	test('Retry after the note changed sends nothing and says the content changed', async () => {
+		const fixture = createPopupFixture();
+		const transformContent = vi.fn().mockRejectedValueOnce(new AiError('network', { task: 'edit' }));
+		initializeLanguageLearningPopup({ enabled: true, transformContent, getMessage: key => key });
+
+		fixture.previewButton.click();
+		await vi.waitFor(() => expect(fixture.errorCard.hidden).toBe(false));
+		fixture.content.value = 'Edited by hand.';
+		cardAction(fixture.errorCard, 'retry').click();
+
+		expect(transformContent).toHaveBeenCalledOnce();
+		expect(fixture.status.textContent).toBe('aiEditContentChanged');
+		expect(fixture.status.classList.contains('is-error')).toBe(true);
+		expect(fixture.errorCard.hidden).toBe(true);
+		expect(fixture.preview.style.display).toBe('none');
+		expect(fixture.previewButton.disabled).toBe(false);
+	});
+
 	test('shows an empty response as an error card', async () => {
 		const fixture = createPopupFixture();
 		initializeLanguageLearningPopup({ enabled: true, transformContent: vi.fn().mockResolvedValue('  '), getMessage: key => key });

@@ -34,8 +34,11 @@ export interface LearningCard {
 	readonly owner: LearningCardOwner | null;
 	/** Where focus returns when the card closes; kept only while the card is closed. */
 	rememberReturnFocus(preferred?: HTMLElement | null): void;
-	/** Shows `body` as plain text under `title`. */
-	showMessage(owner: LearningCardOwner, title: string, body: string): void;
+	/**
+	 * Shows `body` as plain text under `title`; `cancellable` adds a Cancel button, which closes the
+	 * card as the close button does.
+	 */
+	showMessage(owner: LearningCardOwner, title: string, body: string, options?: { cancellable?: boolean }): void;
 	/** Fills the explanation card and its actions; does nothing once another view took the card. */
 	showExplanation(selection: LearningSelection, explanation: string): Promise<void>;
 	showError(owner: LearningCardOwner, title: string, error: AiError, options: LearningCardErrorOptions): void;
@@ -48,6 +51,11 @@ export interface LearningCardOptions {
 	tools: TranscriptLanguageLearning;
 	/** Aborted when the Reader rewires or navigates; restores the background and drops late work. */
 	signal: AbortSignal;
+	/**
+	 * Called after the user closed the card (close button, Escape, or Cancel) with what it showed.
+	 * The modal card makes the page's task bar unreachable, so closing is how its request is stopped.
+	 */
+	onClose?: (owner: LearningCardOwner) => void;
 }
 
 const READER_TASKS: readonly ReaderAiTask[] = ['translate', 'reading', 'explain'];
@@ -99,7 +107,7 @@ function actionButton(doc: Document, className: string, label: string): HTMLButt
 	return button;
 }
 
-export function createLearningCard({ doc, tools, signal }: LearningCardOptions): LearningCard {
+export function createLearningCard({ doc, tools, signal, onClose }: LearningCardOptions): LearningCard {
 	const card = doc.createElement('aside');
 	card.className = 'language-learning-card';
 	card.setAttribute('role', 'dialog');
@@ -121,7 +129,12 @@ export function createLearningCard({ doc, tools, signal }: LearningCardOptions):
 
 	const body = doc.createElement('div');
 	body.className = 'language-learning-card-body';
-	body.setAttribute('aria-live', 'polite');
+	// Messages and explanations are announced as they change; an error card announces itself.
+	const announceBody = (announce: boolean) => {
+		if (announce) body.setAttribute('aria-live', 'polite');
+		else body.removeAttribute('aria-live');
+	};
+	announceBody(true);
 	const actions = doc.createElement('div');
 	actions.className = 'language-learning-card-actions';
 	const feedback = doc.createElement('span');
@@ -131,7 +144,8 @@ export function createLearningCard({ doc, tools, signal }: LearningCardOptions):
 	const favoriteButton = actionButton(doc, 'language-learning-card-favorite', getMessage('readerFavorite'));
 	const copyButton = actionButton(doc, 'language-learning-card-copy', getMessage('copyToClipboard'));
 	const saveButton = actionButton(doc, 'language-learning-card-save', getMessage('addToObsidian'));
-	actions.append(feedback, favoriteButton, copyButton, saveButton);
+	const cancelButton = actionButton(doc, 'language-learning-card-cancel', getMessage('cancel'));
+	actions.append(feedback, favoriteButton, copyButton, saveButton, cancelButton);
 	card.append(header, body, actions);
 	doc.body.appendChild(card);
 
@@ -191,7 +205,9 @@ export function createLearningCard({ doc, tools, signal }: LearningCardOptions):
 		owner = nextOwner;
 		title.textContent = heading;
 		card.classList.remove('is-error');
+		announceBody(true);
 		hideExplanationActions();
+		cancelButton.hidden = true;
 	};
 	const hide = () => {
 		const focusTarget = returnFocus;
@@ -201,9 +217,16 @@ export function createLearningCard({ doc, tools, signal }: LearningCardOptions):
 		setBackgroundInert(false);
 		card.classList.remove('is-error');
 		hideExplanationActions();
+		cancelButton.hidden = true;
 		feedback.textContent = '';
 		returnFocus = null;
 		if (focusTarget?.isConnected) focusTarget.focus();
+	};
+	/** The user closed the card; its owner then stops what the card was waiting for. */
+	const close = () => {
+		const closed = owner;
+		hide();
+		if (closed) onClose?.(closed);
 	};
 
 	const openSettings = trusted(() => {
@@ -213,6 +236,8 @@ export function createLearningCard({ doc, tools, signal }: LearningCardOptions):
 	const showError = (nextOwner: LearningCardOwner, heading: string, error: AiError, options: LearningCardErrorOptions) => {
 		rememberReturnFocus();
 		beginView(nextOwner, heading);
+		// The error card is `role="alert"`; a live body would announce it a second time.
+		announceBody(false);
 		const shown = view;
 		const description = describeReaderError(error);
 		// The runtime names the task that failed (a readings run can fail in its translate step).
@@ -274,12 +299,13 @@ export function createLearningCard({ doc, tools, signal }: LearningCardOptions):
 		await tools.saveVocabularyToObsidian(currentExplanation.selection, currentExplanation.explanation);
 		feedback.textContent = getMessage('readerSavedToObsidian');
 	});
-	closeButton.addEventListener('click', hide);
+	closeButton.addEventListener('click', close);
+	cancelButton.addEventListener('click', close);
 	doc.addEventListener('keydown', event => {
 		if (!isOpen()) return;
 		if (event.key === 'Escape') {
 			event.preventDefault();
-			hide();
+			close();
 			return;
 		}
 		trapFocus(event, card);
@@ -291,15 +317,17 @@ export function createLearningCard({ doc, tools, signal }: LearningCardOptions):
 			return owner;
 		},
 		rememberReturnFocus,
-		showMessage(nextOwner, heading, message) {
+		showMessage(nextOwner, heading, message, options = {}) {
 			beginView(nextOwner, heading);
 			body.textContent = message;
+			cancelButton.hidden = !options.cancellable;
 			feedback.textContent = '';
 			open();
 		},
 		async showExplanation(selection, explanation) {
 			if (owner !== 'explain') return;
 			body.textContent = explanation;
+			cancelButton.hidden = true;
 			currentExplanation = { selection, explanation };
 			copyButton.hidden = !tools.copyLearningText;
 			saveButton.hidden = !tools.saveVocabularyToObsidian;

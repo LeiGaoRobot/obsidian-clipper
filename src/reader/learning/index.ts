@@ -76,8 +76,16 @@ export function wireTranscriptLanguageLearning({
 		complete: !restoreBilingualSubtitles && !restoreJapaneseReadings
 	};
 
-	const card = createLearningCard({ doc, tools, signal });
 	let cancelAll = () => {};
+	// The modal card hides the task bar's Cancel, so closing an explanation's card cancels that
+	// explanation, and only it: a running transcript task keeps running.
+	let cancelExplanation = () => {};
+	const card = createLearningCard({
+		doc,
+		tools,
+		signal,
+		onClose: owner => { if (owner === 'explain') cancelExplanation(); }
+	});
 	const taskBar = createTaskBar({ doc, segments, tools, onCancel: () => cancelAll() });
 
 	// The flow whose button shows the running transcript task.
@@ -149,6 +157,7 @@ export function wireTranscriptLanguageLearning({
 		transcriptAction.cancel();
 		explanations.cancel();
 	};
+	cancelExplanation = () => explanations.cancel();
 
 	const context: TranscriptFeatureContext = {
 		doc,

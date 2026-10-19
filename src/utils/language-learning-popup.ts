@@ -126,8 +126,14 @@ export function initializeLanguageLearningPopup({
 			showStatus('');
 			renderAiErrorCard(errorCard, describeAiError(state.error), {
 				handlers: {
-					// The same content and instruction again, previewed against the same source.
+					// The same content and instruction again, previewed against the same source. Once the
+					// note has changed, that preview could never be applied, so nothing is sent.
 					retry: () => {
+						if (noteContentField.value !== source.sourceValue) {
+							clearAiErrorCard(errorCard);
+							showStatus(getMessage('aiEditContentChanged'), true);
+							return;
+						}
 						void runPreview(source, () => action.retry());
 					},
 					...(openSettings ? { openSettings } : {})

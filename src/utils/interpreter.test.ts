@@ -27,9 +27,11 @@ vi.mock('./debug', () => ({ debugLog: vi.fn() }));
 import {
 	handleInterpreterUI,
 	InterpreterCancelledError,
+	InterpreterFailedError,
 	initializeInterpreter,
 	populatePopupModelSelect,
 	popupInterpretProfileId,
+	prepareInterpreterForClip,
 	saveInterpretProfile,
 	waitForInterpreter
 } from './interpreter';
@@ -334,6 +336,58 @@ describe('Interpreter', () => {
 		expect(container.childElementCount).toBe(0);
 		expect(document.getElementById('interpreter')?.classList.contains('error')).toBe(false);
 		error.mockRestore();
+	});
+
+	test('Retry sends the context and model the popup shows by then', async () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		mocks.runAiTask.mockRejectedValueOnce(new AiError('model-unavailable'));
+		populatePopupModelSelect(modelSelect(), storedView());
+		await handleInterpreterUI(template, {}, 1, 'https://example.com', modelSelect().value);
+		expect(mocks.runAiTask.mock.calls[0][2]).toMatchObject({ profileId: 'gpt' });
+
+		// The user shortens the context and picks another model before retrying.
+		(document.getElementById('prompt-context') as HTMLTextAreaElement).value = 'Shorter context';
+		modelSelect().value = 'mini';
+		cardAction('retry').click();
+		await vi.waitFor(() => expect(interpretButton().classList.contains('done')).toBe(true));
+
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(2);
+		expect(mocks.runAiTask.mock.calls[1][1]).toEqual({
+			context: 'Shorter context',
+			prompts: [{ key: 'prompt_1', prompt: 'Summarize', filters: '' }]
+		});
+		expect(mocks.runAiTask.mock.calls[1][2]).toEqual({ profileId: 'mini', signal: expect.any(AbortSignal) });
+		error.mockRestore();
+	});
+
+	test('a Clip after an error runs the Interpreter again, and a second failure keeps the card', async () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		mocks.runAiTask
+			.mockRejectedValueOnce(new AiError('network'))
+			.mockRejectedValueOnce(new AiError('auth', { status: 401 }));
+		await handleInterpreterUI(template, {}, 1, 'https://example.com');
+		expect(interpretButton().disabled).toBe(true);
+
+		await expect(prepareInterpreterForClip(interpretButton())).rejects.toBeInstanceOf(InterpreterFailedError);
+
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(2);
+		expect(interpretButton().classList.contains('error')).toBe(true);
+		const container = document.getElementById('interpreter-error') as HTMLDivElement;
+		expect(container.style.display).toBe('block');
+		expect(container.querySelector('.ai-error-card-title')?.textContent).toBe('aiErrorAuthTitle');
+
+		// A later Clip runs it once more and continues when it succeeds.
+		await expect(prepareInterpreterForClip(interpretButton())).resolves.toBeUndefined();
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(3);
+		expect(interpretButton().classList.contains('done')).toBe(true);
+		error.mockRestore();
+	});
+
+	test('a Clip saves a shown result without running the Interpreter again', async () => {
+		await handleInterpreterUI(template, {}, 1, 'https://example.com');
+
+		await expect(prepareInterpreterForClip(interpretButton())).resolves.toBeUndefined();
+		expect(mocks.runAiTask).toHaveBeenCalledOnce();
 	});
 
 	test('shows Cancel while running; cancelling aborts the request and returns the button to idle', async () => {

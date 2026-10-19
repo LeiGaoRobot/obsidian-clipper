@@ -158,6 +158,55 @@ describe('Reader learning card', () => {
 		expect(document.activeElement).toBe(trigger);
 	});
 
+	test('an error is announced once, by the error card, and a later message by the live body', () => {
+		const card = createLearningCard({ doc: document, tools: tools(), signal: wiring.signal });
+		const body = document.querySelector('.language-learning-card-body') as HTMLElement;
+		expect(body.getAttribute('aria-live')).toBe('polite');
+
+		card.showError('explain', 'Hello', new AiError('network', { task: 'explain' }), { task: 'explain', retry: vi.fn() });
+		expect(body.querySelector('.ai-error-card')?.getAttribute('role')).toBe('alert');
+		expect(body.hasAttribute('aria-live')).toBe(false);
+
+		card.showMessage('explain', 'Hello', 'thinking');
+		expect(body.getAttribute('aria-live')).toBe('polite');
+	});
+
+	test('the user closing the card reports what it showed; a programmatic hide does not', () => {
+		const onClose = vi.fn();
+		const card = createLearningCard({ doc: document, tools: tools(), signal: wiring.signal, onClose });
+
+		card.showMessage('explain', 'Hello', 'thinking');
+		card.hide();
+		expect(onClose).not.toHaveBeenCalled();
+
+		card.showMessage('explain', 'Hello', 'thinking');
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		expect(onClose).toHaveBeenLastCalledWith('explain');
+
+		card.showMessage('transcript', 'readerBilingualSubtitles', 'thinking');
+		(document.querySelector('.language-learning-card-close') as HTMLButtonElement).click();
+		expect(onClose).toHaveBeenLastCalledWith('transcript');
+		expect(onClose).toHaveBeenCalledTimes(2);
+	});
+
+	test('a cancellable message offers Cancel, which closes the card', () => {
+		const onClose = vi.fn();
+		const card = createLearningCard({ doc: document, tools: tools(), signal: wiring.signal, onClose });
+		const cancel = document.querySelector('.language-learning-card-cancel') as HTMLButtonElement;
+
+		card.showMessage('explain', 'Hello', 'thinking');
+		expect(cancel.hidden).toBe(true);
+
+		card.showMessage('explain', 'Hello', 'thinking', { cancellable: true });
+		expect(cancel.hidden).toBe(false);
+		expect(cancel.textContent).toBe('cancel');
+		cancel.click();
+
+		expect(card.element.style.display).toBe('none');
+		expect(cancel.hidden).toBe(true);
+		expect(onClose).toHaveBeenCalledWith('explain');
+	});
+
 	test('an explanation that arrives after the card changed view is not shown', async () => {
 		const card = createLearningCard({ doc: document, tools: tools(), signal: wiring.signal });
 		const selection = { kind: 'word' as const, text: 'Hello', context: 'Hello world.' };

@@ -17,8 +17,9 @@ import {
 	handleInterpreterUI,
 	collectPromptVariables,
 	populatePopupModelSelect,
-	waitForInterpreter,
+	prepareInterpreterForClip,
 	InterpreterCancelledError,
+	InterpreterFailedError,
 	InterpreterPartialError
 } from '../utils/interpreter';
 import { loadAiSettingsWithCredentialPresence } from '../utils/ai-settings';
@@ -1327,13 +1328,8 @@ async function handleClipObsidian(): Promise<void> {
 	try {
 		// Handle interpreter if needed
 		if (aiSettings.enabled && interpretBtn && collectPromptVariables(currentTemplate).length > 0) {
-			if (interpretBtn.classList.contains('processing')) {
-				await waitForInterpreter(interpretBtn);
-			} else if (!interpretBtn.classList.contains('done') && !interpretBtn.classList.contains('partial')) {
-				// A partial result was already shown with its warning; save the fields as they are.
-				interpretBtn.click();
-				await waitForInterpreter(interpretBtn);
-			}
+			// A partial result was already shown with its warning; save the fields as they are.
+			await prepareInterpreterForClip(interpretBtn);
 		}
 
 		// Gather content
@@ -1360,7 +1356,11 @@ async function handleClipObsidian(): Promise<void> {
 		}
 	} catch (error) {
 		console.error('Error in handleClipObsidian:', error);
-		if (!(error instanceof InterpreterPartialError || error instanceof InterpreterCancelledError)) showError('failedToSaveFile');
+		// The Interpreter shows its own outcome: the partial warning, the error card, or a cancel.
+		const interpreterOutcome = error instanceof InterpreterPartialError
+			|| error instanceof InterpreterCancelledError
+			|| error instanceof InterpreterFailedError;
+		if (!interpreterOutcome) showError('failedToSaveFile');
 		throw error;
 	}
 }

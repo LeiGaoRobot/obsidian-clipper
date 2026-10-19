@@ -42,7 +42,8 @@ export function createExplainFeature({
 			if (state.status === 'running') {
 				card.rememberReturnFocus(pendingReturnFocus);
 				pendingReturnFocus = undefined;
-				card.showMessage('explain', selection.text, getMessage('thinking'));
+				// Closing the card (or its Cancel) cancels this explanation; see `onClose` in index.ts.
+				card.showMessage('explain', selection.text, getMessage('thinking'), { cancellable: true });
 			} else if (state.status === 'error' && state.error) {
 				card.showError('explain', selection.text, state.error, {
 					task: 'explain',

@@ -47,7 +47,7 @@ The AI editing controls appear in the extension popup and side panel when AI fea
 
 The preview stores a snapshot of the clipping. If the clipping changes before you select **Apply**, Web Clipper rejects the stale preview and asks you to generate it again.
 
-While the preview is being generated, select **Cancel** next to **Preview AI edit** to stop the request. The clipping is not changed. If the request fails, an error card says what went wrong and what to do next. **Try again** sends the same text and instruction again and previews the result against the same snapshot. When the fix is in Settings, such as a missing or rejected API key or a Native Messaging Host that is not installed, the card also offers **Open AI settings**, which opens the **AI** section of Web Clipper settings. Select **Technical details** to see the provider's raw message.
+While the preview is being generated, select **Cancel** next to **Preview AI edit** to stop the request. The clipping is not changed. If the request fails, an error card says what went wrong and what to do next. **Try again** sends the same text and instruction again and previews the result against the same snapshot. If the clipping changed after the failed request, **Try again** sends nothing, because that preview could not be applied, and asks you to generate the preview again. When the fix is in Settings, such as a missing or rejected API key or a Native Messaging Host that is not installed, the card also offers **Open AI settings**, which opens the **AI** section of Web Clipper settings. Select **Technical details** to see the provider's raw message.
 
 ## Read YouTube and Bilibili transcripts bilingually
 
@@ -105,7 +105,7 @@ The Learning Center supports search, word/sentence filters, multi-select removal
 
 Select a phrase, sentence, or text spanning adjacent transcript segments. Then select **Explain with AI** next to the selection.
 
-The explanation includes a natural translation, the grammar structure, and important expressions in context. The same response language, selection kind, text, and context are cached for the current Reader session, so reopening the same explanation does not create another model request. Changing the response language creates a new explanation instead of reusing one in the previous language. A new explanation can be cancelled with **Cancel** in the task bar, and a failed explanation can be retried from its error card.
+The explanation includes a natural translation, the grammar structure, and important expressions in context. The same response language, selection kind, text, and context are cached for the current Reader session, so reopening the same explanation does not create another model request. Changing the response language creates a new explanation instead of reusing one in the previous language. While a new explanation is loading, its card shows **Cancel**; selecting it, closing the card, or pressing Escape cancels that explanation, so no late result or error appears. A running transcript task is not affected. A failed explanation can be retried from its error card.
 
 The selection action also works with touch selection on mobile browsers that support Reader transcripts. While an explanation or error card is open, the Reader behind it is inactive and keyboard focus stays inside the card. Press Escape to close it and return focus to the control that opened it.
 
@@ -136,7 +136,7 @@ Applying, cancelling, undoing, hiding, or showing an existing result does not ma
 > [!warning] Transcript jobs can create several billable requests
 > One transcript action can send several batch requests to a hosted API provider at the same time. Each automatic retry after a rate limit or temporary provider error is a separate request that the provider may bill, and a job that resumes after an extension background restart sends its remaining batches without another click. Use **AI range** to limit the work, and select **Cancel** to stop further requests.
 
-The task bar shows **Cancel** while a transcript task or an explanation runs, and selecting it stops both. Cancelling a Reader request stops the extension from waiting for or applying that result. For a transcript job, it also stops further batches and any retry wait; completed batches stay saved. In API mode it aborts the provider fetch. In local CLI mode, protocol version 5 sends cancellation over the same Native Messaging port; the Host terminates the selected CLI process and force-kills it if it does not exit promptly.
+The task bar shows **Cancel** while a transcript task or an explanation runs, and selecting it stops both. Closing a loading explanation card, or selecting its **Cancel**, stops only that explanation. Cancelling a Reader request stops the extension from waiting for or applying that result. For a transcript job, it also stops further batches and any retry wait; completed batches stay saved. In API mode it aborts the provider fetch. In local CLI mode, protocol version 5 sends cancellation over the same Native Messaging port; the Host terminates the selected CLI process and force-kills it if it does not exit promptly.
 
 ## Troubleshoot language learning
 

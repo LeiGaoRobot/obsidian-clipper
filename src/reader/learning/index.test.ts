@@ -1694,6 +1694,78 @@ describe('Transcript language learning controls', () => {
 		expect(document.activeElement).toBe(trigger);
 	});
 
+	test('closing the card while an explanation runs cancels only that explanation', async () => {
+		const { controls, transcript, segments } = createTranscript();
+		let finishTranslation!: (translations: string[]) => void;
+		const translateTranscript = vi.fn(() => new Promise<string[]>(resolve => { finishTranslation = resolve; }));
+		let explainSignal: AbortSignal | undefined;
+		let failExplanation!: (error: unknown) => void;
+		const explainSelection = vi.fn((_selection: unknown, signal?: AbortSignal) => {
+			explainSignal = signal;
+			return new Promise<string>((_resolve, reject) => { failExplanation = reject; });
+		});
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: { translateTranscript, explainSelection, annotateJapaneseTranscript: vi.fn() },
+			responseLanguage: 'English',
+			cancelPendingSeek: vi.fn()
+		});
+		const card = document.querySelector('.language-learning-card') as HTMLElement;
+
+		const translation = controller.toggleBilingual();
+		await flushPromises();
+		const explanation = controller.explain({ kind: 'word', text: 'Hello', context: 'Hello world.' });
+		await flushPromises();
+		expect(card.style.display).toBe('block');
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await explanation;
+
+		expect(explainSignal?.aborted).toBe(true);
+		expect(card.style.display).toBe('none');
+		// A late failure of the closed explanation does not reopen the card.
+		failExplanation(new AiError('network', { task: 'explain' }));
+		await flushPromises();
+		expect(card.style.display).toBe('none');
+		expect(document.querySelector('.ai-error-card')).toBeNull();
+
+		// The translation kept running and completes.
+		expect((controls.querySelector('.player-learning-task') as HTMLElement).getAttribute('aria-busy')).toBe('true');
+		finishTranslation(['你好，世界。']);
+		await translation;
+		expect(segments[0].querySelector('.transcript-segment-translation')?.textContent).toBe('你好，世界。');
+	});
+
+	test('the loading explanation card offers Cancel, which cancels the request', async () => {
+		const { controls, transcript, segments } = createTranscript();
+		let explainSignal: AbortSignal | undefined;
+		const explainSelection = vi.fn((_selection: unknown, signal?: AbortSignal) => {
+			explainSignal = signal;
+			return new Promise<string>(() => undefined);
+		});
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: { translateTranscript: vi.fn(), explainSelection, annotateJapaneseTranscript: vi.fn() },
+			responseLanguage: 'English',
+			cancelPendingSeek: vi.fn()
+		});
+
+		const explanation = controller.explain({ kind: 'word', text: 'Hello', context: 'Hello world.' });
+		await flushPromises();
+		const cancel = document.querySelector('.language-learning-card-cancel') as HTMLButtonElement;
+		expect(cancel.hidden).toBe(false);
+		cancel.click();
+		await explanation;
+
+		expect(explainSignal?.aborted).toBe(true);
+		expect((document.querySelector('.language-learning-card') as HTMLElement).style.display).toBe('none');
+	});
+
 	test('keeps keyboard focus inside the explanation dialog', async () => {
 		const { controls, transcript, segments } = createTranscript();
 		const controller = wireTranscriptLanguageLearning({

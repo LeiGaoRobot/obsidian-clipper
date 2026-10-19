@@ -232,7 +232,8 @@ interface InterpreterElements {
 /**
  * Runs the template's prompt variables through the `interpret` task and fills the fields with the
  * responses. Resolves with how the run ended: errors are shown in `#interpreter-error`, not thrown.
- * Cancel aborts the request; the error card's Retry sends the same request again.
+ * Cancel aborts the request; the error card's Retry sends it again with the context and model the
+ * popup shows by then, so a fix made after the error is used.
  */
 export async function handleInterpreterUI(
 	template: Template,
@@ -251,27 +252,35 @@ export async function handleInterpreterUI(
 		moreButton: document.getElementById('more-btn') as HTMLButtonElement
 	};
 	const promptContextTextarea = document.getElementById('prompt-context') as HTMLTextAreaElement;
+	const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
 	const action = getInterpreterAction();
 	if (ui.cancelBtn) ui.cancelBtn.onclick = () => action.cancel();
 
+	// The prompts stay those of this template; the context is read when each run starts.
 	const promptVariables = collectPromptVariables(template);
-	const input = { context: promptContextTextarea.value, prompts: promptVariables };
-	return runInterpreter(ui, promptVariables, () => action.start(async signal => {
+	const launch = (runProfileId: string | undefined) => () => action.start(async signal => {
 		if (promptVariables.length === 0) {
 			throw new Error('No prompt variables found. Please add at least one prompt variable to your template.');
 		}
+		const input = { context: promptContextTextarea.value, prompts: promptVariables };
 		// The model select's profile is an explicit choice for this run; without one, routing picks.
-		return runAiTask('interpret', input, profileId ? { profileId, signal } : { signal });
-	}));
+		return runAiTask('interpret', input, runProfileId ? { profileId: runProfileId, signal } : { signal });
+	});
+	// A retry takes the select's current choice, as the Interpret button does; without a select
+	// offering choices it keeps this run's profile.
+	const relaunch = () => launch(modelSelect && modelSelect.options.length > 0 ? modelSelect.value || undefined : profileId)();
+	return runInterpreter(ui, promptVariables, launch(profileId), relaunch);
 }
 
 /** Drives the Interpreter's controls through one run, which `launch` starts on the controller. */
 async function runInterpreter(
 	ui: InterpreterElements,
 	promptVariables: PromptVariable[],
-	launch: () => Promise<InterpretResult | undefined>
+	launch: () => Promise<InterpretResult | undefined>,
+	relaunch: () => Promise<InterpretResult | undefined>
 ): Promise<AiActionStatus> {
 	const action = getInterpreterAction();
+	retryFailedRun = undefined;
 	const { container, interpretBtn, cancelBtn, message, timer, clipButton, moreButton } = ui;
 
 	// Everything up to the first await runs synchronously, so a Clip that clicks the button sees
@@ -313,12 +322,12 @@ async function runInterpreter(
 			applyInterpretResult(ui, promptVariables, result);
 			return 'done';
 		} catch (error) {
-			showInterpreterFailure(ui, promptVariables, toAiError(error));
+			showInterpreterFailure(ui, promptVariables, toAiError(error), relaunch);
 			return 'error';
 		}
 	}
 	if (state.status === 'error' && state.error) {
-		showInterpreterFailure(ui, promptVariables, state.error);
+		showInterpreterFailure(ui, promptVariables, state.error, relaunch);
 		return 'error';
 	}
 	// Cancelled: the button returns to its idle label and can run again.
@@ -361,7 +370,15 @@ function applyInterpretResult(ui: InterpreterElements, promptVariables: PromptVa
 	}
 }
 
-function showInterpreterFailure(ui: InterpreterElements, promptVariables: PromptVariable[], error: AiError): void {
+// The failed run's Retry, for a Clip that needs the Interpreter again; cleared when a run starts.
+let retryFailedRun: (() => Promise<AiActionStatus>) | undefined;
+
+function showInterpreterFailure(
+	ui: InterpreterElements,
+	promptVariables: PromptVariable[],
+	error: AiError,
+	relaunch: () => Promise<InterpretResult | undefined>
+): void {
 	console.error('Error processing LLM:', error);
 	ui.interpretBtn.textContent = getMessage('error');
 	ui.interpretBtn.classList.add('error');
@@ -369,13 +386,15 @@ function showInterpreterFailure(ui: InterpreterElements, promptVariables: Prompt
 	ui.container?.classList.add('error');
 	ui.timer.style.display = 'none';
 
+	const retry = () => {
+		ui.interpretBtn.disabled = false;
+		return runInterpreter(ui, promptVariables, relaunch, relaunch);
+	};
+	retryFailedRun = retry;
 	renderAiErrorCard(ui.message, describeAiError(error), {
 		handlers: {
-			// The same request again: same context, prompts, and profile.
-			retry: () => {
-				ui.interpretBtn.disabled = false;
-				void runInterpreter(ui, promptVariables, () => getInterpreterAction().retry());
-			},
+			// The same prompts again, with the context and model shown now.
+			retry: () => { void retry(); },
 			openSettings: () => {
 				void browser.runtime.sendMessage({ action: 'openOptionsPage', section: 'ai' });
 			}
@@ -396,6 +415,25 @@ export class InterpreterPartialError extends Error {}
 /** The interpreter run was cancelled; nothing is saved and the clipper stays as it is. */
 export class InterpreterCancelledError extends Error {}
 
+/** The interpreter run failed; its error card says why, nothing is saved, and the clipper stays. */
+export class InterpreterFailedError extends Error {}
+
+/**
+ * What a Clip does before saving when the template has prompts: waits for a running Interpreter,
+ * starts it when it has not run, and runs it again after an error, as the card's Retry does (the
+ * button is disabled then, so clicking it would do nothing). A shown result, partial or not, is
+ * saved as it is. Rejects as `waitForInterpreter` does.
+ */
+export async function prepareInterpreterForClip(interpretBtn: HTMLButtonElement): Promise<void> {
+	const { classList } = interpretBtn;
+	if (classList.contains('done') || classList.contains('partial')) return;
+	if (!classList.contains('processing')) {
+		if (classList.contains('error') && retryFailedRun) void retryFailedRun();
+		else interpretBtn.click();
+	}
+	return waitForInterpreter(interpretBtn);
+}
+
 /**
  * Waits for the Interpreter run a Clip depends on by polling the button's state classes. Rejects
  * when the run left prompts unanswered, failed, or was cancelled.
@@ -410,7 +448,7 @@ export async function waitForInterpreter(interpretBtn: HTMLButtonElement): Promi
 					// Keep the popup open so the unanswered prompts are seen before saving.
 					reject(new InterpreterPartialError(getMessage('interpreterPartialTitle')));
 				} else if (interpretBtn.classList.contains('error')) {
-					reject(new Error(getMessage('failedToProcessInterpreter')));
+					reject(new InterpreterFailedError(getMessage('failedToProcessInterpreter')));
 				} else if (interpretBtn.classList.contains('cancelled')) {
 					reject(new InterpreterCancelledError(getMessage('aiRequestCancelled')));
 				} else {
