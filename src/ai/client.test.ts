@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../utils/browser-polyfill', () => ({ default: { runtime: { connect: vi.fn() } } }));
 
-import { runAiTask, testConnection, type AiClientPort } from './client';
+import { clearConnectionStatus, runAiTask, testConnection, type AiClientPort } from './client';
 import { isAiError } from './errors';
 
 class FakeClientPort implements AiClientPort {
@@ -162,5 +162,24 @@ describe('testConnection', () => {
 		controller.abort();
 		await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
 		expect(port.posted[1]).toEqual({ type: 'cancel', jobId: port.jobId });
+	});
+});
+
+describe('clearConnectionStatus', () => {
+	test('sends only the connection id and resolves on status-cleared', async () => {
+		const port = new FakeClientPort();
+		const promise = clearConnectionStatus('openai', { connect: () => port });
+		expect(port.posted[0]).toEqual({ type: 'status-clear', jobId: port.jobId, connectionId: 'openai' });
+		port.receive({ type: 'status-cleared', jobId: 'other', connectionId: 'openai' });
+		port.receive({ type: 'status-cleared', jobId: port.jobId, connectionId: 'openai' });
+		await expect(promise).resolves.toBeUndefined();
+		expect(port.disconnected).toBe(true);
+	});
+
+	test('rejects with the gateway error', async () => {
+		const port = new FakeClientPort();
+		const promise = clearConnectionStatus('openai', { connect: () => port });
+		port.receive({ type: 'error', jobId: port.jobId, error: { code: 'provider-error', retryable: false, detail: 'QUOTA_BYTES quota exceeded' } });
+		await expect(promise).rejects.toMatchObject({ code: 'provider-error', detail: 'QUOTA_BYTES quota exceeded' });
 	});
 });

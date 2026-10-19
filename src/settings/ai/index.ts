@@ -23,6 +23,8 @@ export interface InitializeAiSettingsOptions {
 	/** Defaults to a browser store that runs the v1 → v2 bootstrap. */
 	store?: AiSettingsStore;
 	createId?: AiSettingsControllerOptions['createId'];
+	/** Defaults to the gateway's `status-clear`. */
+	clearConnectionStatus?: AiSettingsControllerOptions['clearConnectionStatus'];
 	/** Defaults to the runtime's platform and the unpacked build's `native-host-install.json`. */
 	installGuide?: NativeCliInstallEnvironment | (() => Promise<NativeCliInstallEnvironment | undefined>);
 	confirm?: (message: string) => boolean;
@@ -91,6 +93,7 @@ export async function initializeAiSettings(options: InitializeAiSettingsOptions 
 	const controller = createAiSettingsController({
 		store,
 		...(options.createId ? { createId: options.createId } : {}),
+		...(options.clearConnectionStatus ? { clearConnectionStatus: options.clearConnectionStatus } : {}),
 		onError: error => showError(error)
 	});
 

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { getCatalogEntry } from '../../ai/catalog';
+import { AiError } from '../../ai/errors';
 import { aiSettingsBootstrapper } from '../../ai/migrate';
 import { AiSettingsStorageError, defaultAiSyncItems, type AiSettingsSnapshot } from '../../ai/settings';
 import { createAiSettingsController } from './controller';
@@ -28,7 +29,7 @@ function sequentialIds() {
 async function controllerFor(settings: FakeSettings = {}) {
 	const fake = createFakeStore(settings);
 	const onError = vi.fn();
-	const controller = createAiSettingsController({ store: fake.store, createId: sequentialIds(), onError });
+	const controller = createAiSettingsController({ store: fake.store, clearConnectionStatus: fake.clearConnectionStatus, createId: sequentialIds(), onError });
 	await controller.load();
 	return { ...fake, controller, onError };
 }
@@ -200,6 +201,39 @@ describe('AI settings controller: profiles and routing', () => {
 		expect(sync.data.ai_routing).toEqual({ v: 1, defaultProfileId: 'gpt', taskProfiles: {} });
 	});
 
+	test('a model change clears the connection status through the gateway; a label-only edit keeps it', async () => {
+		const fake = createFakeStore({
+			connections: [API_CONNECTION, LOCAL_CONNECTION],
+			profiles: [GPT_PROFILE, LLAMA_PROFILE],
+			status: { openai: { state: 'ok', testedAt: 1, structuredOutput: 'none' }, ollama: { state: 'ok', testedAt: 2 } }
+		});
+		const clearConnectionStatus = vi.fn(fake.clearConnectionStatus);
+		const controller = createAiSettingsController({ store: fake.store, clearConnectionStatus });
+		await controller.load();
+		const localWrites = fake.local.sets.length;
+
+		expect(await controller.updateProfile('gpt', { connectionId: 'openai', label: 'Renamed', model: 'gpt-5.6' })).toBe(true);
+		expect(clearConnectionStatus).not.toHaveBeenCalled();
+		expect(controller.state.connectionStatus).toHaveProperty('openai');
+
+		expect(await controller.updateProfile('gpt', { connectionId: 'openai', label: 'Renamed', model: 'gpt-5.7' })).toBe(true);
+		expect(clearConnectionStatus).toHaveBeenCalledWith('openai');
+		expect(fake.local.data.ai_connection_status).toEqual({ ollama: { state: 'ok', testedAt: 2 } });
+		expect(controller.state.connectionStatus).not.toHaveProperty('openai');
+		// The one local write is the gateway's; the Settings store never writes the key.
+		expect(fake.local.sets.slice(localWrites).map(write => Object.keys(write))).toEqual([['ai_connection_status']]);
+	});
+
+	test('a failed status clear is reported as the mutation error', async () => {
+		const fake = createFakeStore({ connections: [API_CONNECTION], credentials: { openai: 'sk' }, status: { openai: { state: 'ok', testedAt: 1 } } });
+		const failure = new AiError('network', { detail: 'The extension background is unavailable.' });
+		const controller = createAiSettingsController({ store: fake.store, clearConnectionStatus: async () => { throw failure; } });
+		await controller.load();
+		expect(await controller.deleteConnection('openai')).toBe(false);
+		expect(controller.error).toBe(failure);
+		expect(controller.state.view.connections).toEqual([]);
+	});
+
 	test('the effort is kept only for Codex profiles', async () => {
 		const { controller } = await controllerFor({ connections: [API_CONNECTION] });
 		const profile = await controller.addProfile({ connectionId: 'openai', label: '', model: 'gpt-5.6', reasoningEffort: 'high' });
@@ -363,6 +397,7 @@ describe('AI settings section', () => {
 		const fake = createFakeStore(settings);
 		const handle = await initializeAiSettings({
 			store: fake.store,
+			clearConnectionStatus: fake.clearConnectionStatus,
 			createId: sequentialIds(),
 			installGuide: installGuideEnvironment(),
 			confirm: () => true,

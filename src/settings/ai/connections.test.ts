@@ -30,6 +30,7 @@ async function section(
 	const fake = createFakeStore(settings);
 	const handle = await initializeAiSettings({
 		store: fake.store,
+		clearConnectionStatus: fake.clearConnectionStatus,
 		createId: sequentialIds(),
 		installGuide: installGuideEnvironment(),
 		confirm,
@@ -454,7 +455,7 @@ describe('Connection Test', () => {
 		testButton('deepseek').click();
 		await settle();
 		expect(runTest).not.toHaveBeenCalled();
-		expect(progress('deepseek')).toBeUndefined();
+		expect(progress('deepseek')).toBe('');
 	});
 
 	test('the default guard rejects synthetic clicks', async () => {
@@ -493,7 +494,7 @@ describe('Connection Test', () => {
 		await settle();
 
 		expect(badge('deepseek')?.textContent).toBe('OK');
-		expect(progress('deepseek')).toBeUndefined();
+		expect(progress('deepseek')).toBe('');
 		expect(testButton('deepseek').disabled).toBe(false);
 		const result = item('deepseek').querySelector('.ai-connection-test-result')!;
 		expect(result.classList.contains('is-ok')).toBe(true);
@@ -560,8 +561,107 @@ describe('Connection Test', () => {
 		await settle();
 		expect(pending[0].options.signal?.aborted).toBe(true);
 		expect(item('deepseek').querySelector('.ai-connection-test-result')).toBeNull();
-		expect(progress('deepseek')).toBeUndefined();
+		expect(progress('deepseek')).toBe('');
 		expect(badge('deepseek')?.textContent).toBe('Untested');
+	});
+
+	test('steps update the card in place: focus stays on Cancel and the status element is kept, then Test gets focus', async () => {
+		const { pending, local } = await testSection({ connections: [DEEPSEEK], profiles: [CHAT], credentials: { deepseek: 'sk' } });
+		const button = testButton('deepseek');
+		const status = item('deepseek').querySelector('.ai-connection-test-progress')!;
+		expect(status.getAttribute('role')).toBe('status');
+		button.focus();
+		button.click();
+		await settle();
+
+		const cancel = item('deepseek').querySelector('.ai-connection-test-cancel') as HTMLButtonElement;
+		expect(document.activeElement).toBe(cancel);
+		for (const step of ['listing', 'structured'] as const) {
+			pending[0].options.onStep?.(step);
+			expect(item('deepseek').querySelector('.ai-connection-test-cancel')).toBe(cancel);
+			expect(item('deepseek').querySelector('.ai-connection-test-progress')).toBe(status);
+			expect(testButton('deepseek')).toBe(button);
+			expect(document.activeElement).toBe(cancel);
+		}
+		expect(status.textContent).toContain('structured output');
+
+		await local.set({ ai_connection_status: { deepseek: { state: 'ok', testedAt: 1 } } });
+		await settle();
+		// A full render (the gateway's status write) still hands focus back to Cancel.
+		expect(document.activeElement).toBe(item('deepseek').querySelector('.ai-connection-test-cancel'));
+
+		pending[0].resolve({ connectionId: 'deepseek', state: 'ok', testedAt: 1, billable: true, structuredOutput: 'json_object' });
+		await settle();
+		expect(item('deepseek').querySelector('.ai-connection-test-cancel')).toBeNull();
+		expect(item('deepseek').querySelector('.ai-connection-test-result.is-ok')).not.toBeNull();
+		expect(document.activeElement).toBe(testButton('deepseek'));
+	});
+
+	test('the result shows only after the structured-output mode is written to the synced connection', async () => {
+		const { pending, sync } = await testSection({ connections: [DEEPSEEK], profiles: [CHAT], credentials: { deepseek: 'sk' } });
+		testButton('deepseek').click();
+		await settle();
+		let release!: () => void;
+		const set = sync.set.bind(sync);
+		sync.set = async values => {
+			await new Promise<void>(resolve => { release = resolve; });
+			return set(values);
+		};
+		pending[0].resolve({ connectionId: 'deepseek', state: 'ok', testedAt: 1, billable: true, structuredOutput: 'json_schema' });
+		await settle();
+
+		expect(item('deepseek').querySelector('.ai-connection-test-result')).toBeNull();
+		expect(item('deepseek').querySelector('.ai-connection-test-cancel')).not.toBeNull();
+		expect(progress('deepseek')).toBeTruthy();
+
+		release();
+		await settle();
+		const stored = sync.data.ai_connections as { items: Array<{ id: string; structuredOutput?: string }> };
+		expect(stored.items[0].structuredOutput).toBe('json_schema');
+		expect(item('deepseek').querySelector('.ai-connection-test-result.is-ok')?.textContent).toContain('JSON schema');
+		expect(progress('deepseek')).toBe('');
+	});
+
+	test('a failed structured-output write still shows the result, with the save error', async () => {
+		const { pending, sync } = await testSection({ connections: [DEEPSEEK], profiles: [CHAT], credentials: { deepseek: 'sk' } });
+		testButton('deepseek').click();
+		await settle();
+		sync.failNextSet = new Error('MAX_WRITE_OPERATIONS_PER_MINUTE quota exceeded');
+		pending[0].resolve({ connectionId: 'deepseek', state: 'ok', testedAt: 1, billable: true, structuredOutput: 'json_schema' });
+		await settle();
+
+		const result = item('deepseek').querySelector('.ai-connection-test-result.is-ok')!;
+		expect(result.textContent).toContain('The connection works.');
+		expect(result.querySelector('.ai-connection-test-save-error .ai-error-card-body')?.textContent).toContain('Wait a minute');
+		expect(testButton('deepseek').disabled).toBe(false);
+	});
+
+	test('an unavailable listing explains that the free Test checked nothing', async () => {
+		const { pending } = await testSection({
+			connections: [API_CONNECTION, DEEPSEEK],
+			profiles: [GPT_PROFILE],
+			credentials: { openai: 'sk', deepseek: 'sk' }
+		});
+		const failing = (connectionId: string): AiTestResult => ({
+			connectionId,
+			state: 'failing',
+			testedAt: 1,
+			billable: false,
+			listingUnavailable: true,
+			error: { code: 'provider-error', retryable: false, status: 404, detail: 'Not found' }
+		});
+		testButton('openai').click();
+		testButton('deepseek').click();
+		await settle();
+		pending[0].resolve(failing('openai'));
+		pending[1].resolve(failing('deepseek'));
+		await settle();
+
+		const note = (id: string) => item(id).querySelector('.ai-connection-test-result.is-failing .ai-connection-test-result-note')?.textContent;
+		expect(note('openai')).toContain('HTTP 404');
+		expect(note('openai')).toContain('base URL');
+		expect(note('deepseek')).toContain('Add a model');
+		expect(item('openai').querySelector('.ai-connection-test-result')?.textContent).not.toContain('may bill');
 	});
 
 	test('Test is disabled while a save is pending', async () => {

@@ -164,13 +164,56 @@ describe('API connection Test', () => {
 		expect(executeApi).toHaveBeenCalledTimes(1);
 	});
 
-	test('a server without a listing endpoint falls back to the probe', async () => {
+	test('a listing-only Test whose listing is unavailable fails with its status and sends no model request', async () => {
+		for (const status of [404, 405, 501]) {
+			const fetchImpl = vi.fn(async () => new Response('Not found', { status }));
+			const { deps, steps, run } = harness({ fetchImpl: fetchImpl as unknown as typeof fetch });
+			const result = await run({ connection: OLLAMA, credential: undefined, profiles: [profile('l', 'ollama', 'llama4')] });
+			expect(result).toMatchObject({
+				state: 'failing',
+				billable: false,
+				listingUnavailable: true,
+				error: { code: 'provider-error', status, detail: 'Not found' }
+			});
+			expect(steps.map(([step]) => step)).toEqual(['listing']);
+			expect(deps.executeApi).not.toHaveBeenCalled();
+		}
+		for (const connection of [OPENAI, ANTHROPIC]) {
+			const fetchImpl = vi.fn(async () => new Response('', { status: 404 }));
+			const { deps, run } = harness({ fetchImpl: fetchImpl as unknown as typeof fetch });
+			const result = await run({ connection, profiles: [profile('p', connection.id, 'model-x')] });
+			expect(result).toMatchObject({ state: 'failing', billable: false, listingUnavailable: true, error: { code: 'provider-error', status: 404 } });
+			expect(result.error?.detail).toContain('HTTP 404');
+			expect(deps.executeApi).not.toHaveBeenCalled();
+		}
+	});
+
+	test('a compatible server without a model and without a listing fails on the listing, not as not configured', async () => {
+		const fetchImpl = vi.fn(async () => new Response('Not found', { status: 404 }));
+		const { deps, run } = harness({ fetchImpl: fetchImpl as unknown as typeof fetch });
+		expect(connectionTestPlan(DEEPSEEK, [profile('p', 'deepseek')])).toEqual({ steps: ['listing'], billable: false });
+		const result = await run({ connection: DEEPSEEK, profiles: [profile('p', 'deepseek')] });
+		expect(result).toMatchObject({ state: 'failing', billable: false, listingUnavailable: true, error: { code: 'provider-error', status: 404 } });
+		expect(deps.executeApi).not.toHaveBeenCalled();
+	});
+
+	test('a planned structured probe still runs when the listing is unavailable', async () => {
 		const fetchImpl = vi.fn(async () => new Response('Not found', { status: 404 }));
 		const { deps, steps, run } = harness({ fetchImpl: fetchImpl as unknown as typeof fetch });
-		const result = await run({ connection: OLLAMA, credential: undefined, profiles: [profile('l', 'ollama', 'llama4')] });
-		expect(result).toMatchObject({ state: 'ok', billable: true });
-		expect(steps.map(([step]) => step)).toEqual(['listing', 'probe']);
-		expect(deps.executeApi).toHaveBeenCalledWith(expect.objectContaining({ kind: 'ollama', maxTokens: 1 }), expect.anything());
+		const result = await run({ connection: DEEPSEEK, profiles: [profile('p', 'deepseek', 'deepseek-chat')] });
+		expect(result).toMatchObject({ state: 'ok', billable: true, structuredOutput: 'json_schema' });
+		expect(result).not.toHaveProperty('listingUnavailable');
+		expect(steps.map(([step]) => step)).toEqual(['listing', 'structured']);
+		expect(deps.executeApi).toHaveBeenCalledTimes(1);
+	});
+
+	test('another listing error fails without a fallback', async () => {
+		const fetchImpl = vi.fn(async () => new Response('Server error', { status: 500 }));
+		const { deps, run } = harness({ fetchImpl: fetchImpl as unknown as typeof fetch });
+		const result = await run({ connection: DEEPSEEK, profiles: [profile('p', 'deepseek', 'deepseek-chat')] });
+		expect(result).toMatchObject({ state: 'failing', error: { code: 'provider-error', status: 500 } });
+		expect(result).not.toHaveProperty('listingUnavailable');
+		expect(deps.executeApi).not.toHaveBeenCalled();
 	});
 
 	test('Azure sends one 1-token completion and counts a 200 with empty text as ok', async () => {
@@ -267,11 +310,18 @@ describe('CLI connection Test', () => {
 });
 
 describe('statusFromTestResult', () => {
-	test('keeps a downgrade the Test did not probe, and a detected mode overwrites it', () => {
-		expect(statusFromTestResult({ connectionId: 'a', state: 'ok', testedAt: 1, billable: false }, { structuredOutput: 'none' }))
-			.toEqual({ state: 'ok', testedAt: 1, structuredOutput: 'none' });
+	test('a successful Test without a probe drops the downgrade, a detected mode replaces it, a failing one keeps it', () => {
+		expect(statusFromTestResult({ connectionId: 'a', state: 'ok', testedAt: 1, billable: false }, { state: 'ok', testedAt: 0, structuredOutput: 'none' }))
+			.toEqual({ state: 'ok', testedAt: 1 });
 		expect(statusFromTestResult({ connectionId: 'a', state: 'ok', testedAt: 1, billable: true, structuredOutput: 'json_object' }, { structuredOutput: 'none' }))
 			.toEqual({ state: 'ok', testedAt: 1, structuredOutput: 'json_object' });
+		expect(statusFromTestResult({
+			connectionId: 'a',
+			state: 'failing',
+			testedAt: 3,
+			billable: false,
+			error: { code: 'network', retryable: true }
+		}, { structuredOutput: 'none' })).toEqual({ state: 'failing', testedAt: 3, code: 'network', structuredOutput: 'none' });
 		expect(statusFromTestResult({
 			connectionId: 'a',
 			state: 'failing',

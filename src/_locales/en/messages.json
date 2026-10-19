@@ -287,6 +287,12 @@
 	"aiTestResultOneShot": {
 		"message": "This browser reaches the CLI host one request at a time. Cancel stops waiting but cannot stop a CLI run that has started."
 	},
+	"aiTestResultListingUnavailable": {
+		"message": "The model listing isn't available at this address (HTTP $1). Check the base URL. This Test sends no billable request, so nothing else was checked."
+	},
+	"aiTestResultListingUnavailableAddModel": {
+		"message": "This server has no model listing (HTTP $1), so this free Test couldn't check it. Add a model, then Test again: Test then sends a minimal request, which the provider may bill."
+	},
 	"aiStructuredOutputJsonSchema": {
 		"message": "JSON schema"
 	},
@@ -508,6 +514,9 @@
 	},
 	"aiSettingsBootstrapQuotaTotal": {
 		"message": "Browser sync storage is full, so AI settings couldn't be set up on this device. Your previous AI settings are unchanged. Free up space, for example by removing templates you don't use, then reload Settings."
+	},
+	"aiSettingsBootstrapItemTooLarge": {
+		"message": "Your previous AI settings couldn't be moved to this version: the “$1” item is larger than the 8 KB that browser sync storage allows per item. Your previous AI settings are unchanged, and AI settings stay read-only on this device. If you report this problem, include the technical details below."
 	},
 	"aiSettingsConnectionMissingTitle": {
 		"message": "This connection was deleted"

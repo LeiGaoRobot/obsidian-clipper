@@ -1,3 +1,4 @@
+import { clearConnectionStatus } from '../../ai/client';
 import { inferConnectionKind, isCliKind } from '../../ai/connection-kind';
 import {
 	AI_CONNECTIONS_KEY,
@@ -108,6 +109,11 @@ export interface AiSettingsControllerOptions {
 	createId?: (prefix: 'connection' | 'cli' | 'profile') => string;
 	/** Called with the error a mutation or load ended with, and with `undefined` once it clears. */
 	onError?: (error: unknown) => void;
+	/**
+	 * Removes a connection's entry from this device's `ai_connection_status`. Defaults to the
+	 * gateway's `status-clear`, which keeps the gateway the key's only writer. Injected by tests.
+	 */
+	clearConnectionStatus?: (connectionId: string) => Promise<void>;
 }
 
 export interface AiSettingsController {
@@ -130,7 +136,10 @@ export interface AiSettingsController {
 
 	/** Fails with `AiSettingsItemMissingError` when the connection no longer exists. */
 	addProfile(draft: ProfileDraft): Promise<ModelProfile | undefined>;
-	/** Fails with `AiSettingsItemMissingError` when the profile no longer exists. */
+	/**
+	 * Fails with `AiSettingsItemMissingError` when the profile no longer exists. A model change
+	 * also clears the connection's status entry, which described the old model.
+	 */
 	updateProfile(profileId: string, draft: ProfileDraft): Promise<boolean>;
 	setProfileEnabled(profileId: string, enabled: boolean): Promise<boolean>;
 	duplicateProfile(profileId: string, label: string): Promise<ModelProfile | undefined>;
@@ -225,6 +234,7 @@ function profileOptions(
 
 export function createAiSettingsController(options: AiSettingsControllerOptions): AiSettingsController {
 	const { store } = options;
+	const clearStatus = options.clearConnectionStatus ?? (connectionId => clearConnectionStatus(connectionId));
 	const createId = options.createId ?? defaultCreateId;
 	const listeners = new Set<AiSettingsChangeListener>();
 	let state = emptyState();
@@ -334,8 +344,9 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 		changed.push(AI_CREDENTIALS_KEY);
 	}
 
+	/** Asks the gateway, the only writer of `ai_connection_status`, to remove the entry. */
 	async function deleteStatus(connectionId: string, changed: AiStorageKey[]): Promise<void> {
-		await store.deleteConnectionStatus(connectionId);
+		await clearStatus(connectionId);
 		if (!Object.prototype.hasOwnProperty.call(state.connectionStatus, connectionId)) return;
 		const connectionStatus = { ...state.connectionStatus };
 		delete connectionStatus[connectionId];
@@ -511,6 +522,8 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 				else delete next.options;
 				if (same(next, current)) return true;
 				await writeProfiles(state.view.profiles.map(profile => profile.id === profileId ? next : profile), changed);
+				// A Test result and a structured-output downgrade describe the old model.
+				if (next.model !== current.model) await deleteStatus(current.connectionId, changed);
 				return true;
 			});
 		},

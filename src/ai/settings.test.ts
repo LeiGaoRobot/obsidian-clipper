@@ -392,7 +392,6 @@ describe('createAiSettingsStore in derived mode', () => {
 		await expect(store.saveRouting({ taskProfiles: { interpret: 'model-a' } })).resolves.toBe(false);
 		await expect(store.saveConnections([])).resolves.toBe(false);
 		await expect(store.setCredential('provider-anthropic', 'sk-new')).resolves.toBe(false);
-		await expect(store.deleteConnectionStatus('provider-anthropic')).resolves.toBe(false);
 		expect(sync.sets).toEqual([]);
 		expect(local.sets).toEqual([]);
 	});
@@ -796,15 +795,6 @@ describe('createAiSettingsStore writes', () => {
 		const { store, local } = v2Store({});
 		await Promise.all([store.setCredential('a', 'ka'), store.setCredential('b', 'kb'), store.setCredential('c', 'kc')]);
 		expect(local.data[AI_CREDENTIALS_KEY]).toEqual({ a: 'ka', b: 'kb', c: 'kc' });
-	});
-
-	test('deleteConnectionStatus removes the named entries', async () => {
-		const { store, local } = v2Store({
-			[AI_CONNECTION_STATUS_KEY]: { a: { state: 'ok', testedAt: 1 }, b: { state: 'failing', testedAt: 2 }, c: { structuredOutput: 'none' } }
-		});
-		await expect(store.deleteConnectionStatus(['a', 'c'])).resolves.toBe(true);
-		await expect(store.deleteConnectionStatus('missing')).resolves.toBe(false);
-		expect(local.data[AI_CONNECTION_STATUS_KEY]).toEqual({ b: { state: 'failing', testedAt: 2 } });
 	});
 
 	test('rejects a missing connection id', async () => {

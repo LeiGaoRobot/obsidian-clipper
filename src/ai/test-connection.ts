@@ -48,7 +48,8 @@ const PROBE_IDLE_TIMEOUT_MS = 30_000;
 const PROBE_HARD_TIMEOUT_MS = 60_000;
 export const CLI_TEST_PROMPT = 'This is a connection test. Reply with OK and nothing else.';
 const MAX_STATUS_DETAIL_CHARS = 500;
-// A listing endpoint some compatible servers do not implement; the Test then probes instead.
+// A listing endpoint some compatible servers do not implement. A plan with a probe step still
+// probes; a free (listing-only) plan fails instead, since it never sends a billable request.
 const LISTING_UNAVAILABLE_STATUSES: readonly number[] = [404, 405, 501];
 
 export interface ConnectionTestPlan {
@@ -68,6 +69,14 @@ function hostOf(baseUrl: string | undefined): string {
 /** The probe a connection without a usable listing falls back to. */
 function fallbackProbe(connection: Pick<Connection, 'kind' | 'baseUrl'>): AiTestStep {
 	return connection.kind === 'openai-compatible' && hostOf(connection.baseUrl) !== 'api.openai.com' ? 'structured' : 'probe';
+}
+
+/**
+ * True when a Test probes the connection's structured-output mode once a profile has a model: an
+ * OpenAI-compatible server other than OpenAI's own API.
+ */
+export function probesStructuredOutput(connection: Pick<Connection, 'kind' | 'baseUrl'>): boolean {
+	return fallbackProbe(connection) === 'structured';
 }
 
 /**
@@ -227,7 +236,8 @@ export async function runConnectionTest(
 		if (!connection.baseUrl?.trim()) throw new AiError('not-configured', { reason: 'base-url-missing', connectionId });
 		if (connection.apiKeyRequired && !credential?.trim()) throw new AiError('credential-missing', { connectionId });
 		const plan = connectionTestPlan(connection, input.profiles);
-		let probe: AiTestStep | undefined = plan.steps.find(name => name !== 'listing');
+		// Only the planned probe runs, so a Test never sends a request its cost note did not announce.
+		const probe: AiTestStep | undefined = plan.steps.find(name => name !== 'listing');
 		const request = plan.steps.includes('listing') ? buildModelListRequest(connection, credential) : undefined;
 		if (request) {
 			step('listing');
@@ -248,7 +258,18 @@ export async function runConnectionTest(
 				checkCancel();
 				const aiError = toAiError(error, connectionId);
 				if (aiError.status === undefined || !LISTING_UNAVAILABLE_STATUSES.includes(aiError.status)) throw aiError;
-				probe = fallbackProbe(connection);
+				// A free Test fails with the listing's status rather than fall back to a request the
+				// provider may bill. A planned (announced) probe still runs.
+				if (!probe) {
+					result.listingUnavailable = true;
+					throw new AiError('provider-error', {
+						connectionId,
+						status: aiError.status,
+						detail: aiError.detail && aiError.detail !== aiError.code
+							? aiError.detail
+							: `The model listing answered HTTP ${aiError.status}.`
+					});
+				}
 			}
 		}
 		if (probe === 'structured') result.structuredOutput = await probeStructured(kind);
@@ -269,15 +290,16 @@ export async function runConnectionTest(
 }
 
 /**
- * The persisted status for a finished Test. A detected structured-output mode overwrites an
- * earlier downgrade; a Test that did not probe keeps it.
+ * The persisted status for a finished Test. A detected structured-output mode replaces this
+ * device's override. A successful Test that did not probe drops it, so the synced mode or the kind
+ * default applies again; a failing Test that did not probe keeps it.
  */
 export function statusFromTestResult(result: AiTestResult, previous?: ConnectionStatus): ConnectionStatus {
 	const error = result.error;
 	const detail = error?.detail
 		? (error.detail.length > MAX_STATUS_DETAIL_CHARS ? `${error.detail.slice(0, MAX_STATUS_DETAIL_CHARS)}…` : error.detail)
 		: undefined;
-	const structuredOutput = result.structuredOutput ?? previous?.structuredOutput;
+	const structuredOutput = result.structuredOutput ?? (result.state === 'ok' ? undefined : previous?.structuredOutput);
 	return {
 		state: result.state,
 		testedAt: result.testedAt,

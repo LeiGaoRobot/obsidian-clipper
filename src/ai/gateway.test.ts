@@ -669,6 +669,35 @@ describe('AI gateway connection Test', () => {
 		});
 	});
 
+	test('a successful listing-only Test drops a structured-output downgrade, so the next run uses the default', async () => {
+		const local = memoryArea({ ai_connection_status: { 'provider-openai': { structuredOutput: 'none' } } });
+		const executeApi = vi.fn(async () => envelope);
+		const { port } = setup({
+			executeApi,
+			fetchImpl: listing(['gpt-a', 'gpt-b']) as unknown as typeof fetch,
+			connectionStatus: createConnectionStatusStore(local),
+			now: () => 7
+		});
+		port.send({ type: 'test', jobId: 'test-1', connectionId: 'provider-openai' });
+		await flush();
+		expect(port.last()).toMatchObject({ type: 'test-result', result: { state: 'ok', billable: false } });
+		expect(executeApi).not.toHaveBeenCalled();
+		expect(local.values.get('ai_connection_status')).toEqual({
+			'provider-openai': {
+				state: 'ok',
+				testedAt: 7,
+				models: [
+					{ profileId: 'model-a', model: 'gpt-a', listed: true },
+					{ profileId: 'model-b', model: 'gpt-b', listed: true }
+				]
+			}
+		});
+
+		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
+		await flush();
+		expect((executeApi.mock.calls[0] as unknown[])[0]).toMatchObject({ structured: { mode: 'json_schema' } });
+	});
+
 	test('is cancellable and then writes no status', async () => {
 		const local = memoryArea();
 		const diagnostics = createAiDiagnostics();
@@ -723,6 +752,51 @@ describe('AI gateway connection Test', () => {
 			expect.objectContaining({ connectionId: 'legacy-cli-codex' })
 		);
 		expect(port.last()).toMatchObject({ type: 'test-result', result: { state: 'ok', billable: true, transport: 'port' } });
+	});
+
+	test('status-clear removes only the named entry and answers status-cleared', async () => {
+		const local = memoryArea({ ai_connection_status: { a: { state: 'ok', testedAt: 1 }, b: { structuredOutput: 'none' } } });
+		const { port } = setup({ connectionStatus: createConnectionStatusStore(local) });
+		port.send({ type: 'status-clear', jobId: 'status-1', connectionId: 'a' });
+		port.send({ type: 'status-clear', jobId: 'status-2', connectionId: 'missing' });
+		await flush();
+		expect(port.posted).toEqual([
+			{ type: 'status-cleared', jobId: 'status-1', connectionId: 'a' },
+			{ type: 'status-cleared', jobId: 'status-2', connectionId: 'missing' }
+		]);
+		expect(local.values.get('ai_connection_status')).toEqual({ b: { structuredOutput: 'none' } });
+
+		port.send({ type: 'status-clear', jobId: 'status-3' });
+		await flush();
+		expect(port.last()).toMatchObject({ type: 'error', jobId: 'status-3' });
+	});
+
+	test('a status-clear and a concurrent Test result for another connection both land', async () => {
+		const local = memoryArea({ ai_connection_status: { other: { state: 'ok', testedAt: 1 } } });
+		// Each storage call yields, so unserialized read-modify-writes would interleave.
+		const slow: StorageAreaLike = {
+			get: async keys => {
+				await new Promise(resolve => setTimeout(resolve, 0));
+				return local.get(keys);
+			},
+			set: async entries => {
+				await new Promise(resolve => setTimeout(resolve, 0));
+				return local.set(entries);
+			},
+			remove: keys => local.remove(keys)
+		};
+		const { port } = setup({
+			fetchImpl: listing(['gpt-a']) as unknown as typeof fetch,
+			connectionStatus: createConnectionStatusStore(slow),
+			now: () => 9
+		});
+		port.send({ type: 'test', jobId: 'test-1', connectionId: 'provider-openai' });
+		port.send({ type: 'status-clear', jobId: 'status-1', connectionId: 'other' });
+		for (let index = 0; index < 4; index += 1) await flush();
+		expect(port.posted.map(message => message.type)).toEqual(expect.arrayContaining(['status-cleared', 'test-result']));
+		expect(local.values.get('ai_connection_status')).toEqual({
+			'provider-openai': expect.objectContaining({ state: 'ok', testedAt: 9 })
+		});
 	});
 
 	test('init removes the Phase 3 structured-output cache', async () => {

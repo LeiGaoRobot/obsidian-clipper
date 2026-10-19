@@ -43,12 +43,27 @@ function storageBody(error: AiSettingsStorageError): string {
 	}
 }
 
+/** The section name of a v2 sync item, for the bootstrap message; other keys are shown as is. */
+function itemName(key: string | undefined): string {
+	switch (key) {
+		case 'ai_connections': return getMessage('aiConnections');
+		case 'ai_profiles': return getMessage('aiProfiles');
+		case 'ai_routing': return getMessage('aiRouting');
+		case 'ai_prompt_context': return getMessage('defaultInterpreterContext');
+		case 'ai_interpreter': return getMessage('aiSettings');
+		default: return key ?? getMessage('aiSettings');
+	}
+}
+
 /**
  * A failed bootstrap leaves the section read-only, so the body says how to get out: a full sync
- * storage needs space freed and a reload, not another try from this page.
+ * storage needs space freed and a reload, not another try from this page. An item too large to
+ * migrate cannot be shortened here, so the body names it and asks for a report instead.
  */
 function bootstrapStorageBody(error: AiSettingsStorageError): string {
-	return error.reason === 'total-quota' ? getMessage('aiSettingsBootstrapQuotaTotal') : storageBody(error);
+	if (error.reason === 'total-quota') return getMessage('aiSettingsBootstrapQuotaTotal');
+	if (error.reason === 'item-too-large') return getMessage('aiSettingsBootstrapItemTooLarge', itemName(error.key));
+	return storageBody(error);
 }
 
 function storageDetail(error: AiSettingsStorageError): string | undefined {

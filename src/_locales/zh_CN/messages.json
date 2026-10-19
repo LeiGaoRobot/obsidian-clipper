@@ -287,6 +287,12 @@
 	"aiTestResultOneShot": {
 		"message": "此浏览器每次只能向 CLI 主机发送一个请求。取消会停止等待，但无法停止已开始的 CLI 运行。"
 	},
+	"aiTestResultListingUnavailable": {
+		"message": "此地址无法获取模型列表（HTTP $1）。请检查基础 URL。此测试不会发送计费请求，因此没有检查其他内容。"
+	},
+	"aiTestResultListingUnavailableAddModel": {
+		"message": "此服务器不提供模型列表（HTTP $1），因此免费测试无法检查它。请添加一个模型后再次测试：测试随后会发送一个最小请求，提供商可能会计费。"
+	},
 	"aiStructuredOutputJsonSchema": {
 		"message": "JSON schema"
 	},
@@ -508,6 +514,9 @@
 	},
 	"aiSettingsBootstrapQuotaTotal": {
 		"message": "浏览器同步存储已满，因此无法在这台设备上初始化 AI 设置。您之前的 AI 设置没有变化。请释放空间（例如删除不再使用的模板），然后重新加载设置。"
+	},
+	"aiSettingsBootstrapItemTooLarge": {
+		"message": "无法将您之前的 AI 设置迁移到此版本：“$1”这一项超过了浏览器同步存储单项 8 KB 的上限。您之前的 AI 设置没有变化，AI 设置在这台设备上保持只读。如需报告此问题，请附上下方的技术详情。"
 	},
 	"aiSettingsConnectionMissingTitle": {
 		"message": "此连接已被删除"

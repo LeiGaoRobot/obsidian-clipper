@@ -4,7 +4,7 @@ import { isCliKind } from '../../ai/connection-kind';
 import { aiErrorMessageKeys } from '../../ai/error-messages';
 import { isAiError } from '../../ai/errors';
 import { deserializeAiError } from '../../ai/protocol';
-import { connectionTestPlan, type ConnectionTestPlan } from '../../ai/test-connection';
+import { connectionTestPlan, probesStructuredOutput, type ConnectionTestPlan } from '../../ai/test-connection';
 import {
 	AI_CONNECTIONS_KEY,
 	AI_CONNECTION_STATUS_KEY,
@@ -151,8 +151,27 @@ export type RunConnectionTest = (connectionId: string, options: TestConnectionOp
 interface TestState {
 	running?: { step?: AiTestStep; profileId?: string; controller: AbortController };
 	result?: AiTestResult;
+	/** The Test has a result, but writing its structured-output mode to the synced connection failed. */
+	saveError?: unknown;
 	/** A Test that ended without a result (not a cancel). */
 	error?: unknown;
+}
+
+/**
+ * A card's Test controls. A running Test updates them in place, so keyboard focus and the
+ * `role="status"` element survive its steps.
+ */
+interface TestPanelElements {
+	connection: Connection;
+	panel: HTMLElement;
+	bar: HTMLElement;
+	button: HTMLButtonElement;
+	/** Present while a Test runs. */
+	cancel?: HTMLButtonElement;
+	/** The step text; empty while no Test runs. */
+	progress: HTMLElement;
+	/** The state whose outcome the panel shows, so a step update leaves the outcome alone. */
+	shown?: TestState;
 }
 
 interface ConnectionDialogTarget {
@@ -200,6 +219,7 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 	const runTest: RunConnectionTest = options.runTest ?? testConnection;
 	const isTrusted = options.isTrusted ?? ((event: Event) => event.isTrusted);
 	const tests = new Map<string, TestState>();
+	const panels = new Map<string, TestPanelElements>();
 	const list = createElement(doc, 'div', 'ai-connection-list');
 	list.id = 'ai-connection-list';
 	const { container: addContainer, link: addLink } = createAddLink(doc, getMessage('aiAddApiProvider'), 'ai-add-api-provider');
@@ -451,8 +471,23 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		}
 	}
 
-	function rerender(): void {
-		render(controller.state);
+	/**
+	 * Shows the Test state of one card in place; a Cancel or Test that had focus keeps it, or hands
+	 * it to the control that replaces it. Falls back to a full render when the card is gone.
+	 */
+	function updateTestPanel(connectionId: string): void {
+		const elements = panels.get(connectionId);
+		if (!elements || !elements.panel.isConnected) {
+			render(controller.state);
+			return;
+		}
+		const active = doc.activeElement;
+		const hadFocus = active instanceof HTMLElement && elements.panel.contains(active);
+		syncTestPanel(elements);
+		const now = doc.activeElement;
+		if (hadFocus && (!(now instanceof HTMLElement) || !elements.panel.contains(now) || (now as HTMLButtonElement).disabled)) {
+			(elements.cancel ?? elements.button).focus();
+		}
 	}
 
 	/** Starts a Test, which may send a billable request; only after a trusted click. */
@@ -460,24 +495,29 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		if (tests.get(connectionId)?.running || controller.saving) return;
 		const abort = new AbortController();
 		tests.set(connectionId, { running: { controller: abort } });
-		rerender();
+		updateTestPanel(connectionId);
 		try {
 			const result = await runTest(connectionId, {
 				signal: abort.signal,
 				onStep: (step, profileId) => {
 					if (tests.get(connectionId)?.running?.controller !== abort) return;
 					tests.set(connectionId, { running: { step, ...(profileId ? { profileId } : {}), controller: abort } });
-					rerender();
+					updateTestPanel(connectionId);
 				}
 			});
-			tests.set(connectionId, { result });
-			await controller.applyTestResult(result);
+			// The Test stays running until its structured-output mode is written to the synced
+			// connection, so the result never shows before that write settles.
+			const applied = await controller.applyTestResult(result);
+			const saveError = !applied && controller.error !== undefined ? controller.error : undefined;
+			if (!tests.has(connectionId)) return;
+			tests.set(connectionId, { result, ...(saveError !== undefined ? { saveError } : {}) });
 		} catch (error) {
+			if (!tests.has(connectionId)) return;
 			const cancelled = isAiError(error) && error.code === 'cancelled';
 			if (cancelled) tests.delete(connectionId);
 			else tests.set(connectionId, { error });
 		}
-		rerender();
+		updateTestPanel(connectionId);
 	}
 
 	function onTrustedClick(handler: () => void): (event: Event) => void {
@@ -494,11 +534,22 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		};
 	}
 
-	function renderResult(connection: Connection, result: AiTestResult): HTMLElement {
+	function renderResult(connection: Connection, result: AiTestResult, saveError: unknown): HTMLElement {
 		const element = createElement(doc, 'div', `ai-connection-test-result is-${result.state}`);
 		if (result.state === 'failing') {
 			renderErrorCard(element, deserializeAiError(result.error), { handlers: errorCardHandlers(connection.id) });
 			element.hidden = false;
+			if (result.listingUnavailable) {
+				const status = String(result.error?.status ?? '');
+				element.appendChild(createElement(
+					doc,
+					'div',
+					'ai-connection-test-result-note',
+					probesStructuredOutput(connection)
+						? getMessage('aiTestResultListingUnavailableAddModel', status)
+						: getMessage('aiTestResultListingUnavailable', status)
+				));
+			}
 		} else {
 			element.appendChild(createElement(doc, 'div', 'ai-connection-test-result-title', getMessage('aiTestResultOk')));
 			const lines: string[] = [];
@@ -515,12 +566,54 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		if (result.transport === 'message') {
 			element.appendChild(createElement(doc, 'div', 'ai-connection-test-result-note', getMessage('aiTestResultOneShot')));
 		}
+		if (saveError !== undefined) {
+			const card = createElement(doc, 'div', 'ai-connection-test-save-error');
+			renderErrorCard(card, saveError);
+			element.appendChild(card);
+		}
 		return element;
+	}
+
+	function renderOutcome(connection: Connection, test: TestState): HTMLElement | undefined {
+		if (test.result) return renderResult(connection, test.result, test.saveError);
+		if (test.error === undefined) return undefined;
+		const element = createElement(doc, 'div', 'ai-connection-test-result is-failing');
+		renderErrorCard(element, test.error, { handlers: errorCardHandlers(connection.id) });
+		element.hidden = false;
+		return element;
+	}
+
+	/** Brings a card's Test controls up to date with its Test state. */
+	function syncTestPanel(elements: TestPanelElements): void {
+		const { connection } = elements;
+		const test = tests.get(connection.id);
+		const running = test?.running;
+		elements.button.disabled = Boolean(running) || controller.saving;
+		if (running) {
+			if (!elements.cancel) {
+				const cancel = createTextButton(doc, getMessage('cancel'), 'ai-connection-test-cancel');
+				cancel.addEventListener('click', () => tests.get(connection.id)?.running?.controller.abort());
+				elements.bar.insertBefore(cancel, elements.progress);
+				elements.cancel = cancel;
+			}
+			elements.progress.textContent = stepText(connection.id, running.step, running.profileId);
+		} else {
+			elements.cancel?.remove();
+			delete elements.cancel;
+			elements.progress.textContent = '';
+		}
+		const outcome = running ? undefined : test;
+		if (elements.shown === outcome) return;
+		elements.shown = outcome;
+		for (const child of Array.from(elements.panel.children)) {
+			if (child.classList.contains('ai-connection-test-result')) child.remove();
+		}
+		const element = outcome ? renderOutcome(connection, outcome) : undefined;
+		if (element) elements.panel.appendChild(element);
 	}
 
 	function createTestPanel(connection: Connection, state: AiSettingsState): HTMLElement {
 		const panel = createElement(doc, 'div', 'ai-connection-test-panel');
-		const test = tests.get(connection.id);
 		// The cost note sits above Test whenever the plan has a billable step.
 		const plan = testPlanFor(connection, state);
 		if (plan.billable) {
@@ -533,25 +626,15 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		}
 		const bar = createElement(doc, 'div', 'ai-connection-test-bar');
 		const button = createTextButton(doc, getMessage('aiConnectionTest'), 'ai-connection-test');
-		button.disabled = Boolean(test?.running) || controller.saving;
 		button.addEventListener('click', onTrustedClick(() => void startTest(connection.id)));
-		bar.appendChild(button);
-		if (test?.running) {
-			const cancel = createTextButton(doc, getMessage('cancel'), 'ai-connection-test-cancel');
-			const running = test.running;
-			cancel.addEventListener('click', () => running.controller.abort());
-			const progress = createElement(doc, 'span', 'ai-connection-test-progress', stepText(connection.id, running.step, running.profileId));
-			progress.setAttribute('role', 'status');
-			bar.append(cancel, progress);
-		}
+		// One live region per card for the whole Test, so each step is announced.
+		const progress = createElement(doc, 'span', 'ai-connection-test-progress');
+		progress.setAttribute('role', 'status');
+		bar.append(button, progress);
 		panel.appendChild(bar);
-		if (test?.result) panel.appendChild(renderResult(connection, test.result));
-		else if (test?.error !== undefined) {
-			const element = createElement(doc, 'div', 'ai-connection-test-result is-failing');
-			renderErrorCard(element, test.error, { handlers: errorCardHandlers(connection.id) });
-			element.hidden = false;
-			panel.appendChild(element);
-		}
+		const elements: TestPanelElements = { connection, panel, bar, button, progress };
+		syncTestPanel(elements);
+		panels.set(connection.id, elements);
 		return panel;
 	}
 
@@ -578,7 +661,17 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		return item;
 	}
 
+	/** The card whose Test or Cancel control has focus, so a full render can give it back. */
+	function focusedTestControl(): string | undefined {
+		const active = doc.activeElement;
+		if (!(active instanceof HTMLElement) || !list.contains(active)) return undefined;
+		if (!active.classList.contains('ai-connection-test') && !active.classList.contains('ai-connection-test-cancel')) return undefined;
+		return active.closest<HTMLElement>('.ai-connection-item')?.dataset.connectionId;
+	}
+
 	function render(state: AiSettingsState): void {
+		const focus = focusedTestControl();
+		panels.clear();
 		list.replaceChildren();
 		const ids = new Set(state.view.connections.map(connection => connection.id));
 		for (const [id, test] of tests) {
@@ -592,6 +685,12 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		}
 		for (const connection of state.view.connections) list.appendChild(createCard(connection, state));
 		finishRender(list);
+		if (focus) {
+			// A running Test's Cancel, else Test.
+			const elements = panels.get(focus);
+			const target = elements?.cancel ?? (elements && !elements.button.disabled ? elements.button : undefined);
+			target?.focus();
+		}
 	}
 
 	// Test waits for pending saves, so it never runs against settings that are still being written.
@@ -608,7 +707,13 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		stateOf(state) {
 			return {
 				cards: connectionsPanelState(state),
-				tests: Array.from(tests.entries()).map(([id, test]) => [id, test.running ? [test.running.step, test.running.profileId] : null, test.result ?? null, test.error !== undefined])
+				tests: Array.from(tests.entries()).map(([id, test]) => [
+					id,
+					test.running ? [test.running.step, test.running.profileId] : null,
+					test.result ?? null,
+					test.error !== undefined,
+					test.saveError !== undefined
+				])
 			};
 		},
 		render,
@@ -616,6 +721,7 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 			stopSaving();
 			for (const test of tests.values()) test.running?.controller.abort();
 			tests.clear();
+			panels.clear();
 		},
 		openCatalogPicker,
 		openConnectionDialog

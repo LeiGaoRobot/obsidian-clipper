@@ -75,6 +75,7 @@ export type AiClientMessage =
 	| { type: 'checkpoint-get'; requestId: string; jobId: string }
 	| { type: 'checkpoint-clear'; requestId: string; jobId: string }
 	| AiTestMessage
+	| AiStatusClearMessage
 	| { type: 'cancel'; jobId: string }
 	| { type: 'attach'; jobId: string }
 	| { type: 'ping' };
@@ -85,6 +86,17 @@ export type AiClientMessage =
  */
 export interface AiTestMessage {
 	type: 'test';
+	jobId: string;
+	connectionId: string;
+}
+
+/**
+ * Asks the gateway, the only writer of `ai_connection_status`, to remove the entry of
+ * `connectionId` (Settings sends it when a connection is deleted or its endpoint, key, or a
+ * profile's model changes). Answered by `status-cleared`, or `error` when the write failed.
+ */
+export interface AiStatusClearMessage {
+	type: 'status-clear';
 	jobId: string;
 	connectionId: string;
 }
@@ -162,7 +174,8 @@ export type AiGatewayMessage =
 	| AiJobRetryMessage
 	| AiCheckpointMessage
 	| AiTestStepMessage
-	| AiTestResultMessage;
+	| AiTestResultMessage
+	| AiStatusClearedMessage;
 
 /** A Test step started; `profileId` names the profile a CLI exec runs with. */
 export interface AiTestStepMessage {
@@ -177,6 +190,13 @@ export interface AiTestResultMessage {
 	type: 'test-result';
 	jobId: string;
 	result: AiTestResult;
+}
+
+/** The entry of `connectionId` is gone from `ai_connection_status` (or was never there). */
+export interface AiStatusClearedMessage {
+	type: 'status-cleared';
+	jobId: string;
+	connectionId: string;
 }
 
 export function serializeAiError(error: AiError): SerializedAiError {
@@ -417,6 +437,7 @@ export function isAiClientMessage(value: unknown): value is AiClientMessage {
 		case 'checkpoint-put':
 			return sanitizeCheckpointPut(message) !== undefined;
 		case 'test':
+		case 'status-clear':
 			return isJobId(message.jobId) && isJobId(message.connectionId);
 		default:
 			return false;

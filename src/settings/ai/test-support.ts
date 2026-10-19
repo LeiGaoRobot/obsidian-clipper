@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import type { StorageAreaLike } from '../../ai/job-store';
 import {
 	createAiSettingsStore,
+	createConnectionStatusStore,
 	encodeConnections,
 	encodeInterpreter,
 	encodeProfiles,
@@ -108,6 +109,8 @@ export interface FakeStore {
 	local: MemoryArea;
 	session: MemoryArea;
 	onChanged: FakeOnChanged;
+	/** The gateway's `status-clear` over `local`, as the Settings page's controller sends it. */
+	clearConnectionStatus: (connectionId: string) => Promise<void>;
 }
 
 export function createFakeStore(settings: FakeSettings = {}): FakeStore {
@@ -135,7 +138,9 @@ export function createFakeStore(settings: FakeSettings = {}): FakeStore {
 		bootstrap: Boolean(settings.bootstrapper),
 		...(settings.bootstrapper ? { bootstrapper: settings.bootstrapper, build: '9.9.9' } : {})
 	});
-	return { store, sync, local, session, onChanged };
+	const status = createConnectionStatusStore(local);
+	const clearConnectionStatus = (connectionId: string) => status.update(connectionId, () => undefined);
+	return { store, sync, local, session, onChanged, clearConnectionStatus };
 }
 
 let settingsHtml: string | undefined;

@@ -277,7 +277,9 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		};
 
 		// A rejected structured-output parameter is not billed; retry once with prompt rules only, and
-		// remember the downgrade on this device only after the retry succeeds. A later Test overwrites it.
+		// remember the downgrade on this device only after the retry succeeds. A later successful Test
+		// replaces it with the mode it probed, or drops it when it did not probe; Settings clears it
+		// when the connection's endpoint, key, or a profile's model changes.
 		const withFallback = async (run: (structuredMode: StructuredOutputMode) => Promise<string>) => {
 			try {
 				return await run(mode);
@@ -472,7 +474,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 					signal: run.controller.signal,
 					onStep: (step, profileId) => post(port, { type: 'test-step', jobId, step, ...(profileId ? { profileId } : {}) })
 				});
-				// Status is per device: only this gateway creates entries; Settings may delete them.
+				// Status is per device, and this gateway is its only writer (Settings sends `status-clear`).
 				await statusStore.update(connectionId, previous => statusFromTestResult(result, previous)).catch(error => {
 					console.warn('[ai] The connection status was not saved:', error instanceof Error ? error.message : String(error));
 				});
@@ -494,6 +496,14 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 				updateKeepAlive();
 			}
 		})();
+	};
+
+	/** Settings' request to remove a status entry; the gateway stays the only writer of the key. */
+	const clearStatus = (port: AiPortLike, jobId: string, connectionId: string) => {
+		void statusStore.update(connectionId, () => undefined).then(
+			() => post(port, { type: 'status-cleared', jobId, connectionId }),
+			error => post(port, { type: 'error', jobId, error: serializeAiError(toAiError(error, connectionId)) })
+		);
 	};
 
 	const detach = (port: AiPortLike) => {
@@ -716,6 +726,9 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 						return;
 					case 'test':
 						startTest(port, message.jobId, message.connectionId);
+						return;
+					case 'status-clear':
+						clearStatus(port, message.jobId, message.connectionId);
 						return;
 					case 'cancel':
 						tests.get(message.jobId)?.controller.abort();

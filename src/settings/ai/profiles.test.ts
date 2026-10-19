@@ -26,6 +26,7 @@ async function section(settings: FakeSettings) {
 	let next = 0;
 	const handle = await initializeAiSettings({
 		store: fake.store,
+		clearConnectionStatus: fake.clearConnectionStatus,
 		createId: prefix => `${prefix}-${++next}`,
 		installGuide: installGuideEnvironment(),
 		confirm: () => true

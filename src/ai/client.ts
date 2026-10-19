@@ -55,7 +55,7 @@ function connectToGateway(name: string): AiClientPort {
 	return browser.runtime.connect({ name }) as unknown as AiClientPort;
 }
 
-interface GatewayRequestOptions {
+export interface GatewayRequestOptions {
 	signal?: AbortSignal;
 	connect?: (name: string) => AiClientPort;
 	keepaliveMs?: number;
@@ -179,6 +179,20 @@ export function runAiTask<T extends AiTask>(
 
 export interface TestConnectionOptions extends GatewayRequestOptions {
 	onStep?: (step: AiTestStep, profileId?: string) => void;
+}
+
+/**
+ * Removes the connection's entry from this device's `ai_connection_status` through the gateway,
+ * which serializes every write of that key. Sends no model request. Rejects with an AiError.
+ */
+export function clearConnectionStatus(connectionId: string, options: GatewayRequestOptions = {}): Promise<void> {
+	jobSequence += 1;
+	const jobId = `ai-status-${Date.now()}-${jobSequence}-${Math.random().toString(36).slice(2, 8)}`;
+	return gatewayRequest<void>(jobId, { type: 'status-clear', jobId, connectionId }, options, message => {
+		if (message.type === 'status-cleared') return { value: undefined };
+		if (message.type === 'error') return { error: deserializeAiError(message.error) };
+		return undefined;
+	});
 }
 
 /**

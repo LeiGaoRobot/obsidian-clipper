@@ -674,7 +674,6 @@ export interface AiSettingsStore {
 	savePromptContextNow(text: string): Promise<void>;
 	setCredential(connectionId: string, apiKey: string): Promise<boolean>;
 	deleteCredential(connectionId: string): Promise<boolean>;
-	deleteConnectionStatus(connectionIds: string | readonly string[]): Promise<boolean>;
 	/**
 	 * Makes sure v2 exists before a Settings write, for a user action only. Resolves `true` when
 	 * `ai_connections` is stored afterwards. A pending v1 migration runs first (its failure
@@ -958,16 +957,6 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 		},
 		deleteCredential,
 		ensureV2,
-		async deleteConnectionStatus(connectionIds) {
-			const ids = (typeof connectionIds === 'string' ? [connectionIds] : [...connectionIds]).map(requireId);
-			return updateLocal(AI_CONNECTION_STATUS_KEY, decodeConnectionStatus, current => {
-				const present = ids.filter(id => Object.prototype.hasOwnProperty.call(current, id));
-				if (present.length === 0) return undefined;
-				const next = { ...current };
-				for (const id of present) delete next[id];
-				return next;
-			});
-		},
 		observe(listener) {
 			if (!onChanged) return () => {};
 			const handler: StorageChangedListener = (changes, areaName) => {
@@ -985,8 +974,9 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 // --- Connection status (gateway side) -------------------------------------------------------------
 
 /**
- * The gateway's access to `ai_connection_status` in `storage.local`. Only the gateway creates
- * entries (a Test result, a structured-output downgrade); the Settings store only deletes them.
+ * The gateway's access to `ai_connection_status` in `storage.local`. The gateway is the key's only
+ * writer (a Test result, a structured-output downgrade, a Settings `status-clear`), so its
+ * serialized `update` never loses a concurrent write. The Settings store only reads the key.
  */
 export interface ConnectionStatusStore {
 	get(connectionId: string): Promise<ConnectionStatus | undefined>;

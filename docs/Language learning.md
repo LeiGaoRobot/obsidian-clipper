@@ -119,7 +119,7 @@ The following actions can create model-provider usage:
 - Translating a transcript. A long transcript can create multiple requests, up to three at the same time for a hosted API provider, plus automatic retries.
 - Generating Japanese readings for a transcript. For non-Japanese source subtitles, the preceding Japanese translation and the reading stage can each create multiple requests in the same way.
 - Explaining a new word, phrase, or sentence that is not already cached for the session.
-- Selecting **Test** on a connection in **Settings → AI**, when the connection shows the cost note: a structured-output probe or a 1-token request for an API provider, or one CLI run per Codex CLI model (one for Grok CLI).
+- Selecting **Test** on a connection in **Settings → AI**, when the connection shows the cost note: a structured-output probe or a 1-token request for an API provider, or one CLI run per Codex CLI model (one for Grok CLI). A Test without the cost note only lists models; if the provider has no model list, that Test fails instead of sending a billable request.
 
 Applying, cancelling, undoing, hiding, or showing an existing result does not make another model request.
 

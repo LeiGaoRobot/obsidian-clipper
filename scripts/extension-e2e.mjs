@@ -581,10 +581,23 @@ try {
 		providers: [{ id: 'e2e-provider', name: 'E2E Mock', baseUrl: providerUrl, apiKey: 'sk-e2e', apiKeyRequired: true }],
 		models: [{ id: 'e2e-model', providerId: 'e2e-provider', providerModelId: 'mock-model', name: 'Mock', enabled: true }]
 	};
-	await evaluate(settings, `new Promise((resolve, reject) => chrome.storage.sync.set({ interpreter_settings: ${JSON.stringify(v1InterpreterSeed)} }, () => {
-		if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-		else resolve();
-	}))`);
+	// The Phase 3 structured-output cache an older build left in local storage. It says `none`, so
+	// a gateway that still read it would drop response_format below; the worker restart's init()
+	// must remove it.
+	const legacyStructuredOutputSeed = { 'e2e-provider': { baseUrl: providerUrl, mode: 'none' } };
+	await evaluate(settings, `Promise.all([
+		new Promise((resolve, reject) => chrome.storage.sync.set({ interpreter_settings: ${JSON.stringify(v1InterpreterSeed)} }, () => {
+			if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+			else resolve();
+		})),
+		new Promise((resolve, reject) => chrome.storage.local.set({ ai_structured_output: ${JSON.stringify(legacyStructuredOutputSeed)} }, () => {
+			if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+			else resolve();
+		}))
+	])`);
+	if (canonicalJson((await syncAndLocal()).local.ai_structured_output) !== canonicalJson(legacyStructuredOutputSeed)) {
+		throw new Error('Chrome did not persist the Phase 3 ai_structured_output seed.');
+	}
 	const gatewayRun = await evaluate(settings, `new Promise((resolve, reject) => {
 		const port = chrome.runtime.connect({ name: 'ai' });
 		const messages = [];
@@ -738,11 +751,21 @@ try {
 			state: result.className,
 			text: result.textContent,
 			badge: item.querySelector('.ai-status-badge')?.className,
-			running: Boolean(item.querySelector('.ai-connection-test-progress'))
+			running: Boolean(item.querySelector('.ai-connection-test-cancel'))
+				|| Boolean(item.querySelector('.ai-connection-test-progress')?.textContent)
 		};
 	})()`), 'The connection Test did not finish.');
 	const testRequests = providerRequests.slice(requestsBeforeSmoke);
-	const afterTest = await syncAndLocal();
+	// The card shows the result only after the detected mode is written to sync; wait for the
+	// item anyway, so a slow storage event cannot fail the check below.
+	const afterTest = await waitForValue(async () => {
+		const stored = await syncAndLocal();
+		return stored.sync.ai_connections?.items?.find(item => item.id === 'e2e-provider')?.structuredOutput === 'json_schema'
+			? stored
+			: undefined;
+	}, 'The Test did not write the detected structured-output mode to ai_connections.').catch(async error => {
+		throw new Error(`${error.message} ${JSON.stringify({ testResult, sync: (await syncAndLocal()).sync.ai_connections })}`);
+	});
 	const testStatus = afterTest.local.ai_connection_status?.['e2e-provider'];
 	const testedConnection = afterTest.sync.ai_connections?.items?.find(item => item.id === 'e2e-provider');
 	if (
@@ -763,7 +786,6 @@ try {
 		|| testStatus.models[0].listed !== true
 		|| JSON.stringify(testStatus).includes('sk-e2e')
 		|| testedConnection?.structuredOutput !== 'json_schema'
-		|| 'ai_structured_output' in afterTest.local
 	) {
 		throw new Error(`Unexpected connection Test: ${JSON.stringify({
 			testResult,
@@ -942,6 +964,11 @@ try {
 	// Re-list the restarted worker so its runtime errors are collected from here on.
 	const restartedWorker = await attachWorker('The restarted extension service worker was not listed.');
 	worker = restartedWorker.client;
+	// The restarted worker's init() removed the seeded Phase 3 cache and nothing else of the AI keys.
+	await waitForValue(async () => {
+		const stored = await syncAndLocal();
+		return !('ai_structured_output' in stored.local) && stored.local.ai_connection_status?.['e2e-provider']?.state === 'ok';
+	}, 'The restarted worker did not remove the Phase 3 ai_structured_output cache.');
 	const stopRequests = providerRequests.slice(stopRequestStart).filter(record => record.task === 'translate');
 	const firstGroupRequests = stopRequests.filter(record => record.ids.some(id => firstGroup.includes(id)));
 	const afterStop = stopRequests.filter(record => record.at >= workerStoppedAt);

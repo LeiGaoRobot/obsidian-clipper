@@ -84,6 +84,11 @@ describe('AI port protocol', () => {
 		expect(isAiClientMessage({ type: 'test', jobId: 'test-1', connectionId: '' })).toBe(false);
 		expect(isAiClientMessage({ type: 'test', jobId: 'test-1', connectionId: { id: 'openai' } })).toBe(false);
 		expect(isAiClientMessage({ type: 'test', connectionId: 'openai' })).toBe(false);
+		expect(isAiClientMessage({ type: 'status-clear', jobId: 'status-1', connectionId: 'openai' })).toBe(true);
+		expect(isAiClientMessage({ type: 'status-clear', jobId: 'status-1' })).toBe(false);
+		expect(isAiClientMessage({ type: 'status-clear', jobId: 'status-1', connectionId: '' })).toBe(false);
+		expect(isAiClientMessage({ type: 'status-clear', jobId: 'status-1', connectionId: ['openai'] })).toBe(false);
+		expect(isAiClientMessage({ type: 'status-clear', connectionId: 'openai' })).toBe(false);
 	});
 
 	test('copies only contract fields from a task input', () => {

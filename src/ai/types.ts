@@ -91,9 +91,10 @@ export interface ConnectionModelCheck {
 
 /**
  * Per-device connection state in `storage.local` (`ai_connection_status`), keyed by connection id.
- * Only the gateway creates entries; Settings may delete them. `state` and `testedAt` are set
- * together when a Test finishes. An entry can also exist with only `structuredOutput`, written
- * when a run downgrades the structured-output mode of an untested connection.
+ * Only the gateway writes it; Settings asks it to remove an entry (`status-clear`). `state` and
+ * `testedAt` are set together when a Test finishes. An entry can also exist with only
+ * `structuredOutput`, written when a run downgrades the structured-output mode of an untested
+ * connection.
  */
 export interface ConnectionStatus {
 	state?: 'ok' | 'failing';
@@ -130,6 +131,11 @@ export interface AiTestResult {
 	listedModels?: string[];
 	/** The structured-output mode the probe detected. */
 	structuredOutput?: Exclude<StructuredOutputSupport, 'unknown'>;
+	/**
+	 * Failing only: the model listing answered 404, 405, or 501 and the plan had no probe, so the
+	 * Test checked nothing rather than send a request the provider may bill.
+	 */
+	listingUnavailable?: true;
 	/** CLI only. */
 	transport?: AiTestTransport;
 }
