@@ -350,9 +350,15 @@ function parseSegmentItems<T extends { id: number }>(
 	return lists.length > 0 ? best : undefined;
 }
 
+/** A translation item's text, trimmed; blank or non-string text counts as no translation. */
+export function parseTranslationText(value: unknown): string | undefined {
+	const translation = typeof value === 'string' ? value.trim() : '';
+	return translation || undefined;
+}
+
 function parseTranslations(text: string, input: AiTaskInputs['translate']): TranscriptSegment[] {
 	const translations = parseSegmentItems(text, input.segments, 'translations', (item, id) => {
-		const translation = typeof item.text === 'string' ? item.text.trim() : '';
+		const translation = parseTranslationText(item.text);
 		return translation ? { id, text: translation } : undefined;
 	});
 	if (!translations) throw badResponse(text, 'The reply did not contain a translations list.');
@@ -360,7 +366,8 @@ function parseTranslations(text: string, input: AiTaskInputs['translate']): Tran
 	return translations;
 }
 
-function parseTokens(value: unknown): ReadingToken[] | undefined {
+/** A reading item's tokens, copied; undefined unless every token has non-empty text and a string reading. */
+export function parseReadingTokens(value: unknown): ReadingToken[] | undefined {
 	if (!Array.isArray(value) || value.length === 0) return undefined;
 	const tokens: ReadingToken[] = [];
 	for (const item of value) {
@@ -374,10 +381,28 @@ function parseTokens(value: unknown): ReadingToken[] | undefined {
 	return tokens;
 }
 
+export const JAPANESE_KANJI = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF々]/;
+
+/** True when the tokens reproduce the source text exactly and every token holding kanji has a reading. */
+export function isCompleteTranscriptReadingSegment(tokens: ReadingToken[], source: string): boolean {
+	if (!source) return tokens.length === 0;
+	return tokens.length > 0
+		&& tokens.map(token => token.text).join('') === source
+		&& tokens.every(token => !JAPANESE_KANJI.test(token.text) || Boolean(token.reading.trim()));
+}
+
+/** True when there is one complete reading per source segment, in order. */
+export function isCompleteTranscriptReadings(readings: ReadingToken[][], segments: string[]): boolean {
+	return readings.length === segments.length
+		&& readings.every((tokens, index) => isCompleteTranscriptReadingSegment(tokens, segments[index]));
+}
+
 function parseReadings(text: string, input: AiTaskInputs['reading']): SegmentReading[] {
+	const sources = new Map(input.segments.map(segment => [segment.id, segment.text]));
+	// A reading that drops text or leaves a kanji unread counts as missing, not as an answer.
 	const readings = parseSegmentItems(text, input.segments, 'readings', (item, id) => {
-		const tokens = parseTokens(item.tokens);
-		return tokens ? { id, tokens } : undefined;
+		const tokens = parseReadingTokens(item.tokens);
+		return tokens && isCompleteTranscriptReadingSegment(tokens, sources.get(id) ?? '') ? { id, tokens } : undefined;
 	});
 	if (!readings) throw badResponse(text, 'The reply did not contain a readings list.');
 	if (readings.length === 0) throw badResponse(text, 'The reply contained no reading for a requested segment.');
@@ -386,8 +411,9 @@ function parseReadings(text: string, input: AiTaskInputs['reading']): SegmentRea
 
 /**
  * Validates a model reply against the task contract. Interpret returns the answered keys with the
- * missing ones listed; transcript tasks return only valid items for requested segment ids. Callers
- * treat missing keys and absent segments as unanswered, never as complete.
+ * missing ones listed; transcript tasks return only valid items for requested segment ids, where a
+ * translation must not be blank and a reading must reproduce its source with every kanji read.
+ * Callers treat missing keys and absent segments as unanswered, never as complete.
  */
 export function parseOutput<T extends AiTask>(task: T, input: AiTaskInput<T>, text: string): AiTaskOutput<T> {
 	switch (task) {

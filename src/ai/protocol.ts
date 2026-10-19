@@ -1,5 +1,15 @@
-import type { AiTaskInput, AiTaskInputs } from './contracts';
+import {
+	isCompleteTranscriptReadingSegment,
+	parseReadingTokens,
+	parseTranslationText,
+	type AiTaskInput,
+	type AiTaskInputs,
+	type AiTaskOutput,
+	type TranscriptSegment
+} from './contracts';
 import { AI_ERROR_CODES, AiError, type AiErrorCode, type AiNotConfiguredReason } from './errors';
+import { hasIndexIds, type TranscriptJobIdentity, type TranscriptJobTask } from './job-identity';
+import type { AiJobAttempts, AiJobStatus } from './job-store';
 import { AI_TASKS, type AiTask, type ConnectionKind } from './types';
 
 export const AI_PORT_NAME = 'ai';
@@ -13,18 +23,102 @@ const MAX_INPUT_CHARS = 750_000;
 const MAX_PROMPTS = 50;
 const MAX_SEGMENTS = 2000;
 const MAX_INSTRUCTION_CHARS = 20_000;
+const MAX_IDENTITY_CHARS = 100;
 
 export type AiStartMessage = {
 	[T in AiTask]: { type: 'start'; jobId: string; task: T; profileId?: string; input: AiTaskInput<T> }
 }[AiTask];
 
+/** Tasks that run as one durable background job over a whole transcript. */
+export const AI_JOB_TASKS: readonly TranscriptJobTask[] = ['translate', 'reading'];
+
+/** A job's input. Segment ids equal their index, so results map onto source arrays directly. */
+export interface AiJobInput {
+	instruction: string;
+	segments: TranscriptSegment[];
+	identity: TranscriptJobIdentity;
+}
+
+/** One accepted item: a translation or a segment reading. */
+export type JobResultItem<T extends TranscriptJobTask = TranscriptJobTask> = AiTaskOutput<T>[number];
+
+export type AiStartJobMessage = {
+	[T in TranscriptJobTask]: { type: 'start-job'; jobId: string; task: T; profileId?: string; input: AiJobInput }
+}[TranscriptJobTask];
+
+export type AiCheckpointPutMessage = {
+	[T in TranscriptJobTask]: {
+		type: 'checkpoint-put';
+		requestId: string;
+		jobId: string;
+		task: T;
+		identity: TranscriptJobIdentity;
+		segmentCount: number;
+		results: JobResultItem<T>[];
+	}
+}[TranscriptJobTask];
+
 export type AiClientMessage =
 	| AiStartMessage
+	| AiStartJobMessage
+	| AiCheckpointPutMessage
+	| { type: 'checkpoint-get'; requestId: string; jobId: string }
+	| { type: 'checkpoint-clear'; requestId: string; jobId: string }
 	| { type: 'cancel'; jobId: string }
 	| { type: 'attach'; jobId: string }
 	| { type: 'ping' };
 
 export type AiProgressPhase = 'started' | 'heartbeat' | 'receiving';
+
+export interface AiJobCounts {
+	completedGroups: number;
+	totalGroups: number;
+	completedSegments: number;
+	totalSegments: number;
+}
+
+/** A full job snapshot; sent on `start-job`, on `attach`, and last when the job leaves `running`. */
+export interface AiJobStateMessage extends AiJobCounts {
+	type: 'job-state';
+	jobId: string;
+	status: AiJobStatus;
+	results: JobResultItem[];
+	attempts: AiJobAttempts;
+	error?: SerializedAiError;
+}
+
+/** The items accepted from the group that just finished, with the job's new counts. */
+export interface AiJobProgressMessage extends AiJobCounts {
+	type: 'job-progress';
+	jobId: string;
+	results: JobResultItem[];
+}
+
+/** A group entered backoff after a retryable provider error. */
+export interface AiJobRetryMessage {
+	type: 'job-retry';
+	jobId: string;
+	code: AiErrorCode;
+	status?: number;
+	delayMs: number;
+	attempt: number;
+}
+
+export interface AiCheckpointRecord {
+	status: AiJobStatus;
+	results: JobResultItem[];
+	completedSegments: number;
+	totalSegments: number;
+}
+
+/** The answer to a `checkpoint-*` request; `record` is present for a `checkpoint-get` that found one. */
+export interface AiCheckpointMessage {
+	type: 'checkpoint';
+	requestId: string;
+	jobId: string;
+	ok: boolean;
+	record?: AiCheckpointRecord;
+}
 
 export interface SerializedAiError {
 	code: AiErrorCode;
@@ -35,12 +129,17 @@ export interface SerializedAiError {
 	detail?: string;
 	nativeCode?: string;
 	timeoutSeconds?: number;
+	retryAfterMs?: number;
 }
 
 export type AiGatewayMessage =
 	| { type: 'progress'; jobId: string; phase: AiProgressPhase; elapsedMs: number; receivedChars?: number }
 	| { type: 'result'; jobId: string; output: unknown; connectionKind: ConnectionKind }
-	| { type: 'error'; jobId: string; error: SerializedAiError };
+	| { type: 'error'; jobId: string; error: SerializedAiError }
+	| AiJobStateMessage
+	| AiJobProgressMessage
+	| AiJobRetryMessage
+	| AiCheckpointMessage;
 
 export function serializeAiError(error: AiError): SerializedAiError {
 	return {
@@ -51,7 +150,8 @@ export function serializeAiError(error: AiError): SerializedAiError {
 		...(error.reason ? { reason: error.reason } : {}),
 		...(error.detail ? { detail: error.detail } : {}),
 		...(error.nativeCode ? { nativeCode: error.nativeCode } : {}),
-		...(error.timeoutSeconds !== undefined ? { timeoutSeconds: error.timeoutSeconds } : {})
+		...(error.timeoutSeconds !== undefined ? { timeoutSeconds: error.timeoutSeconds } : {}),
+		...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {})
 	};
 }
 
@@ -67,7 +167,8 @@ export function deserializeAiError(value: unknown): AiError {
 		...(typeof error.reason === 'string' ? { reason: error.reason as AiNotConfiguredReason } : {}),
 		...(typeof error.detail === 'string' ? { detail: error.detail } : {}),
 		...(typeof error.nativeCode === 'string' ? { nativeCode: error.nativeCode } : {}),
-		...(typeof error.timeoutSeconds === 'number' ? { timeoutSeconds: error.timeoutSeconds } : {})
+		...(typeof error.timeoutSeconds === 'number' ? { timeoutSeconds: error.timeoutSeconds } : {}),
+		...(typeof error.retryAfterMs === 'number' ? { retryAfterMs: error.retryAfterMs } : {})
 	});
 }
 
@@ -141,6 +242,80 @@ export function sanitizeTaskInput(task: AiTask, value: unknown): AiTaskInput | u
 	return undefined;
 }
 
+function isJobTask(value: unknown): value is TranscriptJobTask {
+	return (AI_JOB_TASKS as readonly unknown[]).includes(value);
+}
+
+function isIdentityPart(value: unknown): value is string {
+	return typeof value === 'string' && value.trim().length > 0 && value.length <= MAX_IDENTITY_CHARS;
+}
+
+/** Validates a job identity and returns a copy holding only its two fields. */
+export function sanitizeJobIdentity(value: unknown): TranscriptJobIdentity | undefined {
+	if (!value || typeof value !== 'object') return undefined;
+	const { namespace, scope } = value as Record<string, unknown>;
+	return isIdentityPart(namespace) && isIdentityPart(scope) ? { namespace, scope } : undefined;
+}
+
+/**
+ * Validates a job input under the same bounds as a transcript task input, with segment ids equal to
+ * their index, and returns a copy holding only the fields a job uses. The runner sets each group's
+ * output budget, so a client `maxTokens` is dropped. The job id is checked by the gateway, which
+ * recomputes it from this input.
+ */
+export function sanitizeJobInput(value: unknown): AiJobInput | undefined {
+	if (!value || typeof value !== 'object') return undefined;
+	const { instruction, segments, identity: rawIdentity } = value as Record<string, unknown>;
+	const identity = sanitizeJobIdentity(rawIdentity);
+	if (!identity || !isInstruction(instruction) || !isSegments(segments)) return undefined;
+	if (!hasIndexIds(segments)) return undefined;
+	const copies = segments.map(({ id, text }) => ({ id, text }));
+	if (sumLengths([instruction, ...copies.map(segment => segment.text)]) > MAX_INPUT_CHARS) return undefined;
+	return { instruction, segments: copies, identity };
+}
+
+// A checkpoint carries no source text, so a reading is checked against the text its tokens spell:
+// every kanji token needs a reading. An empty token list stands for an empty source segment.
+function sanitizeResultItem(task: TranscriptJobTask, item: Record<string, unknown>, id: number): JobResultItem | undefined {
+	if (task === 'translate') {
+		const text = parseTranslationText(item.text);
+		return text ? { id, text } : undefined;
+	}
+	const tokens = Array.isArray(item.tokens) && item.tokens.length === 0 ? [] : parseReadingTokens(item.tokens);
+	if (!tokens || !isCompleteTranscriptReadingSegment(tokens, tokens.map(token => token.text).join(''))) return undefined;
+	return { id, tokens };
+}
+
+/**
+ * Validates checkpoint results for a job of `segmentCount` segments: unique integer ids below the
+ * count, each item valid under the task contract. Returns copies, or undefined if any item fails.
+ */
+export function sanitizeJobResults<T extends TranscriptJobTask>(
+	task: T,
+	segmentCount: number,
+	value: unknown
+): JobResultItem<T>[] | undefined {
+	if (!Array.isArray(value) || value.length > segmentCount) return undefined;
+	const ids = new Set<number>();
+	const items: JobResultItem[] = [];
+	for (const item of value) {
+		if (!item || typeof item !== 'object') return undefined;
+		const id = (item as { id?: unknown }).id;
+		if (!Number.isInteger(id) || (id as number) < 0 || (id as number) >= segmentCount || ids.has(id as number)) {
+			return undefined;
+		}
+		const copy = sanitizeResultItem(task, item as Record<string, unknown>, id as number);
+		if (!copy) return undefined;
+		ids.add(id as number);
+		items.push(copy);
+	}
+	return items as JobResultItem<T>[];
+}
+
+function isSegmentCount(value: unknown): value is number {
+	return Number.isInteger(value) && (value as number) > 0 && (value as number) <= MAX_SEGMENTS;
+}
+
 export function isAiClientMessage(value: unknown): value is AiClientMessage {
 	if (!value || typeof value !== 'object') return false;
 	const message = value as Record<string, unknown>;
@@ -155,6 +330,21 @@ export function isAiClientMessage(value: unknown): value is AiClientMessage {
 				&& (AI_TASKS as readonly unknown[]).includes(message.task)
 				&& (message.profileId === undefined || isJobId(message.profileId))
 				&& sanitizeTaskInput(message.task as AiTask, message.input) !== undefined;
+		case 'start-job':
+			return isJobId(message.jobId)
+				&& isJobTask(message.task)
+				&& (message.profileId === undefined || isJobId(message.profileId))
+				&& sanitizeJobInput(message.input) !== undefined;
+		case 'checkpoint-get':
+		case 'checkpoint-clear':
+			return isJobId(message.requestId) && isJobId(message.jobId);
+		case 'checkpoint-put':
+			return isJobId(message.requestId)
+				&& isJobId(message.jobId)
+				&& isJobTask(message.task)
+				&& sanitizeJobIdentity(message.identity) !== undefined
+				&& isSegmentCount(message.segmentCount)
+				&& sanitizeJobResults(message.task, message.segmentCount, message.results) !== undefined;
 		default:
 			return false;
 	}

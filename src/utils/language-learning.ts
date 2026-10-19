@@ -1,6 +1,15 @@
-import type { AiTaskInput, AiTaskOutput, TranscriptSegment } from '../ai/contracts';
+import {
+	isCompleteTranscriptReadingSegment,
+	isCompleteTranscriptReadings,
+	type AiTaskInput,
+	type AiTaskOutput,
+	type TranscriptSegment
+} from '../ai/contracts';
 import type { AiTask } from '../ai/types';
 import { throwIfRequestAborted } from './request-cancellation';
+
+// Reading completeness is part of the reading contract; re-exported for restore validation.
+export { isCompleteTranscriptReadings };
 
 export type LanguageLearningTask = Extract<AiTask, 'edit' | 'explain' | 'reading' | 'translate'>;
 
@@ -88,7 +97,6 @@ export interface LanguageLearningAssistant {
 const MAX_TRANSCRIPT_PROMPT_CHARS = 6000;
 // Reading tokens cost several output tokens per source character, so reading groups stay smaller.
 const MAX_JAPANESE_READING_PROMPT_CHARS = 2500;
-const JAPANESE_KANJI = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF々]/;
 
 interface TranscriptPromptGroup {
 	segments: TranscriptSegment[];
@@ -129,13 +137,6 @@ function cloneTranscriptReadings(readings: TranscriptReadingSegments): Transcrip
 	return readings.map(tokens => tokens.map(token => ({ ...token })));
 }
 
-function isCompleteTranscriptReadingSegment(tokens: TranscriptReadingToken[], source: string): boolean {
-	if (!source) return tokens.length === 0;
-	return tokens.length > 0
-		&& tokens.map(token => token.text).join('') === source
-		&& tokens.every(token => !JAPANESE_KANJI.test(token.text) || Boolean(token.reading.trim()));
-}
-
 function countCompleteTranscriptReadingSegments(
 	readings: TranscriptReadingSegments,
 	segments: string[]
@@ -143,14 +144,6 @@ function countCompleteTranscriptReadingSegments(
 	return readings.reduce((count, tokens, index) => (
 		count + (isCompleteTranscriptReadingSegment(tokens, segments[index]) ? 1 : 0)
 	), 0);
-}
-
-export function isCompleteTranscriptReadings(
-	readings: TranscriptReadingSegments,
-	segments: string[]
-): boolean {
-	return readings.length === segments.length
-		&& readings.every((tokens, index) => isCompleteTranscriptReadingSegment(tokens, segments[index]));
 }
 
 export function replaceTextSelection(

@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import { AiError } from './errors';
-import { deserializeAiError, isAiClientMessage, sanitizeTaskInput, serializeAiError } from './protocol';
+import {
+	deserializeAiError,
+	isAiClientMessage,
+	sanitizeJobInput,
+	sanitizeJobResults,
+	sanitizeTaskInput,
+	serializeAiError
+} from './protocol';
 
 const input = { context: 'Text', prompts: [{ key: 'prompt_1', prompt: 'Summarize' }] };
 
@@ -15,6 +22,14 @@ describe('AI port protocol', () => {
 	test('round-trips the Host code and timeout limit', () => {
 		const error = new AiError('timeout', { nativeCode: 'timeout', timeoutSeconds: 300, detail: 'slow' });
 		expect(deserializeAiError(serializeAiError(error))).toMatchObject({ code: 'timeout', nativeCode: 'timeout', timeoutSeconds: 300 });
+	});
+
+	test('round-trips the provider Retry-After delay', () => {
+		const error = new AiError('rate-limited', { status: 429, retryAfterMs: 7000 });
+		expect(serializeAiError(error)).toMatchObject({ retryAfterMs: 7000 });
+		expect(deserializeAiError(serializeAiError(error))).toMatchObject({ code: 'rate-limited', status: 429, retryAfterMs: 7000 });
+		expect(serializeAiError(new AiError('rate-limited'))).not.toHaveProperty('retryAfterMs');
+		expect(deserializeAiError({ code: 'rate-limited', retryAfterMs: '7' })).not.toHaveProperty('retryAfterMs');
 	});
 
 	test('maps unknown error payloads to provider errors', () => {
@@ -69,5 +84,102 @@ describe('AI port protocol', () => {
 		})).toEqual({ instruction: 'T.', segments: [{ id: 0, text: 'a' }] });
 		expect(sanitizeTaskInput('interpret', { context: 'c', prompts: [{ key: 'k', prompt: 'p', filters: '|x' }], maxTokens: 10 }))
 			.toEqual({ context: 'c', prompts: [{ key: 'k', prompt: 'p' }], maxTokens: 10 });
+	});
+
+	describe('durable jobs', () => {
+		const identity = { namespace: 'transcript-translation', scope: 'video-1' };
+		const jobInput = { instruction: 'Translate.', segments: [{ id: 0, text: 'Hola' }, { id: 1, text: 'Adiós' }], identity };
+		const startJob = { type: 'start-job', jobId: 'job:translate:transcript-translation:abc', task: 'translate', input: jobInput };
+		const put = {
+			type: 'checkpoint-put',
+			requestId: 'request-1',
+			jobId: 'job:translate:transcript-translation:abc',
+			task: 'translate',
+			identity,
+			segmentCount: 2,
+			results: [{ id: 1, text: 'Goodbye' }]
+		};
+		const readingPut = {
+			...put,
+			task: 'reading',
+			results: [{ id: 0, tokens: [{ text: '雨', reading: 'あめ' }, { text: 'です', reading: '' }] }, { id: 1, tokens: [] }]
+		};
+
+		test('accepts a well-formed start-job for both transcript tasks', () => {
+			expect(isAiClientMessage(startJob)).toBe(true);
+			expect(isAiClientMessage({ ...startJob, task: 'reading', profileId: 'model-a' })).toBe(true);
+		});
+
+		test('rejects a start-job with a bad task, id, segments, size, or identity', () => {
+			const segments = (texts: string[]) => texts.map((text, id) => ({ id, text }));
+			expect(isAiClientMessage({ ...startJob, task: 'interpret' })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, jobId: '' })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, profileId: 3 })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: undefined })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, instruction: ' ' } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, segments: [] } })).toBe(false);
+			// Segment ids must equal their index.
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, segments: [{ id: 1, text: 'a' }, { id: 0, text: 'b' }] } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, segments: [{ id: 0, text: 'a' }, { id: 2, text: 'b' }] } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, segments: segments(Array(2001).fill('a')) } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, segments: segments(['x'.repeat(750_000)]) } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: undefined } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: { namespace: '', scope: 's' } } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: { namespace: 'n', scope: ' ' } } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: { namespace: 'n'.repeat(101), scope: 's' } } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: { namespace: 'n', scope: 's'.repeat(101) } } })).toBe(false);
+			expect(isAiClientMessage({ ...startJob, input: { ...jobInput, identity: { namespace: 'n', scope: 7 } } })).toBe(false);
+		});
+
+		test('copies only job fields from a job input', () => {
+			expect(sanitizeJobInput({
+				...jobInput,
+				segments: [{ id: 0, text: 'a', start: 12 }],
+				identity: { ...identity, profile: 'x' },
+				maxTokens: 10,
+				apiKey: 'leak'
+			})).toEqual({ instruction: 'Translate.', segments: [{ id: 0, text: 'a' }], identity });
+			expect(sanitizeJobInput({ ...jobInput, identity: { namespace: 'n'.repeat(100), scope: 's'.repeat(100) } })).toBeDefined();
+		});
+
+		test('accepts checkpoint-get and checkpoint-clear with a request id and a job id', () => {
+			for (const type of ['checkpoint-get', 'checkpoint-clear']) {
+				expect(isAiClientMessage({ type, requestId: 'request-1', jobId: 'job-1' })).toBe(true);
+				expect(isAiClientMessage({ type, requestId: '', jobId: 'job-1' })).toBe(false);
+				expect(isAiClientMessage({ type, requestId: 'request-1' })).toBe(false);
+				expect(isAiClientMessage({ type, requestId: 'request-1', jobId: 'x'.repeat(201) })).toBe(false);
+			}
+		});
+
+		test('accepts checkpoint-put items valid under the task contract', () => {
+			expect(isAiClientMessage(put)).toBe(true);
+			expect(isAiClientMessage({ ...put, results: [] })).toBe(true);
+			expect(isAiClientMessage(readingPut)).toBe(true);
+		});
+
+		test('rejects checkpoint-put with malformed fields or items', () => {
+			expect(isAiClientMessage({ ...put, requestId: undefined })).toBe(false);
+			expect(isAiClientMessage({ ...put, task: 'edit' })).toBe(false);
+			expect(isAiClientMessage({ ...put, identity: { namespace: 'n' } })).toBe(false);
+			expect(isAiClientMessage({ ...put, segmentCount: 0 })).toBe(false);
+			expect(isAiClientMessage({ ...put, segmentCount: 2001 })).toBe(false);
+			expect(isAiClientMessage({ ...put, segmentCount: 1.5 })).toBe(false);
+			expect(isAiClientMessage({ ...put, results: undefined })).toBe(false);
+			expect(isAiClientMessage({ ...put, results: [{ id: 2, text: 'x' }] })).toBe(false);
+			expect(isAiClientMessage({ ...put, results: [{ id: -1, text: 'x' }] })).toBe(false);
+			expect(isAiClientMessage({ ...put, results: [{ id: 0, text: 'a' }, { id: 0, text: 'b' }] })).toBe(false);
+			expect(isAiClientMessage({ ...put, results: [{ id: 0, text: ' ' }] })).toBe(false);
+			expect(isAiClientMessage({ ...put, results: [{ id: 0, tokens: [{ text: 'a', reading: '' }] }] })).toBe(false);
+			expect(isAiClientMessage({ ...readingPut, results: [{ id: 0, text: 'Rain' }] })).toBe(false);
+			expect(isAiClientMessage({ ...readingPut, results: [{ id: 0, tokens: [{ text: '雨', reading: '' }] }] })).toBe(false);
+			expect(isAiClientMessage({ ...readingPut, results: [{ id: 0, tokens: [{ text: '', reading: 'x' }] }] })).toBe(false);
+			expect(isAiClientMessage({ ...readingPut, results: [{ id: 0, tokens: [{ text: 'a' }] }] })).toBe(false);
+		});
+
+		test('copies only contract fields from checkpoint results', () => {
+			expect(sanitizeJobResults('translate', 2, [{ id: 0, text: ' Hello ', extra: 1 }])).toEqual([{ id: 0, text: 'Hello' }]);
+			expect(sanitizeJobResults('reading', 1, [{ id: 0, tokens: [{ text: '雨', reading: 'あめ', note: 'x' }] }]))
+				.toEqual([{ id: 0, tokens: [{ text: '雨', reading: 'あめ' }] }]);
+		});
 	});
 });

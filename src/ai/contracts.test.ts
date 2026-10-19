@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
+	isCompleteTranscriptReadingSegment,
+	isCompleteTranscriptReadings,
 	outputSpec,
 	parseJsonCandidates,
 	parseOutput,
@@ -164,10 +166,50 @@ describe('parseOutput', () => {
 		const reply = JSON.stringify({
 			readings: [
 				{ id: 3, tokens: [{ text: '', reading: 'x' }] },
-				{ id: 4, tokens: [{ text: '雨', reading: 'あめ' }] }
+				{ id: 4, tokens: [{ text: '雨', reading: 'あめ' }, { text: 'です', reading: '' }] }
 			]
 		});
-		expect(parseOutput('reading', reading, reply)).toEqual([{ id: 4, tokens: [{ text: '雨', reading: 'あめ' }] }]);
+		expect(parseOutput('reading', reading, reply)).toEqual([
+			{ id: 4, tokens: [{ text: '雨', reading: 'あめ' }, { text: 'です', reading: '' }] }
+		]);
+	});
+
+	test('counts a reading that does not reproduce its source or leaves a kanji unread as missing', () => {
+		const reply = JSON.stringify({
+			readings: [
+				{ id: 3, tokens: [{ text: '今日', reading: 'きょう' }] },
+				{ id: 4, tokens: [{ text: '雨', reading: 'あめ' }, { text: 'です', reading: '' }] }
+			]
+		});
+		expect(parseOutput('reading', reading, reply)).toEqual([
+			{ id: 4, tokens: [{ text: '雨', reading: 'あめ' }, { text: 'です', reading: '' }] }
+		]);
+		const unread = JSON.stringify({
+			readings: [
+				{ id: 3, tokens: [{ text: '今日', reading: ' ' }, { text: 'は', reading: '' }] },
+				{ id: 4, tokens: [{ text: '雨', reading: 'あめ' }, { text: 'です', reading: '' }] }
+			]
+		});
+		expect(parseOutput('reading', reading, unread)).toEqual([
+			{ id: 4, tokens: [{ text: '雨', reading: 'あめ' }, { text: 'です', reading: '' }] }
+		]);
+	});
+
+	test('reports a reply whose readings are all incomplete as a bad response', () => {
+		const reply = JSON.stringify({
+			readings: [
+				{ id: 3, tokens: [{ text: '今日は', reading: '' }] },
+				{ id: 4, tokens: [{ text: '雨で', reading: 'あめで' }] }
+			]
+		});
+		expect(() => parseOutput('reading', reading, reply)).toThrow(expect.objectContaining({ code: 'bad-response' }));
+	});
+
+	test('counts blank translations as missing and rejects a reply with only blank ones', () => {
+		expect(parseOutput('translate', translate, '{"translations":[{"id":3,"text":"  "},{"id":4,"text":"Rain"}]}'))
+			.toEqual([{ id: 4, text: 'Rain' }]);
+		expect(() => parseOutput('translate', translate, '{"translations":[{"id":3,"text":" "},{"id":4,"text":""}]}'))
+			.toThrow(expect.objectContaining({ code: 'bad-response' }));
 	});
 
 	test('salvages complete items from a reply cut off by the output limit', () => {
@@ -197,5 +239,23 @@ describe('parseOutput', () => {
 	test('finds JSON after a stray quote in leading prose', () => {
 		expect(parseOutput('interpret', interpret, 'He said "hi. {"prompt_1":"A","prompt_2":"B"}'))
 			.toEqual({ responses: { prompt_1: 'A', prompt_2: 'B' }, missing: [] });
+	});
+});
+
+describe('reading completeness', () => {
+	test('requires tokens that reproduce the source and a reading for every kanji token', () => {
+		expect(isCompleteTranscriptReadingSegment([{ text: '雨', reading: 'あめ' }, { text: 'です', reading: '' }], '雨です')).toBe(true);
+		expect(isCompleteTranscriptReadingSegment([{ text: '雨', reading: 'あめ' }], '雨です')).toBe(false);
+		expect(isCompleteTranscriptReadingSegment([{ text: '雨です', reading: '' }], '雨です')).toBe(false);
+		expect(isCompleteTranscriptReadingSegment([{ text: '々', reading: '' }], '々')).toBe(false);
+		expect(isCompleteTranscriptReadingSegment([], '')).toBe(true);
+		expect(isCompleteTranscriptReadingSegment([{ text: 'a', reading: '' }], '')).toBe(false);
+	});
+
+	test('checks every segment in order', () => {
+		const readings = [[{ text: '雨', reading: 'あめ' }], []];
+		expect(isCompleteTranscriptReadings(readings, ['雨', ''])).toBe(true);
+		expect(isCompleteTranscriptReadings(readings, ['雨'])).toBe(false);
+		expect(isCompleteTranscriptReadings([[], [{ text: '雨', reading: 'あめ' }]], ['雨', ''])).toBe(false);
 	});
 });
