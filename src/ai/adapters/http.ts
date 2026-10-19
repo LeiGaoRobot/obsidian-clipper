@@ -97,7 +97,7 @@ export function buildApiRequest(call: ApiPromptCall): ApiRequest {
 					max_tokens: maxTokens,
 					system: call.messages.system,
 					messages: [{ role: 'user', content: call.messages.user }],
-					temperature: 0.5,
+					// No `temperature`: newer Claude models reject it as deprecated.
 					...tool,
 					stream: true
 				}

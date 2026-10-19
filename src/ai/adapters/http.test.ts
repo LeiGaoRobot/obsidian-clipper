@@ -83,7 +83,6 @@ describe('buildApiRequest', () => {
 			max_tokens: 1600,
 			system: 'Answer as JSON.',
 			messages: [{ role: 'user', content: 'Page' }],
-			temperature: 0.5,
 			stream: true
 		});
 		expect(buildApiRequest(call('anthropic', { structured: strict })).body).toMatchObject({
