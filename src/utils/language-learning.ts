@@ -86,6 +86,8 @@ export interface LanguageLearningAssistant {
 }
 
 const MAX_TRANSCRIPT_PROMPT_CHARS = 6000;
+// Reading tokens cost several output tokens per source character, so reading groups stay smaller.
+const MAX_JAPANESE_READING_PROMPT_CHARS = 2500;
 const JAPANESE_KANJI = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF々]/;
 
 interface TranscriptPromptGroup {
@@ -217,7 +219,7 @@ export function createLanguageLearningAssistant(
 			const promptGroups = buildTranscriptPromptGroups(
 				segments,
 				instruction,
-				options.japaneseReadingPromptCharLimit,
+				options.japaneseReadingPromptCharLimit ?? MAX_JAPANESE_READING_PROMPT_CHARS,
 				index => !isCompleteTranscriptReadingSegment(readings[index], segments[index])
 			);
 			onProgress?.({
@@ -233,7 +235,7 @@ export function createLanguageLearningAssistant(
 					instruction,
 					segments: group.segments,
 					// Token objects cost more output than the source text they annotate.
-					maxTokens: Math.min(12000, Math.max(2000, Math.ceil(group.sourceChars * 4)))
+					maxTokens: Math.min(16000, Math.max(2000, Math.ceil(group.sourceChars * 5)))
 				}, signal);
 				throwIfRequestAborted(signal);
 				// Accept only requested ids, and only readings that reproduce their source.

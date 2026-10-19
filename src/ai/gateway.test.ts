@@ -184,6 +184,20 @@ describe('AI gateway', () => {
 		expect(executeApi.mock.calls[2][0]).not.toHaveProperty('structured');
 	});
 
+	test('does not remember the downgrade when the retry without structured output also fails', async () => {
+		const executeApi = vi.fn()
+			.mockRejectedValueOnce(new AiError('provider-error', { status: 400, detail: 'Invalid image format' }))
+			.mockRejectedValueOnce(new AiError('provider-error', { status: 400, detail: 'Invalid image format' }));
+		const structuredOutput = createMemoryStructuredOutputCache();
+		const { port } = setup({ executeApi, structuredOutput });
+		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
+		await flush();
+
+		expect(executeApi).toHaveBeenCalledTimes(2);
+		expect(port.last()).toMatchObject({ type: 'error', error: { status: 400 } });
+		expect(await structuredOutput.get('provider-openai', 'https://api.openai.com/v1/chat/completions')).toBeUndefined();
+	});
+
 	test('does not retry other 400s', async () => {
 		const executeApi = vi.fn().mockRejectedValue(new AiError('provider-error', { status: 400, detail: 'context too long' }));
 		const { port } = setup({ executeApi });
@@ -230,6 +244,27 @@ describe('AI gateway', () => {
 		expect(port.posted.map(message => message.type === 'progress' ? message.phase : message.type))
 			.toEqual(['started', 'heartbeat', 'result']);
 		expect(port.last()).toMatchObject({ output: { prompt_1: 'From CLI' }, connectionKind: 'cli-codex' });
+	});
+
+	test('retries a Codex CLI that does not know --output-schema without it, and remembers', async () => {
+		const executeCli = vi.fn()
+			.mockRejectedValueOnce(new AiError('provider-error', {
+				nativeCode: 'cli-failed',
+				detail: "codex CLI failed: error: unexpected argument '--output-schema' found"
+			}))
+			.mockResolvedValue('{"prompt_1":"From CLI"}');
+		const structuredOutput = createMemoryStructuredOutputCache();
+		const { port } = setup(
+			{ executeCli: executeCli as unknown as AiGatewayDeps['executeCli'], structuredOutput },
+			v1Settings({ interpreterExecutionMode: 'codex' } as Partial<Settings>)
+		);
+		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
+		await flush();
+
+		expect(executeCli.mock.calls[0][0]).toHaveProperty('outputSchema');
+		expect(executeCli.mock.calls[1][0]).not.toHaveProperty('outputSchema');
+		expect(port.last()).toMatchObject({ type: 'result', output: { prompt_1: 'From CLI' } });
+		expect(await structuredOutput.get('legacy-cli-codex', undefined)).toBe('none');
 	});
 
 	test('sends Grok prompt rules only, without an output schema', async () => {

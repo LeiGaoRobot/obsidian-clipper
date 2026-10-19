@@ -105,9 +105,14 @@ export async function probeStructuredOutput(
 		?? defaultStructuredOutputMode(connection.kind, connection.baseUrl);
 }
 
-const STRUCTURED_REJECTION = /response_format|json_schema|schema|tool|format/i;
+const STRUCTURED_REJECTION = /response_format|json_schema|json_object|input_schema|tool_choice|\btools?\b|\bformat\b|\bschema\b/i;
 
-/** A 400 that names the structured-output parameter: retry once without it. */
+/**
+ * A 400 or 422 that names the structured-output parameter, or a Codex CLI that does not know
+ * --output-schema: retry once without structured output.
+ */
 export function isStructuredOutputRejection(error: AiError): boolean {
-	return error.status === 400 && STRUCTURED_REJECTION.test(error.detail ?? '');
+	const detail = error.detail ?? '';
+	if (error.status === 400 || error.status === 422) return STRUCTURED_REJECTION.test(detail);
+	return error.status === undefined && error.nativeCode === 'cli-failed' && /output-schema/i.test(detail);
 }

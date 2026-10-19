@@ -238,7 +238,18 @@ describe('Language learning assistant', () => {
 		await assistant.annotateJapaneseTranscript(['日'.repeat(600), '本'.repeat(600)]);
 		await assistant.annotateJapaneseTranscript(['語'.repeat(4000)]);
 
-		expect(calls.map(call => (call.input as AiTaskInput<'reading'>).maxTokens)).toEqual([4800, 12000]);
+		expect(calls.map(call => (call.input as AiTaskInput<'reading'>).maxTokens)).toEqual([6000, 16000]);
+	});
+
+	test('Japanese reading groups default to a smaller prompt than translation groups', async () => {
+		const { sendRequest, calls } = fakeModel({
+			reading: input => input.segments.map(({ id, text }) => ({ id, tokens: [{ text, reading: 'ひ' }] }))
+		});
+		const assistant = createLanguageLearningAssistant(sendRequest);
+
+		await assistant.annotateJapaneseTranscript(['日'.repeat(1000), '本'.repeat(1000), '語'.repeat(1000)]);
+
+		expect(calls.map(idsOf)).toEqual([[0], [1], [2]]);
 	});
 
 	test('keeps Japanese readings aligned and drops readings that do not reproduce the source', async () => {

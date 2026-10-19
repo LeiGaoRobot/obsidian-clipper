@@ -158,4 +158,32 @@ describe('parseOutput', () => {
 		});
 		expect(parseOutput('reading', reading, reply)).toEqual([{ id: 4, tokens: [{ text: '雨', reading: 'あめ' }] }]);
 	});
+
+	test('salvages complete items from a reply cut off by the output limit', () => {
+		const cut = '{"readings":[{"id":3,"tokens":[{"text":"今日","reading":"きょう"},{"text":"は","reading":""}]},{"id":4,"tokens":[{"text":"雨';
+		expect(parseOutput('reading', reading, cut)).toEqual([
+			{ id: 3, tokens: [{ text: '今日', reading: 'きょう' }, { text: 'は', reading: '' }] }
+		]);
+		expect(parseOutput('translate', translate, '[{"id":3,"text":"Today"},{"id":4,"te'))
+			.toEqual([{ id: 3, text: 'Today' }]);
+	});
+
+	test('prefers the answer over an echoed shape example', () => {
+		const reply = 'Shape: {"translations":[{"id":3,"text":"…"}]}\nAnswer: {"translations":[{"id":3,"text":"Today"},{"id":4,"text":"Rain"}]}';
+		expect(parseOutput('translate', translate, reply)).toEqual([{ id: 3, text: 'Today' }, { id: 4, text: 'Rain' }]);
+	});
+
+	test('rejects ids that are not integers or digit strings', () => {
+		const reply = JSON.stringify({
+			translations: [{ id: null, text: 'a' }, { id: true, text: 'b' }, { id: [4], text: 'c' }, { id: 3.5, text: 'd' }, { id: 4, text: 'Rain' }]
+		});
+		expect(parseOutput('translate', translate, reply)).toEqual([{ id: 4, text: 'Rain' }]);
+		expect(() => parseOutput('translate', { ...translate, segments: [{ id: 0, text: 'x' }, { id: 1, text: 'y' }] },
+			JSON.stringify({ translations: [{ id: null, text: 'a' }, { id: true, text: 'b' }] })))
+			.toThrow(expect.objectContaining({ code: 'bad-response' }));
+	});
+
+	test('finds JSON after a stray quote in leading prose', () => {
+		expect(parseOutput('interpret', interpret, 'He said "hi. {"prompt_1":"A","prompt_2":"B"}')).toEqual({ prompt_1: 'A', prompt_2: 'B' });
+	});
 });

@@ -160,18 +160,32 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 			}
 		};
 
+		// A rejected structured-output parameter is not billed; retry once with prompt rules only, and
+		// remember the downgrade only after the retry succeeds.
+		const withFallback = async (run: (structuredMode: StructuredOutputMode) => Promise<string>) => {
+			try {
+				return await run(mode);
+			} catch (error) {
+				const aiError = toAiError(error, connection.id);
+				if (mode === 'none' || signal.aborted || !isStructuredOutputRejection(aiError)) throw aiError;
+				const text = await run('none');
+				await deps.structuredOutput?.set(connection.id, connection.baseUrl, 'none');
+				return text;
+			}
+		};
+
 		if (isCliKind(connection.kind)) {
-			const stdout = await executeCli({
+			const stdout = await withFallback(structuredMode => executeCli({
 				kind: connection.kind as CliConnectionKind,
 				...(profile.model ? { model: profile.model } : {}),
 				...(profile.options?.reasoningEffort ? { effort: profile.options.reasoningEffort } : {}),
 				prompt: renderCliPrompt(job.task, input),
-				...(spec && mode === 'json_schema' ? { outputSchema: spec.schema } : {})
+				...(spec && structuredMode === 'json_schema' ? { outputSchema: spec.schema } : {})
 			}, {
 				connectionId: connection.id,
 				signal,
 				onHeartbeat: () => progress(job, 'heartbeat')
-			});
+			}));
 			return { output: parse(stdout), connectionKind: connection.kind };
 		}
 
@@ -197,16 +211,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 			}
 		});
 
-		let text: string;
-		try {
-			text = await runApi(mode);
-		} catch (error) {
-			const aiError = toAiError(error, connection.id);
-			// A rejected structured-output parameter is not billed; retry once with prompt rules only.
-			if (mode === 'none' || signal.aborted || !isStructuredOutputRejection(aiError)) throw aiError;
-			await deps.structuredOutput?.set(connection.id, connection.baseUrl, 'none');
-			text = await runApi('none');
-		}
+		const text = await withFallback(runApi);
 		return { output: parse(text), connectionKind: connection.kind };
 	};
 

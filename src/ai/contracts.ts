@@ -217,7 +217,14 @@ function stripCodeFence(value: string): string {
 
 /** Parses the reply as JSON, falling back to JSON objects embedded in prose or a code fence. */
 export function parseJsonCandidates(text: string): unknown[] {
-	const candidates = [text.trim(), stripCodeFence(text), ...extractJsonObjects(text)];
+	// Rescanning from the first brace recovers objects hidden by a stray quote in leading prose.
+	const firstBrace = text.indexOf('{');
+	const candidates = [
+		text.trim(),
+		stripCodeFence(text),
+		...extractJsonObjects(text),
+		...(firstBrace > 0 ? extractJsonObjects(text.slice(firstBrace)) : [])
+	];
 	const parsed: unknown[] = [];
 	const seen = new Set<string>();
 	for (const candidate of candidates) {
@@ -272,32 +279,70 @@ function parseInterpret(text: string, input: AiTaskInputs['interpret']): Record<
 	throw new AiError('incomplete', { detail: `The reply did not answer: ${missing.join(', ')}.` });
 }
 
-function findItems(text: string, field: string): unknown[] | undefined {
-	for (const value of parseJsonCandidates(text)) {
-		if (Array.isArray(value)) return value;
-		if (isRecord(value) && Array.isArray(value[field])) return value[field] as unknown[];
+function itemLists(text: string, field: string): unknown[][] {
+	const lists: unknown[][] = [];
+	// A reply cut off by the output limit still holds complete items before the cut. Salvage them
+	// from the last list in the reply, so an echoed shape example earlier in the text is skipped.
+	const fieldIndex = text.lastIndexOf(`"${field}"`);
+	const listStart = fieldIndex >= 0 ? fieldIndex : text.indexOf('[');
+	if (listStart >= 0) {
+		const salvaged: unknown[] = [];
+		for (const object of extractJsonObjects(text.slice(listStart))) {
+			try {
+				salvaged.push(JSON.parse(object));
+			} catch {
+				// Skip an object that is not valid JSON.
+			}
+		}
+		lists.push(salvaged);
 	}
+	for (const value of parseJsonCandidates(text)) {
+		if (Array.isArray(value)) lists.push(value);
+		else if (isRecord(value) && Array.isArray(value[field])) lists.push(value[field] as unknown[]);
+	}
+	return lists;
+}
+
+function segmentId(value: unknown): number | undefined {
+	if (typeof value === 'number' && Number.isInteger(value)) return value;
+	if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value);
 	return undefined;
 }
 
-function requestedIds(segments: TranscriptSegment[]): Set<number> {
-	return new Set(segments.map(segment => segment.id));
+/** Keeps valid, requested, first-seen items from the reply list that yields the most of them. */
+function parseSegmentItems<T extends { id: number }>(
+	text: string,
+	segments: TranscriptSegment[],
+	field: string,
+	parseItem: (item: Record<string, unknown>, id: number) => T | undefined
+): T[] | undefined {
+	const wanted = new Set(segments.map(segment => segment.id));
+	const lists = itemLists(text, field);
+	let best: T[] | undefined;
+	for (const list of lists) {
+		const seen = new Set<number>();
+		const items: T[] = [];
+		for (const item of list) {
+			if (!isRecord(item)) continue;
+			const id = segmentId(item.id);
+			if (id === undefined || !wanted.has(id) || seen.has(id)) continue;
+			const parsed = parseItem(item, id);
+			if (!parsed) continue;
+			seen.add(id);
+			items.push(parsed);
+		}
+		// Later lists win ties, so a complete parse is preferred over the salvaged list.
+		if (!best || items.length >= best.length) best = items;
+	}
+	return lists.length > 0 ? best : undefined;
 }
 
 function parseTranslations(text: string, input: AiTaskInputs['translate']): TranscriptSegment[] {
-	const items = findItems(text, 'translations');
-	if (!items) throw badResponse(text, 'The reply did not contain a translations list.');
-	const wanted = requestedIds(input.segments);
-	const seen = new Set<number>();
-	const translations: TranscriptSegment[] = [];
-	for (const item of items) {
-		if (!isRecord(item) || typeof item.text !== 'string') continue;
-		const id = Number(item.id);
-		const translation = item.text.trim();
-		if (!Number.isInteger(id) || !wanted.has(id) || seen.has(id) || !translation) continue;
-		seen.add(id);
-		translations.push({ id, text: translation });
-	}
+	const translations = parseSegmentItems(text, input.segments, 'translations', (item, id) => {
+		const translation = typeof item.text === 'string' ? item.text.trim() : '';
+		return translation ? { id, text: translation } : undefined;
+	});
+	if (!translations) throw badResponse(text, 'The reply did not contain a translations list.');
 	if (translations.length === 0) throw badResponse(text, 'The reply contained no translation for a requested segment.');
 	return translations;
 }
@@ -317,19 +362,11 @@ function parseTokens(value: unknown): ReadingToken[] | undefined {
 }
 
 function parseReadings(text: string, input: AiTaskInputs['reading']): SegmentReading[] {
-	const items = findItems(text, 'readings');
-	if (!items) throw badResponse(text, 'The reply did not contain a readings list.');
-	const wanted = requestedIds(input.segments);
-	const seen = new Set<number>();
-	const readings: SegmentReading[] = [];
-	for (const item of items) {
-		if (!isRecord(item)) continue;
-		const id = Number(item.id);
+	const readings = parseSegmentItems(text, input.segments, 'readings', (item, id) => {
 		const tokens = parseTokens(item.tokens);
-		if (!Number.isInteger(id) || !wanted.has(id) || seen.has(id) || !tokens) continue;
-		seen.add(id);
-		readings.push({ id, tokens });
-	}
+		return tokens ? { id, tokens } : undefined;
+	});
+	if (!readings) throw badResponse(text, 'The reply did not contain a readings list.');
 	if (readings.length === 0) throw badResponse(text, 'The reply contained no reading for a requested segment.');
 	return readings;
 }

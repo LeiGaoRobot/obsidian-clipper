@@ -78,5 +78,12 @@ describe('structured output capabilities', () => {
 		}))).toBe(true);
 		expect(isStructuredOutputRejection(new AiError('provider-error', { status: 400, detail: 'max_tokens too large' }))).toBe(false);
 		expect(isStructuredOutputRejection(new AiError('provider-error', { status: 500, detail: 'response_format' }))).toBe(false);
+		expect(isStructuredOutputRejection(new AiError('provider-error', { status: 422, detail: 'json_schema is not supported' }))).toBe(true);
+		expect(isStructuredOutputRejection(new AiError('provider-error', { status: 400, detail: 'unsupported output tooling' }))).toBe(false);
+		expect(isStructuredOutputRejection(new AiError('provider-error', {
+			nativeCode: 'cli-failed',
+			detail: "codex CLI failed: error: unexpected argument '--output-schema' found"
+		}))).toBe(true);
+		expect(isStructuredOutputRejection(new AiError('provider-error', { nativeCode: 'cli-failed', detail: 'codex CLI failed: auth' }))).toBe(false);
 	});
 });
