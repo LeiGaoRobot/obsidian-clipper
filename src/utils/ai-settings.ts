@@ -3,6 +3,7 @@ import type { StorageAreaLike } from '../ai/job-store';
 import {
 	AI_V2_BOOTSTRAP,
 	createAiSettingsStore,
+	type AiCredentialsAccess,
 	type AiSettingsBootstrapper,
 	type AiSettingsSnapshot,
 	type AiSettingsStore,
@@ -16,7 +17,8 @@ import { detectNativeMessaging } from './native-messaging-support';
 // Settings, Reader, background) builds its own instance; they share state only through storage.
 // Only the background and the Settings page pass the migration bootstrapper, which keeps the
 // catalog and migration code out of the Popup and Reader bundles; those read the derived view
-// until the background has bootstrapped.
+// until the background has bootstrapped. The Popup and Reader stores never put API keys in their
+// view: model work resolves keys in the background.
 
 interface BrowserStorageLike {
 	sync: StorageAreaLike;
@@ -70,10 +72,17 @@ export function browserSessionArea(): StorageAreaLike | undefined {
 	return sessionArea();
 }
 
-/** A store over `browser.storage`; it bootstraps per `AI_V2_BOOTSTRAP` only when given a bootstrapper. */
-export function createBrowserAiSettingsStore(bootstrapper?: AiSettingsBootstrapper): AiSettingsStore {
+/**
+ * A store over `browser.storage`; it bootstraps per `AI_V2_BOOTSTRAP` only when given a
+ * bootstrapper. `credentials` defaults to `keys`, which only the Settings page should use.
+ */
+export function createBrowserAiSettingsStore(
+	bootstrapper?: AiSettingsBootstrapper,
+	credentials: AiCredentialsAccess = 'keys'
+): AiSettingsStore {
 	const session = sessionArea();
 	return createAiSettingsStore({
+		credentials,
 		sync: lazyArea(() => browserStorage().sync, 'sync'),
 		local: lazyArea(() => browserStorage().local, 'local'),
 		...(session ? { session } : {}),
@@ -85,12 +94,26 @@ export function createBrowserAiSettingsStore(bootstrapper?: AiSettingsBootstrapp
 	});
 }
 
-/** The read-mostly store for Popup and Reader contexts; it never runs the migration. */
-export const aiSettingsStore: AiSettingsStore = createBrowserAiSettingsStore();
+/**
+ * The read-mostly store for Popup and Reader contexts; it never runs the migration and never
+ * reads `ai_credentials` (the Reader is a content script).
+ */
+export const aiSettingsStore: AiSettingsStore = createBrowserAiSettingsStore(undefined, 'none');
 
-/** The current AI settings view. In derived mode (no v2 items yet) it is computed from v1. */
+/** The current AI settings view, without credentials. In derived mode (no v2 items yet) it is computed from v1. */
 export function loadAiSettings(): Promise<AiSettingsView> {
 	return aiSettingsStore.load();
+}
+
+let presenceStore: AiSettingsStore | undefined;
+
+/**
+ * The view for the Popup's readiness checks: no API keys, only `credentialIds`, so a "key
+ * missing" state can still be told apart. Not for content scripts.
+ */
+export function loadAiSettingsWithCredentialPresence(): Promise<AiSettingsView> {
+	presenceStore ??= createBrowserAiSettingsStore(undefined, 'presence');
+	return presenceStore.load();
 }
 
 export function loadAiSettingsSnapshot(): Promise<AiSettingsSnapshot> {

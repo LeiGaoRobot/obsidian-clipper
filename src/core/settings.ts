@@ -44,8 +44,12 @@ function ensureAiSettings(): Promise<AiSettingsSection> {
 	aiSettingsPromise ??= import(/* webpackChunkName: 'settings-ai' */ '../settings/ai/index')
 		.then(module => module.initializeAiSettings())
 		.then(section => {
-			// Saves a pending prompt-context edit when the page goes away.
+			// Saves a pending prompt-context edit when the page goes away or is hidden; a hidden tab
+			// can be closed or discarded without another event.
 			window.addEventListener('pagehide', () => section.dispose(), { once: true });
+			document.addEventListener('visibilitychange', () => {
+				if (document.visibilityState === 'hidden') section.flush();
+			});
 			return section;
 		})
 		.catch(error => {

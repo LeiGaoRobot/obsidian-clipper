@@ -246,6 +246,132 @@ describe('Catalog picker and connection dialog', () => {
 	});
 });
 
+describe('Connection dialog lifecycle', () => {
+	function openEdit(connectionId: string): HTMLButtonElement {
+		const edit = document.querySelector(`[data-connection-id="${connectionId}"] .ai-connection-edit`) as HTMLButtonElement;
+		edit.focus();
+		edit.click();
+		return edit;
+	}
+
+	function pressKey(key: string, shiftKey = false): KeyboardEvent {
+		const event = new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true });
+		(document.activeElement ?? document.body).dispatchEvent(event);
+		return event;
+	}
+
+	test.each([
+		['Cancel', () => (document.querySelector('#ai-connection-modal .ai-connection-cancel-btn') as HTMLButtonElement).click()],
+		['Escape', () => pressKey('Escape')],
+		['the backdrop', () => (document.querySelector('#ai-connection-modal .modal-bg') as HTMLElement).click()]
+	])('closing with %s clears the API key and resets the Show toggle', async (_name, close) => {
+		await section({ connections: [API_CONNECTION], credentials: { openai: 'sk-stored' } });
+		openEdit('openai');
+		expect(input('ai-connection-api-key').value).toBe('sk-stored');
+		(document.getElementById('ai-connection-api-key-toggle') as HTMLButtonElement).click();
+		expect(input('ai-connection-api-key').type).toBe('text');
+
+		close();
+
+		expect(modalVisible('ai-connection-modal')).toBe(false);
+		expect(input('ai-connection-api-key').value).toBe('');
+		expect(input('ai-connection-api-key').type).toBe('password');
+		expect(document.getElementById('ai-connection-api-key-toggle')?.getAttribute('aria-pressed')).toBe('false');
+		expect(input('ai-connection-label').value).toBe('');
+	});
+
+	test('a successful save also clears the key from the closed dialog', async () => {
+		await section({});
+		(document.getElementById('ai-add-api-provider') as HTMLAnchorElement).click();
+		(document.querySelector('#ai-catalog-list [data-preset-id="openai"]') as HTMLButtonElement).click();
+		input('ai-connection-api-key').value = 'sk-new';
+		clickSave();
+		await settle();
+		expect(modalVisible('ai-connection-modal')).toBe(false);
+		expect(input('ai-connection-api-key').value).toBe('');
+	});
+
+	test('saving a connection deleted on another device closes the dialog and says so', async () => {
+		const { sync, local } = await section({ connections: [API_CONNECTION], credentials: { openai: 'sk-stored' } });
+		openEdit('openai');
+		await sync.set({ ai_connections: { v: 1, items: [] } });
+		await settle();
+
+		input('ai-connection-label').value = 'Renamed';
+		clickSave();
+		await settle();
+
+		expect(modalVisible('ai-connection-modal')).toBe(false);
+		expect(document.querySelector('#ai-settings-error .ai-error-card-title')?.textContent).toBe('This connection was deleted');
+		expect(sync.data.ai_connections).toEqual({ v: 1, items: [] });
+		expect(local.data.ai_credentials).toEqual({ openai: 'sk-stored' });
+	});
+
+	test('a key write that fails after the connection was added makes Save retry on that connection', async () => {
+		const { sync, local } = await section({});
+		(document.getElementById('ai-add-api-provider') as HTMLAnchorElement).click();
+		(document.querySelector('#ai-catalog-list [data-preset-id="openai"]') as HTMLButtonElement).click();
+		input('ai-connection-api-key').value = 'sk-retry';
+		local.failNextSet = new Error('QUOTA_BYTES quota exceeded');
+
+		clickSave();
+		await settle();
+
+		expect(modalVisible('ai-connection-modal')).toBe(true);
+		expect(document.querySelector('#ai-connection-modal .modal-title')?.textContent).toBe('Edit connection');
+		expect((sync.data.ai_connections as { items: unknown[] }).items).toHaveLength(1);
+		expect(local.data.ai_credentials).toBeUndefined();
+
+		clickSave();
+		await settle();
+
+		expect(modalVisible('ai-connection-modal')).toBe(false);
+		expect((sync.data.ai_connections as { items: { id: string }[] }).items.map(item => item.id)).toEqual(['connection-1']);
+		expect(local.data.ai_credentials).toEqual({ 'connection-1': 'sk-retry' });
+	});
+
+	test('the dialogs are labelled modal dialogs', async () => {
+		await section({});
+		for (const id of ['ai-catalog-modal', 'ai-connection-modal', 'ai-profile-modal']) {
+			const dialog = document.querySelector(`#${id} .modal`)!;
+			expect(dialog.getAttribute('role')).toBe('dialog');
+			expect(dialog.getAttribute('aria-modal')).toBe('true');
+			expect(document.getElementById(dialog.getAttribute('aria-labelledby')!)?.classList.contains('modal-title')).toBe(true);
+		}
+	});
+
+	test('focus moves into the dialog, Tab stays inside, and closing returns focus to the opener', async () => {
+		await section({ connections: [API_CONNECTION] });
+		const edit = openEdit('openai');
+		const dialog = document.querySelector('#ai-connection-modal .modal') as HTMLElement;
+		expect(dialog.contains(document.activeElement)).toBe(true);
+
+		const cancel = document.querySelector('#ai-connection-modal .ai-connection-cancel-btn') as HTMLButtonElement;
+		cancel.focus();
+		expect(pressKey('Tab').defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(input('ai-connection-label'));
+		expect(pressKey('Tab', true).defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(cancel);
+
+		pressKey('Escape');
+		expect(document.activeElement).toBe(edit);
+	});
+
+	test('the catalog picker traps focus and the connection dialog returns focus to the add link', async () => {
+		await section({});
+		const add = document.getElementById('ai-add-api-provider') as HTMLAnchorElement;
+		add.focus();
+		add.click();
+		const picker = document.querySelector('#ai-catalog-modal .modal') as HTMLElement;
+		expect(picker.contains(document.activeElement)).toBe(true);
+		(document.querySelector('#ai-catalog-list [data-preset-id="openai"]') as HTMLButtonElement).click();
+		expect((document.querySelector('#ai-connection-modal .modal') as HTMLElement).contains(document.activeElement)).toBe(true);
+
+		pressKey('Escape');
+		expect(document.activeElement).toBe(add);
+	});
+});
+
 describe('Deleting a connection', () => {
 	test('asks first and cascades', async () => {
 		const confirm = vi.fn(() => false);

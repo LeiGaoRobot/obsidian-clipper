@@ -107,6 +107,39 @@ describe('Interpreter panel', () => {
 		expect(sync.data.ai_prompt_context).toEqual({ v: 1, text: 'Summarize {{content}}' });
 	});
 
+	test('when the page goes away a pending edit is written before dispose returns', async () => {
+		const { sync, handle } = await section({ promptContext: '' }, 10_000);
+		textarea().value = 'Last words';
+		textarea().dispatchEvent(new Event('input'));
+
+		handle.dispose();
+		// Synchronously, before any awaited promise resolves.
+		expect(sync.sets).toEqual([{ ai_prompt_context: { v: 1, text: 'Last words' } }]);
+		await settle();
+		expect(sync.sets).toHaveLength(1);
+	});
+
+	test('a debounced save that is still queued is written at once when the page is hidden', async () => {
+		const { sync, handle } = await section({ promptContext: '' }, 0);
+		textarea().value = 'Queued';
+		textarea().dispatchEvent(new Event('input'));
+		textarea().dispatchEvent(new Event('change'));
+		// The queued save is waiting for its pre-read; hiding the page writes now.
+		handle.flush();
+		expect(sync.sets).toEqual([{ ai_prompt_context: { v: 1, text: 'Queued' } }]);
+		await settle();
+		expect(sync.sets).toHaveLength(1);
+		expect(sync.data.ai_prompt_context).toEqual({ v: 1, text: 'Queued' });
+	});
+
+	test('nothing is written on hide when there is no unsaved edit', async () => {
+		const { sync, handle } = await section({ promptContext: 'kept' });
+		handle.flush();
+		handle.dispose();
+		await settle();
+		expect(sync.sets).toEqual([]);
+	});
+
 	test('a change from another context does not overwrite what is being typed', async () => {
 		const { sync } = await section({ promptContext: 'old' }, 10_000);
 		textarea().focus();

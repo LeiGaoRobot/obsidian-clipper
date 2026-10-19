@@ -419,6 +419,40 @@ describe('createAiSettingsStore in derived mode', () => {
 
 // --- Store: bootstrap ----------------------------------------------------------------------------
 
+describe('createAiSettingsStore credential access', () => {
+	function storeWith(credentials: 'keys' | 'presence' | 'none', sync = storedSync()) {
+		const areas = { sync: fakeArea(sync), local: fakeArea(storedLocal()) };
+		const store = createAiSettingsStore({ ...areas, nativeMessaging: 'port', bootstrap: false, credentials });
+		return { ...areas, store };
+	}
+
+	test('keys (the default) puts the API keys in the view', async () => {
+		expect((await storeWith('keys').store.load()).credentials).toEqual({ 'conn-openai': 'sk-test' });
+	});
+
+	test('presence exposes only which connections have a key', async () => {
+		const view = await storeWith('presence').store.load();
+		expect(view.credentials).toEqual({});
+		expect(view.credentialIds).toEqual(['conn-openai']);
+		expect(JSON.stringify(view)).not.toContain('sk-test');
+	});
+
+	test('none never reads ai_credentials and keeps keys out of the view', async () => {
+		const { store, local } = storeWith('none');
+		const view = await store.load();
+		expect(view.credentials).toEqual({});
+		expect(view).not.toHaveProperty('credentialIds');
+		expect(local.gets).toEqual([[AI_MIGRATION_KEY, AI_CONNECTION_STATUS_KEY]]);
+	});
+
+	test('none also drops the v1 keys a derived view carries', async () => {
+		const view = await storeWith('none', { interpreter_settings: v1Interpreter() }).store.load();
+		expect(view.connections.length).toBeGreaterThan(0);
+		expect(view.credentials).toEqual({});
+		expect(JSON.stringify(view)).not.toContain('sk-ant');
+	});
+});
+
 describe('createAiSettingsStore bootstrap', () => {
 	const bundle = storedSync();
 	const localWrites = { [AI_CREDENTIALS_KEY]: { 'conn-openai': 'sk-test' }, [AI_MIGRATION_KEY]: { v: 1, status: 'bootstrapped' } };
@@ -459,6 +493,40 @@ describe('createAiSettingsStore bootstrap', () => {
 		expect(sync.sets).toEqual([]);
 		expect(local.sets).toEqual([writes]);
 		expect(view.credentials).toEqual({ 'conn-openai': 'sk-imported' });
+	});
+
+	test('merges imported keys into a fresh read of ai_credentials, never replacing a present key', async () => {
+		const areas = { sync: fakeArea(storedSync()), local: fakeArea({ [AI_CREDENTIALS_KEY]: { early: 'sk-early' } }) };
+		const bootstrapper: AiSettingsBootstrapper = {
+			plan: () => {
+				// Another context (Settings) saves keys after the bootstrap's first read.
+				areas.local.data[AI_CREDENTIALS_KEY] = { early: 'sk-early', 'conn-openai': 'sk-typed', manual: 'sk-manual' };
+				return { local: { [AI_MIGRATION_KEY]: { v: 1 } }, credentials: { 'conn-openai': 'sk-v1', 'conn-local': 'sk-v1-local' } };
+			}
+		};
+		const store = createAiSettingsStore({ ...areas, nativeMessaging: 'port', bootstrap: true, bootstrapper, build: '1.2.3' });
+
+		const view = await store.load();
+
+		expect(areas.local.sets).toEqual([{
+			[AI_MIGRATION_KEY]: { v: 1 },
+			[AI_CREDENTIALS_KEY]: { early: 'sk-early', 'conn-openai': 'sk-typed', manual: 'sk-manual', 'conn-local': 'sk-v1-local' }
+		}]);
+		expect(view.credentials).toMatchObject({ 'conn-openai': 'sk-typed', 'conn-local': 'sk-v1-local' });
+	});
+
+	test('writes no credentials when every imported id already has a key', async () => {
+		const areas = { sync: fakeArea(storedSync()), local: fakeArea({ [AI_CREDENTIALS_KEY]: { 'conn-openai': 'sk-present' } }) };
+		const store = createAiSettingsStore({
+			...areas,
+			nativeMessaging: 'port',
+			bootstrap: true,
+			bootstrapper: stubBootstrapper({ local: { [AI_MIGRATION_KEY]: { v: 1 } }, credentials: { 'conn-openai': 'sk-v1' } }),
+			build: '1.2.3'
+		});
+		await store.load();
+		expect(areas.local.sets).toEqual([{ [AI_MIGRATION_KEY]: { v: 1 } }]);
+		expect(areas.local.data[AI_CREDENTIALS_KEY]).toEqual({ 'conn-openai': 'sk-present' });
 	});
 
 	test('does not call the bootstrapper when bootstrap is false', async () => {
@@ -671,6 +739,32 @@ describe('createAiSettingsStore writes', () => {
 	test('an oversized item is refused before it is sent', async () => {
 		const { store, sync } = v2Store();
 		await expect(store.savePromptContext('x'.repeat(9000))).rejects.toMatchObject({ name: 'AiSettingsStorageError', reason: 'item-too-large', key: AI_PROMPT_CONTEXT_KEY });
+		expect(sync.sets).toEqual([]);
+	});
+
+	test('savePromptContextNow calls sync.set before it returns, without a pre-read', async () => {
+		const { store, sync } = v2Store();
+		const getsBefore = sync.gets.length;
+		const write = store.savePromptContextNow('Closing tab');
+		// Synchronously, before any promise has resolved.
+		expect(sync.sets).toEqual([{ [AI_PROMPT_CONTEXT_KEY]: { v: 1, text: 'Closing tab' } }]);
+		expect(sync.gets).toHaveLength(getsBefore);
+		await expect(write).resolves.toBeUndefined();
+	});
+
+	test('savePromptContextNow supersedes a savePromptContext still pre-reading', async () => {
+		const { store, sync } = v2Store();
+		const older = store.savePromptContext('older');
+		const now = store.savePromptContextNow('newer');
+		await expect(older).resolves.toBe(true);
+		await now;
+		expect(sync.sets).toEqual([{ [AI_PROMPT_CONTEXT_KEY]: { v: 1, text: 'newer' } }]);
+		expect(sync.data[AI_PROMPT_CONTEXT_KEY]).toEqual({ v: 1, text: 'newer' });
+	});
+
+	test('savePromptContextNow still checks the item size', async () => {
+		const { store, sync } = v2Store();
+		await expect(store.savePromptContextNow('x'.repeat(9000))).rejects.toMatchObject({ reason: 'item-too-large', key: AI_PROMPT_CONTEXT_KEY });
 		expect(sync.sets).toEqual([]);
 	});
 

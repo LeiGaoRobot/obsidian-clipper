@@ -150,6 +150,47 @@ describe('Models panel', () => {
 		});
 	});
 
+	test('saving a profile deleted on another device closes the dialog and says so', async () => {
+		const { sync } = await section({ connections: [API_CONNECTION], profiles: [GPT_PROFILE] });
+		(row('gpt').querySelector('.ai-profile-edit') as HTMLButtonElement).click();
+		await sync.set({ ai_profiles: { v: 1, items: [] } });
+		await settle();
+
+		field('ai-profile-label').value = 'Renamed';
+		save();
+		await settle();
+
+		expect(document.getElementById('ai-profile-modal')!.style.display).toBe('none');
+		expect(document.querySelector('#ai-settings-error .ai-error-card-title')?.textContent).toBe('This model was deleted');
+		expect(sync.data.ai_profiles).toEqual({ v: 1, items: [] });
+	});
+
+	test('adding a model to a connection deleted on another device closes the dialog and says so', async () => {
+		const { sync } = await section({ connections: [API_CONNECTION] });
+		openAdd('openai');
+		await sync.set({ ai_connections: { v: 1, items: [] } });
+		await settle();
+
+		field('ai-profile-model').value = 'gpt-5.6';
+		save();
+		await settle();
+
+		expect(document.getElementById('ai-profile-modal')!.style.display).toBe('none');
+		expect(document.querySelector('#ai-settings-error .ai-error-card-title')?.textContent).toBe('This connection was deleted');
+		expect(sync.data.ai_profiles).toEqual({ v: 1, items: [] });
+	});
+
+	test('focus returns to the Edit button when the dialog closes', async () => {
+		await section({ connections: [API_CONNECTION], profiles: [GPT_PROFILE] });
+		const edit = row('gpt').querySelector('.ai-profile-edit') as HTMLButtonElement;
+		edit.focus();
+		edit.click();
+		expect((document.querySelector('#ai-profile-modal .modal') as HTMLElement).contains(document.activeElement)).toBe(true);
+		document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		expect(document.getElementById('ai-profile-modal')!.style.display).toBe('none');
+		expect(document.activeElement).toBe(edit);
+	});
+
 	test('toggles, duplicates, and deletes a profile', async () => {
 		const { sync } = await section({
 			connections: [API_CONNECTION],

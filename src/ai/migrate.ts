@@ -14,7 +14,7 @@ import {
 	LEGACY_CODEX_CONNECTION_ID,
 	LEGACY_GROK_CONNECTION_ID
 } from './settings-view';
-import type { AiSettingsBootstrapper } from './settings';
+import { AI_SYNC_KEYS, type AiSettingsBootstrapper } from './settings';
 import type { AiRouting, Connection, ModelProfile } from './types';
 
 // Storage keys, as laid out in Phase 5 decision 1. `settings.ts` owns the codec for them.
@@ -53,6 +53,12 @@ export interface AiMigrationRecord {
 export interface AiSettingsWrites {
 	sync?: Record<string, unknown>;
 	local?: Record<string, unknown>;
+	/**
+	 * v1 keys to import into `ai_credentials`, by connection id: only the delta, never the whole
+	 * item. The store merges them into a fresh read of `ai_credentials` right before its write and
+	 * skips any id that already has a key, so a key saved meanwhile by another context is kept.
+	 */
+	credentials?: Record<string, string>;
 }
 
 /** The v1 fields the migration reads, sanitized the way `loadSettings` does. */
@@ -310,14 +316,18 @@ export interface AiSettingsBootstrapperOptions {
 /**
  * Plans the per-device bootstrap. It returns storage writes and never performs them:
  *
- * - If sync has v1 `interpreter_settings` but no `ai_connections`, the five v2 sync keys are
- *   written from `migrateV1` (`status: 'bootstrapped'`). Without v1 data nothing is written to
- *   sync: an empty bundle written during a fresh profile's sync lag could overwrite the real v2
- *   items arriving from another device.
+ * - If sync has v1 `interpreter_settings` but no `ai_connections`, the v2 sync keys are written
+ *   from `migrateV1` (`status: 'bootstrapped'`), but only the ones that are absent. Any present v2
+ *   item counts as v2 and is never overwritten: a partial v2 is most likely another device's
+ *   bootstrap or later edits still arriving through sync, and those must win. Filling only the
+ *   gaps (as `ensureV2` does) is safer than skipping the migration, which would leave this device
+ *   read-only until `ai_connections` arrives, and if it never does, for good. Without v1 data
+ *   nothing is written to sync: an empty bundle written during a fresh profile's sync lag could
+ *   overwrite the real v2 items arriving from another device.
  * - If `ai_connections` is present it is reused and sync is not written (`status: 'reused'`).
  *   v1 changes made later by an older build are ignored, except through the credential rule.
- * - While v1 exists, keys are imported per `importCredentials` into `ai_credentials`, and their
- *   ids are appended to `ai_migration.credentials`.
+ * - While v1 exists, keys are imported per `importCredentials` (returned as `credentials`, the
+ *   delta for the store to merge), and their ids are appended to `ai_migration.credentials`.
  * - `ai_migration` is written when first created, on a re-bootstrap, or when a key is imported.
  */
 export function createAiSettingsBootstrapper(
@@ -328,6 +338,7 @@ export function createAiSettingsBootstrapper(
 			const interpreter = rawSync[V1_INTERPRETER_KEY];
 			const hasV1 = isRecord(interpreter);
 			const hasV2 = rawSync[CONNECTIONS_KEY] !== undefined;
+			// Without v1 there is nothing to migrate, and a partial v2 is left for `ensureV2`.
 			if (!hasV1 && !hasV2) return undefined;
 
 			const migration = migrateV1({
@@ -376,13 +387,19 @@ export function createAiSettingsBootstrapper(
 			}
 
 			const local: Record<string, unknown> = {};
-			if (importedNow.length > 0) local[CREDENTIALS_KEY] = { ...localCredentials, ...imports };
 			if (record) local[MIGRATION_KEY] = record;
 
 			const writes: AiSettingsWrites = {};
-			if (bootstrap) writes.sync = { ...migration.sync };
+			if (bootstrap) {
+				const bundle: Record<string, unknown> = { ...migration.sync };
+				const absent = Object.fromEntries(AI_SYNC_KEYS
+					.filter(key => rawSync[key] === undefined)
+					.map(key => [key, bundle[key]]));
+				if (Object.keys(absent).length > 0) writes.sync = absent;
+			}
 			if (Object.keys(local).length > 0) writes.local = local;
-			return writes.sync || writes.local ? writes : undefined;
+			if (importedNow.length > 0) writes.credentials = imports;
+			return writes.sync || writes.local || writes.credentials ? writes : undefined;
 		}
 	};
 }

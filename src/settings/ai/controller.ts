@@ -80,6 +80,28 @@ export class AiSettingsBootstrapFailedError extends Error {
 	}
 }
 
+/**
+ * The connection or profile a dialog edits no longer exists, for example because another device
+ * deleted it while the dialog was open. Nothing was written.
+ */
+export class AiSettingsItemMissingError extends Error {
+	readonly item: 'connection' | 'profile';
+
+	constructor(item: 'connection' | 'profile') {
+		super(`The ${item} no longer exists.`);
+		this.name = 'AiSettingsItemMissingError';
+		this.item = item;
+	}
+}
+
+export interface AddConnectionOptions {
+	/**
+	 * Called once the connection itself is stored, before its key is written. If the key write
+	 * then fails, the caller edits this connection on retry instead of adding a second one.
+	 */
+	onCreated?: (connection: Connection) => void;
+}
+
 export interface AiSettingsControllerOptions {
 	store: AiSettingsStore;
 	/** New ids for connections and profiles. Injected by tests. */
@@ -98,14 +120,17 @@ export interface AiSettingsController {
 	subscribe(listener: AiSettingsChangeListener): () => void;
 	clearError(): void;
 
-	addApiConnection(draft: ConnectionDraft): Promise<Connection | undefined>;
+	addApiConnection(draft: ConnectionDraft, options?: AddConnectionOptions): Promise<Connection | undefined>;
+	/** Fails with `AiSettingsItemMissingError` when the connection no longer exists. */
 	updateConnection(connectionId: string, draft: ConnectionDraft): Promise<boolean>;
 	/** Also deletes its profiles, its credential, its status entry, and routing entries using them. */
 	deleteConnection(connectionId: string): Promise<boolean>;
 	/** One connection per CLI kind, created with a default enabled profile. */
 	addCliConnection(kind: CliConnectionKind): Promise<Connection | undefined>;
 
+	/** Fails with `AiSettingsItemMissingError` when the connection no longer exists. */
 	addProfile(draft: ProfileDraft): Promise<ModelProfile | undefined>;
+	/** Fails with `AiSettingsItemMissingError` when the profile no longer exists. */
 	updateProfile(profileId: string, draft: ProfileDraft): Promise<boolean>;
 	setProfileEnabled(profileId: string, enabled: boolean): Promise<boolean>;
 	duplicateProfile(profileId: string, label: string): Promise<ModelProfile | undefined>;
@@ -118,6 +143,13 @@ export interface AiSettingsController {
 	setInterpreterEnabled(enabled: boolean): Promise<boolean>;
 	setAutoRun(autoRun: boolean): Promise<boolean>;
 	setPromptContext(text: string): Promise<boolean>;
+	/**
+	 * Saves the prompt context for a page that is going away: in `stored` mode the storage write is
+	 * dispatched before this returns (no queue, no pre-read) and it returns `true`; it supersedes a
+	 * queued `setPromptContext`. In `derived` mode it does nothing and returns `false`, and the
+	 * caller falls back to `setPromptContext`.
+	 */
+	flushPromptContext(text: string): boolean;
 
 	/** True while a mutation is queued or running; Test waits for saves to land. */
 	readonly saving: boolean;
@@ -201,6 +233,8 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 	let pending = 0;
 	const savingListeners = new Set<(saving: boolean) => void>();
 	const listings = new Map<string, readonly string[]>();
+	// Counts prompt-context saves, so `flushPromptContext` supersedes queued ones.
+	let promptContextSaves = 0;
 
 	function setPending(delta: number): void {
 		const before = pending > 0;
@@ -386,10 +420,11 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 			if (currentError !== undefined) setError(undefined);
 		},
 
-		addApiConnection(draft) {
+		addApiConnection(draft, addOptions = {}) {
 			return enqueue<Connection | undefined>(undefined, async changed => {
 				const connection = buildConnection({ id: createId('connection') }, draft);
 				await writeConnections([...state.view.connections, connection], changed);
+				addOptions.onCreated?.(connection);
 				await writeCredential(connection.id, draft.apiKey, changed);
 				return connection;
 			});
@@ -398,7 +433,8 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 		updateConnection(connectionId, draft) {
 			return enqueue(false, async changed => {
 				const current = state.view.connections.find(connection => connection.id === connectionId);
-				if (!current || isCliKind(current.kind)) return false;
+				if (!current) throw new AiSettingsItemMissingError('connection');
+				if (isCliKind(current.kind)) return false;
 				const next = buildConnection(current, draft);
 				const keyChanged = (state.view.credentials[connectionId] ?? '') !== draft.apiKey.trim();
 				if (!same(next, current)) {
@@ -445,7 +481,7 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 		addProfile(draft) {
 			return enqueue<ModelProfile | undefined>(undefined, async changed => {
 				const kind = connectionKind(draft.connectionId);
-				if (!kind) return undefined;
+				if (!kind) throw new AiSettingsItemMissingError('connection');
 				const model = draft.model.trim();
 				const options = profileOptions(undefined, kind, draft.reasoningEffort);
 				const profile: ModelProfile = {
@@ -465,7 +501,7 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 		updateProfile(profileId, draft) {
 			return enqueue(false, async changed => {
 				const current = findProfile(profileId);
-				if (!current) return false;
+				if (!current) throw new AiSettingsItemMissingError('profile');
 				const model = draft.model.trim();
 				const options = profileOptions(current.options, connectionKind(current.connectionId), draft.reasoningEffort);
 				const next: ModelProfile = { ...current, label: draft.label.trim() };
@@ -599,13 +635,37 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 		},
 
 		setPromptContext(text) {
+			const save = ++promptContextSaves;
+			const current = () => save === promptContextSaves;
 			return enqueue(false, async changed => {
-				if (state.view.interpreter.defaultPromptContext === text) return true;
+				if (!current() || state.view.interpreter.defaultPromptContext === text) return true;
 				requireWritten(await store.savePromptContext(text));
+				if (!current()) return true;
 				setView({ interpreter: { ...state.view.interpreter, defaultPromptContext: text } });
 				changed.push(AI_PROMPT_CONTEXT_KEY);
 				return true;
 			});
+		},
+
+		flushPromptContext(text) {
+			if (state.mode !== 'stored') return false;
+			promptContextSaves++;
+			if (state.view.interpreter.defaultPromptContext === text) return true;
+			const previous = state.view.interpreter.defaultPromptContext;
+			const write = store.savePromptContextNow(text);
+			setView({ interpreter: { ...state.view.interpreter, defaultPromptContext: text } });
+			notify([AI_PROMPT_CONTEXT_KEY]);
+			write.then(() => {
+				if (currentError !== undefined) setError(undefined);
+			}, error => {
+				// Nothing was stored: show why, and the stored text again unless a newer save replaced it.
+				if (state.view.interpreter.defaultPromptContext === text) {
+					setView({ interpreter: { ...state.view.interpreter, defaultPromptContext: previous } });
+					notify([AI_PROMPT_CONTEXT_KEY]);
+				}
+				setError(error);
+			});
+			return true;
 		}
 	};
 }

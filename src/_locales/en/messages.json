@@ -506,6 +506,18 @@
 	"aiSettingsBootstrapFailedBody": {
 		"message": "Your previous AI settings are unchanged. Reload Settings to try again."
 	},
+	"aiSettingsBootstrapQuotaTotal": {
+		"message": "Browser sync storage is full, so AI settings couldn't be set up on this device. Your previous AI settings are unchanged. Free up space, for example by removing templates you don't use, then reload Settings."
+	},
+	"aiSettingsConnectionMissingTitle": {
+		"message": "This connection was deleted"
+	},
+	"aiSettingsProfileMissingTitle": {
+		"message": "This model was deleted"
+	},
+	"aiSettingsItemMissingBody": {
+		"message": "It was deleted while you were editing it, possibly on another device. Your changes weren't saved."
+	},
 	"aiDiagnostics": {
 		"message": "Diagnostics"
 	},
@@ -1732,30 +1744,6 @@
 				"content": "<strong>"
 			}
 		}
-	},
-	"languageLearningReadinessApiMissing": {
-		"message": "Add and enable an API model"
-	},
-	"languageLearningReadinessApiConfigMissing": {
-		"message": "Complete the selected model provider and API key"
-	},
-	"languageLearningReadinessApiReady": {
-		"message": "API model is ready"
-	},
-	"languageLearningReadinessCliFailed": {
-		"message": "Local CLI connection needs attention"
-	},
-	"languageLearningReadinessCliReady": {
-		"message": "Local CLI connection is ready"
-	},
-	"languageLearningReadinessCliUnchecked": {
-		"message": "Check the selected local CLI connection"
-	},
-	"languageLearningReadinessEnable": {
-		"message": "Enable Interpreter"
-	},
-	"languageLearningReadinessEnabled": {
-		"message": "Interpreter is enabled"
 	},
 	"readerAutoPause": {
 		"message": "Pause after each sentence"

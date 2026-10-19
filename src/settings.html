@@ -814,9 +814,9 @@
 
 		<div id="ai-catalog-modal" class="modal-container">
 			<div class="modal-bg"></div>
-			<div class="modal">
+			<div class="modal" role="dialog" aria-modal="true" aria-labelledby="ai-catalog-modal-title" tabindex="-1">
 				<div class="modal-header">
-					<div class="modal-title" data-i18n="aiCatalogTitle">Add API provider</div>
+					<div class="modal-title" id="ai-catalog-modal-title" data-i18n="aiCatalogTitle">Add API provider</div>
 				</div>
 				<div class="modal-content">
 					<div class="setting-item-description" data-i18n="aiCatalogDescription">Choose a provider, or choose Custom for any other endpoint.</div>
@@ -830,9 +830,9 @@
 
 		<div id="ai-connection-modal" class="modal-container">
 			<div class="modal-bg"></div>
-			<div class="modal">
+			<div class="modal" role="dialog" aria-modal="true" aria-labelledby="ai-connection-modal-title" tabindex="-1">
 				<div class="modal-header">
-					<div class="modal-title"></div>
+					<div class="modal-title" id="ai-connection-modal-title"></div>
 				</div>
 				<div class="modal-content">
 					<form id="ai-connection-form" class="ai-settings-form" novalidate>
@@ -899,9 +899,9 @@
 
 		<div id="ai-profile-modal" class="modal-container">
 			<div class="modal-bg"></div>
-			<div class="modal">
+			<div class="modal" role="dialog" aria-modal="true" aria-labelledby="ai-profile-modal-title" aria-describedby="ai-profile-connection-name" tabindex="-1">
 				<div class="modal-header">
-					<div class="modal-title"></div>
+					<div class="modal-title" id="ai-profile-modal-title"></div>
 					<div class="ai-modal-subtitle" id="ai-profile-connection-name"></div>
 				</div>
 				<div class="modal-content">

@@ -586,11 +586,13 @@ function v1ResponseLanguage(readerSettings: unknown): string | undefined {
 /** Pure planner for the v1 → v2 bootstrap (implemented in `migrate.ts`). */
 export interface AiSettingsBootstrapper {
 	// Given the raw sync and local items read by load(), return the writes to apply (or nothing).
+	// `credentials` is the delta of keys to import; the store merges it into a fresh read of
+	// `ai_credentials` and never replaces a key that already exists for an id.
 	plan(
 		rawSync: Record<string, unknown>,
 		rawLocal: Record<string, unknown>,
 		build: string
-	): { sync?: Record<string, unknown>; local?: Record<string, unknown> } | undefined;
+	): { sync?: Record<string, unknown>; local?: Record<string, unknown>; credentials?: Record<string, string> } | undefined;
 }
 
 export interface StorageChangeLike {
@@ -624,7 +626,18 @@ export interface AiSettingsStoreOptions {
 	bootstrapper?: AiSettingsBootstrapper;
 	/** Manifest version, passed to the bootstrapper. */
 	build?: string;
+	/**
+	 * What the view carries from `ai_credentials`:
+	 * - `keys` (default): the API keys, for the background and the Settings page;
+	 * - `presence`: no keys, only `credentialIds`, the connections with a key on this device, for
+	 *   the Popup's readiness checks;
+	 * - `none`: nothing, and `ai_credentials` is not read unless the store bootstraps; for the
+	 *   Reader content script, which leaves availability to the background.
+	 */
+	credentials?: AiCredentialsAccess;
 }
+
+export type AiCredentialsAccess = 'keys' | 'presence' | 'none';
 
 export interface AiSettingsSnapshot {
 	view: AiSettingsView;
@@ -651,6 +664,14 @@ export interface AiSettingsStore {
 	saveRouting(routing: AiRouting): Promise<boolean>;
 	saveInterpreter(settings: AiInterpreterToggles): Promise<boolean>;
 	savePromptContext(text: string): Promise<boolean>;
+	/**
+	 * Writes the prompt context for a page that is going away (`pagehide`, hidden tab): `sync.set`
+	 * is called before this returns, without the pre-read every other write makes, which a closing
+	 * page never gets to finish. Only for a caller that already knows v2 is stored. The encode and
+	 * the per-item size check still run; a refused write rejects. A `savePromptContext` that is
+	 * still waiting for its pre-read is superseded and writes nothing.
+	 */
+	savePromptContextNow(text: string): Promise<void>;
 	setCredential(connectionId: string, apiKey: string): Promise<boolean>;
 	deleteCredential(connectionId: string): Promise<boolean>;
 	deleteConnectionStatus(connectionIds: string | readonly string[]): Promise<boolean>;
@@ -681,6 +702,11 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 	const { sync, local, onChanged } = options;
 	const bootstrapper = options.bootstrap ? options.bootstrapper : undefined;
 	const build = options.build ?? '';
+	const credentialAccess: AiCredentialsAccess = options.credentials ?? 'keys';
+	// The bootstrap plan needs the stored keys to decide what to import, so it always reads them.
+	const localReadKeys: string[] = credentialAccess === 'none' && !bootstrapper
+		? AI_LOCAL_KEYS.filter(key => key !== AI_CREDENTIALS_KEY)
+		: [...AI_LOCAL_KEYS];
 	const nativeMessaging = () => (
 		typeof options.nativeMessaging === 'function' ? options.nativeMessaging() : options.nativeMessaging
 	);
@@ -688,6 +714,8 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 	let loadQueue: Promise<unknown> = Promise.resolve();
 	// Local read-modify-write updates (credentials, status) run one at a time in this context.
 	let localQueue: Promise<unknown> = Promise.resolve();
+	// Counts prompt-context writes, so an immediate write supersedes an older one still pre-reading.
+	let promptContextWrites = 0;
 
 	async function setMapped(area: StorageAreaLike, items: Record<string, unknown>): Promise<void> {
 		try {
@@ -698,8 +726,19 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 		}
 	}
 
+	/**
+	 * `ai_credentials` with the imported keys added, read again right before the write so a key
+	 * another context saved since the bootstrap's first read is kept; undefined when nothing is
+	 * added. An id that already has a key keeps it.
+	 */
+	async function mergeCredentialImports(imports: Record<string, string>): Promise<Record<string, string> | undefined> {
+		const current = decodeCredentials((await local.get(AI_CREDENTIALS_KEY))[AI_CREDENTIALS_KEY]);
+		const additions = Object.entries(decodeCredentials(imports)).filter(([id]) => !current[id]);
+		return additions.length > 0 ? { ...current, ...Object.fromEntries(additions) } : undefined;
+	}
+
 	async function readSnapshot(): Promise<AiSettingsSnapshot> {
-		const [rawSync, rawLocal] = await Promise.all([sync.get(SYNC_READ_KEYS), local.get([...AI_LOCAL_KEYS])]);
+		const [rawSync, rawLocal] = await Promise.all([sync.get(SYNC_READ_KEYS), local.get(localReadKeys)]);
 		let syncState: Record<string, unknown> = { ...rawSync };
 		let localState: Record<string, unknown> = { ...rawLocal };
 		let bootstrapError: unknown;
@@ -716,9 +755,15 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 					await setMapped(sync, syncWrites);
 					syncState = { ...syncState, ...syncWrites };
 				}
-				if (localWrites) {
-					await setMapped(local, localWrites);
-					localState = { ...localState, ...localWrites };
+				const writes: Record<string, unknown> = { ...(localWrites ?? {}) };
+				const imports = plan?.credentials;
+				if (imports && Object.keys(imports).length > 0) {
+					const merged = await mergeCredentialImports(imports);
+					if (merged) writes[AI_CREDENTIALS_KEY] = merged;
+				}
+				if (nonEmpty(writes)) {
+					await setMapped(local, writes);
+					localState = { ...localState, ...writes };
 				}
 			} catch (error) {
 				bootstrapError = error;
@@ -746,9 +791,27 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 		};
 	}
 
+	/** The view with only what `credentials` allows; a derived view also carries v1 keys. */
+	function withCredentialAccess(snapshot: AiSettingsSnapshot): AiSettingsSnapshot {
+		if (credentialAccess === 'keys') return snapshot;
+		const { credentials, ...view } = snapshot.view;
+		return {
+			...snapshot,
+			view: {
+				...view,
+				credentials: {},
+				...(credentialAccess === 'presence' ? { credentialIds: Object.keys(credentials) } : {})
+			}
+		};
+	}
+
+	async function readView(): Promise<AiSettingsSnapshot> {
+		return withCredentialAccess(await readSnapshot());
+	}
+
 	function loadSnapshot(): Promise<AiSettingsSnapshot> {
-		if (!bootstrapper) return readSnapshot();
-		const result = loadQueue.then(readSnapshot);
+		if (!bootstrapper) return readView();
+		const result = loadQueue.then(readView);
 		loadQueue = result.catch(() => undefined);
 		return result;
 	}
@@ -768,9 +831,15 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 		return raw === undefined ? undefined : decodeConnections(raw);
 	}
 
-	async function saveSyncItem(key: AiSyncKey, encode: (connections: Connection[]) => unknown): Promise<boolean> {
+	/** `isCurrent` false after the pre-read: a newer write of the same item superseded this one. */
+	async function saveSyncItem(
+		key: AiSyncKey,
+		encode: (connections: Connection[]) => unknown,
+		isCurrent: () => boolean = () => true
+	): Promise<boolean> {
 		const connections = await storedConnections();
 		if (!connections) return false;
+		if (!isCurrent()) return true;
 		const value = encode(connections);
 		assertSyncItemSize(key, value);
 		await setMapped(sync, { [key]: value });
@@ -865,7 +934,19 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 			return saveSyncItem(AI_INTERPRETER_KEY, () => encodeInterpreter(settings));
 		},
 		savePromptContext(text) {
-			return saveSyncItem(AI_PROMPT_CONTEXT_KEY, () => encodePromptContext(text));
+			const write = ++promptContextWrites;
+			return saveSyncItem(AI_PROMPT_CONTEXT_KEY, () => encodePromptContext(text), () => write === promptContextWrites);
+		},
+		savePromptContextNow(text) {
+			promptContextWrites++;
+			try {
+				const value = encodePromptContext(text);
+				assertSyncItemSize(AI_PROMPT_CONTEXT_KEY, value);
+				// `setMapped` calls `sync.set` before its first await, so the write is dispatched now.
+				return setMapped(sync, { [AI_PROMPT_CONTEXT_KEY]: value });
+			} catch (error) {
+				return Promise.reject(error);
+			}
 		},
 		async setCredential(connectionId, apiKey) {
 			const id = requireId(connectionId);

@@ -15,7 +15,7 @@ import {
 import type { AiTestResult, AiTestStep, Connection, StructuredOutputSupport } from '../../ai/types';
 import { getMessage } from '../../utils/i18n';
 import { hideModal, showModal } from '../../utils/modal-utils';
-import type { AiSettingsController, AiSettingsState, ConnectionDraft } from './controller';
+import { AiSettingsItemMissingError, type AiSettingsController, type AiSettingsState, type ConnectionDraft } from './controller';
 import {
 	createAddLink,
 	createElement,
@@ -223,6 +223,8 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 	const cancelButton = modal?.querySelector('.ai-connection-cancel-btn') as HTMLButtonElement | null;
 	let target: ConnectionDialogTarget = {};
 	let saving = false;
+	// Bumped on every open and close, so a save that finishes later knows its dialog is gone.
+	let dialogSession = 0;
 
 	function setApiKeyVisible(visible: boolean): void {
 		if (!apiKeyInput || !apiKeyToggle) return;
@@ -254,12 +256,40 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		}
 	}
 
+	function setDialogTitle(editing: boolean): void {
+		if (title) title.textContent = editing ? getMessage('aiConnectionEditTitle') : getMessage('aiConnectionAddTitle');
+	}
+
+	/** Every close (Save, Cancel, Escape, backdrop) clears the typed key from the hidden form. */
+	function resetConnectionDialog(): void {
+		dialogSession++;
+		target = {};
+		form?.reset();
+		if (apiKeyInput) apiKeyInput.value = '';
+		setApiKeyVisible(false);
+		showDialogError(undefined);
+	}
+
+	/** Where focus goes when the dialog closes: the card's Edit button, else the add link. */
+	function dialogOpener(connectionId: string | undefined): () => HTMLElement | null {
+		return () => {
+			if (connectionId) {
+				const item = Array.from(list.querySelectorAll<HTMLElement>('.ai-connection-item'))
+					.find(element => element.dataset.connectionId === connectionId);
+				const edit = item?.querySelector<HTMLElement>('.ai-connection-edit');
+				if (edit) return edit;
+			}
+			return addLink;
+		};
+	}
+
 	function openConnectionDialog(next: ConnectionDialogTarget): void {
 		if (!modal || !labelInput || !baseUrlInput || !apiKeyInput || !apiKeyRequiredInput || !concurrencyInput) return;
+		dialogSession++;
 		target = next;
 		const { connection, preset } = next;
 		const entry = connection ? catalogEntryFor(connection) : preset;
-		if (title) title.textContent = connection ? getMessage('aiConnectionEditTitle') : getMessage('aiConnectionAddTitle');
+		setDialogTitle(Boolean(connection));
 		labelInput.value = connection ? connectionDisplayName(connection) : preset?.name ?? '';
 		baseUrlInput.value = connection?.baseUrl ?? preset?.baseUrl ?? '';
 		apiKeyInput.value = connection ? controller.state.view.credentials[connection.id] ?? '' : '';
@@ -270,7 +300,7 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		setApiKeyDescription(entry, labelInput.value || entry?.name || '');
 		setApiKeyVisible(false);
 		showDialogError(undefined);
-		showModal(modal);
+		showModal(modal, { onHide: resetConnectionDialog, trapFocus: true, returnFocus: dialogOpener(connection?.id) });
 		(connection || !preset ? labelInput : apiKeyInput).focus();
 	}
 
@@ -312,13 +342,24 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		if (!draft) return;
 		saving = true;
 		if (confirmButton) confirmButton.disabled = true;
+		const session = dialogSession;
 		try {
 			const saved = target.connection
 				? await controller.updateConnection(target.connection.id, draft)
-				: Boolean(await controller.addApiConnection(draft));
+				: Boolean(await controller.addApiConnection(draft, {
+					// If the key write fails after this, a retry saves the key onto this connection.
+					onCreated: connection => {
+						if (session !== dialogSession) return;
+						target = { connection };
+						setDialogTitle(true);
+					}
+				}));
+			if (session !== dialogSession) return;
 			if (saved) {
 				hideModal(modal);
-				target = {};
+			} else if (controller.error instanceof AiSettingsItemMissingError) {
+				// Deleted while the dialog was open; the section's error card says so.
+				hideModal(modal);
 			} else {
 				showDialogError(undefined, controller.error);
 			}
@@ -335,6 +376,7 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		}
 		catalogList.replaceChildren();
 		const choose = (preset?: CatalogEntry) => {
+			// Focus returns to the add link first, so the connection dialog returns there too.
 			hideModal(catalogModal);
 			openConnectionDialog(preset ? { preset } : {});
 		};
@@ -363,7 +405,7 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		custom.addEventListener('click', () => choose());
 		catalogList.appendChild(custom);
 		finishRender(catalogList);
-		showModal(catalogModal);
+		showModal(catalogModal, { trapFocus: true, returnFocus: addLink });
 		(catalogList.firstElementChild as HTMLElement | null)?.focus();
 	}
 
@@ -381,10 +423,7 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		event.preventDefault();
 		void save();
 	});
-	cancelButton?.addEventListener('click', () => {
-		hideModal(modal);
-		target = {};
-	});
+	cancelButton?.addEventListener('click', () => hideModal(modal));
 	if (form) finishRender(form);
 
 	function deleteConnection(connection: Connection): void {

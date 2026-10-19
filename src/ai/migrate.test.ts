@@ -73,9 +73,16 @@ function clone<T>(value: T): T {
 	return JSON.parse(JSON.stringify(value)) as T;
 }
 
+/** As the store applies a plan: the credential delta is merged without replacing a present key. */
 function apply(device: Device, writes: AiSettingsWrites | undefined): void {
 	if (writes?.sync) Object.assign(device.sync, clone(writes.sync));
 	if (writes?.local) Object.assign(device.local, clone(writes.local));
+	if (writes?.credentials) {
+		const current = Object.fromEntries(Object.entries((device.local.ai_credentials ?? {}) as Record<string, unknown>)
+			.filter(([, key]) => typeof key === 'string' && key !== ''));
+		const additions = Object.entries(writes.credentials).filter(([id]) => !current[id]);
+		if (additions.length > 0) device.local.ai_credentials = { ...current, ...Object.fromEntries(additions) };
+	}
 }
 
 function bootstrapper(now = 1000) {
@@ -358,14 +365,15 @@ describe('aiSettingsBootstrapper', () => {
 			.toBeUndefined();
 	});
 
-	test('bootstraps the five sync keys and the two local keys from v1', () => {
+	test('bootstraps the five sync keys, the migration record, and the imported keys from v1', () => {
 		const sync = v1Sync();
 		const writes = bootstrapper(1234).plan(sync, {}, '2.0.0');
 
 		expect(Object.keys(writes?.sync ?? {}).sort()).toEqual([...SYNC_KEYS].sort());
 		expect(writes?.sync).toEqual(migrateV1(sync).sync);
-		expect(Object.keys(writes?.local ?? {}).sort()).toEqual(['ai_credentials', 'ai_migration']);
-		expect(writes?.local?.ai_credentials).toEqual({ 'provider-openai': 'sk-openai' });
+		expect(Object.keys(writes?.local ?? {})).toEqual(['ai_migration']);
+		// Only the delta; the store merges it into a fresh read of ai_credentials.
+		expect(writes?.credentials).toEqual({ 'provider-openai': 'sk-openai' });
 		expect(writes?.local?.ai_migration).toEqual({
 			v: 1,
 			status: 'bootstrapped',
@@ -466,7 +474,7 @@ describe('aiSettingsBootstrapper', () => {
 			local: { ai_migration: { v: 1, status: 'unknown', credentials: ['provider-openai'] } }
 		};
 		const writes = load(device);
-		expect(writes?.local).not.toHaveProperty('ai_credentials');
+		expect(writes?.credentials).toBeUndefined();
 		expect((device.local.ai_migration as AiMigrationRecord).credentials).toEqual(['provider-openai']);
 		expect(readMigrationRecord(device.local.ai_migration)?.status).toBe('bootstrapped');
 	});
@@ -570,13 +578,38 @@ describe('aiSettingsBootstrapper', () => {
 
 		const writes = load(device, '2.1.0', 5000);
 		expect(Object.keys(writes?.sync ?? {}).sort()).toEqual([...SYNC_KEYS].sort());
-		expect(writes?.local).not.toHaveProperty('ai_credentials');
+		expect(writes?.credentials).toBeUndefined();
 		expect(device.local.ai_migration).toMatchObject({
 			status: 'bootstrapped',
 			at: 5000,
 			build: '2.1.0',
 			credentials: ['provider-openai']
 		});
+	});
+
+	test('a partial v2 counts as v2: only the absent keys are filled from v1, the present ones are kept', () => {
+		const sync = v1Sync();
+		const routing = { v: 1, defaultProfileId: 'from-another-device', taskProfiles: { translate: 'x' } };
+		const promptContext = { v: 1, text: 'Edited on another device' };
+		const device: Device = { sync: { ...clone(sync), ai_routing: routing, ai_prompt_context: promptContext }, local: {} };
+
+		const writes = load(device);
+
+		expect(Object.keys(writes?.sync ?? {}).sort()).toEqual(['ai_connections', 'ai_interpreter', 'ai_profiles']);
+		expect(writes?.sync).toEqual({
+			ai_connections: migrateV1(sync).sync.ai_connections,
+			ai_profiles: migrateV1(sync).sync.ai_profiles,
+			ai_interpreter: migrateV1(sync).sync.ai_interpreter
+		});
+		expect(device.sync.ai_routing).toEqual(routing);
+		expect(device.sync.ai_prompt_context).toEqual(promptContext);
+		expect(readMigrationRecord(device.local.ai_migration)?.status).toBe('bootstrapped');
+		expect(device.local.ai_credentials).toEqual({ 'provider-openai': 'sk-openai' });
+		expect(load(device)).toBeUndefined();
+	});
+
+	test('a partial v2 without v1 writes nothing, leaving defaults to ensureV2', () => {
+		expect(bootstrapper().plan({ ai_routing: { v: 1, taskProfiles: {} } }, {}, '2.0.0')).toBeUndefined();
 	});
 
 	test('treats a corrupt ai_connections item as present and never overwrites it', () => {

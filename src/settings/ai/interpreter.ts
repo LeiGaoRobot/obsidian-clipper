@@ -6,7 +6,7 @@ import type { AiSettingsPanel } from './panel';
 
 // Interpreter panel: the AI master switch, auto-run, and the default prompt context. The prompt
 // context is saved 500 ms after the last keystroke, which also keeps typing far below the sync
-// write-rate limit.
+// write-rate limit. When the page is hidden or goes away, an unsaved edit is written at once.
 
 export const PROMPT_CONTEXT_DEBOUNCE_MS = 500;
 
@@ -27,7 +27,7 @@ export interface InterpreterPanelOptions {
 }
 
 export interface InterpreterPanel extends AiSettingsPanel {
-	/** Saves a pending prompt-context edit now. */
+	/** Dispatches the storage write of an unsaved prompt-context edit before returning. */
 	flush(): void;
 }
 
@@ -88,9 +88,25 @@ export function createInterpreterPanel(options: InterpreterPanelOptions): Interp
 		updateTemplatePromptContextVisibility(doc, state.view.enabled);
 	}
 
+	// The text typed here that is not known to be stored yet.
+	let unsaved: string | undefined;
 	const savePromptContext = debounce((text: string) => {
-		void controller.setPromptContext(text);
+		void controller.setPromptContext(text).then(saved => {
+			if (saved && unsaved === text) unsaved = undefined;
+		});
 	}, options.debounceMs ?? PROMPT_CONTEXT_DEBOUNCE_MS);
+
+	/**
+	 * For a page that is going away: a queued save needs a storage round trip a closing page never
+	 * finishes, so the write is dispatched now. It also covers a debounced save already queued.
+	 */
+	function flushNow(): void {
+		savePromptContext.cancel();
+		if (unsaved === undefined) return;
+		const text = unsaved;
+		unsaved = undefined;
+		if (!controller.flushPromptContext(text)) void controller.setPromptContext(text);
+	}
 
 	enabled.input.addEventListener('change', () => {
 		const checked = enabled.input.checked;
@@ -104,14 +120,17 @@ export function createInterpreterPanel(options: InterpreterPanelOptions): Interp
 			if (!saved) render(controller.state);
 		});
 	});
-	textarea.addEventListener('input', () => savePromptContext(textarea.value));
+	textarea.addEventListener('input', () => {
+		unsaved = textarea.value;
+		savePromptContext(textarea.value);
+	});
 	textarea.addEventListener('change', () => savePromptContext.flush());
 
 	return {
 		keys: [AI_INTERPRETER_KEY, AI_PROMPT_CONTEXT_KEY] as readonly AiStorageKey[],
 		stateOf: interpreterPanelState,
 		render,
-		flush: () => savePromptContext.flush(),
-		dispose: () => savePromptContext.flush()
+		flush: flushNow,
+		dispose: flushNow
 	};
 }

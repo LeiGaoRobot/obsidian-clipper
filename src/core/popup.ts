@@ -18,7 +18,7 @@ import {
 	collectPromptVariables,
 	populatePopupModelSelect
 } from '../utils/interpreter';
-import { loadAiSettings } from '../utils/ai-settings';
+import { loadAiSettingsWithCredentialPresence } from '../utils/ai-settings';
 import type { AiSettingsView } from '../ai/types';
 import { adjustNoteNameHeight } from '../utils/ui-utils';
 import { debugLog } from '../utils/debug';
@@ -300,7 +300,8 @@ function setupMessageListeners() {
  * mirrored in memory. `saveSettings` no longer writes `interpreter_settings`, so it never persists.
  */
 async function loadPopupSettings(): Promise<void> {
-	[loadedSettings, aiSettings] = await Promise.all([loadSettings(), loadAiSettings()]);
+	// No API keys in the Popup: which connections have one is enough for its readiness checks.
+	[loadedSettings, aiSettings] = await Promise.all([loadSettings(), loadAiSettingsWithCredentialPresence()]);
 	loadedSettings.interpreterEnabled = aiSettings.enabled;
 }
 
@@ -972,7 +973,8 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 		const view = aiSettings;
 		// A model choice updates the in-memory view, so a rebuild of the fields shows it.
 		await initializeInterpreter(template, variables, currentTabId!, currentUrl, view, next => {
-			aiSettings = next;
+			// The routing write's view comes from the store without credentials; keep what is known.
+			aiSettings = { ...next, ...(view.credentialIds ? { credentialIds: view.credentialIds } : {}) };
 		});
 
 		const promptVariables = collectPromptVariables(template);

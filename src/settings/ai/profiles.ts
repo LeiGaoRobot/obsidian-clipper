@@ -6,7 +6,7 @@ import { CODEX_REASONING_EFFORTS, normalizeCodexReasoningEffort } from '../../ut
 import { getMessage } from '../../utils/i18n';
 import { hideModal, showModal } from '../../utils/modal-utils';
 import { catalogEntryFor, connectionDisplayName, createKindIcon } from './connections';
-import type { AiSettingsController, AiSettingsState, ProfileDraft } from './controller';
+import { AiSettingsItemMissingError, type AiSettingsController, type AiSettingsState, type ProfileDraft } from './controller';
 import { createAddLink, createElement, createIconButton, createToggle, finishRender } from './dom';
 import { renderErrorCard } from './error-card';
 import type { AiSettingsPanel } from './panel';
@@ -115,6 +115,8 @@ export function createProfilesPanel(options: ProfilesPanelOptions): ProfilesPane
 	const cancelButton = modal?.querySelector('.ai-profile-cancel-btn') as HTMLButtonElement | null;
 	let target: { connectionId: string; profile?: ModelProfile } | undefined;
 	let saving = false;
+	// Bumped on every open and close, so a save that finishes later knows its dialog is gone.
+	let dialogSession = 0;
 
 	if (effortSelect) {
 		effortSelect.replaceChildren(createElement(doc, 'option', undefined, getMessage('aiProfileEffortDefault')));
@@ -154,9 +156,31 @@ export function createProfilesPanel(options: ProfilesPanelOptions): ProfilesPane
 		}
 	}
 
+	function resetProfileDialog(): void {
+		dialogSession++;
+		target = undefined;
+		form?.reset();
+		showDialogError(undefined);
+	}
+
+	/** Where focus goes when the dialog closes: the row's Edit button, else the group's add link. */
+	function dialogOpener(connectionId: string, profileId: string | undefined): () => HTMLElement | null {
+		return () => {
+			const row = profileId
+				? Array.from(container.querySelectorAll<HTMLElement>('.ai-profile-row')).find(element => element.dataset.profileId === profileId)
+				: undefined;
+			const edit = row?.querySelector<HTMLElement>('.ai-profile-edit');
+			if (edit) return edit;
+			const group = Array.from(container.querySelectorAll<HTMLElement>('.ai-profile-group'))
+				.find(element => element.dataset.connectionId === connectionId);
+			return group?.querySelector<HTMLElement>('.ai-add-profile') ?? null;
+		};
+	}
+
 	function openProfileDialog(connectionId: string, profile?: ModelProfile): void {
 		const connection = controller.state.view.connections.find(item => item.id === connectionId);
 		if (!modal || !connection || !labelInput || !modelInput || !effortSelect) return;
+		dialogSession++;
 		target = { connectionId, ...(profile ? { profile } : {}) };
 		if (title) title.textContent = profile ? getMessage('aiProfileEditTitle') : getMessage('aiProfileAddTitle');
 		if (connectionName) connectionName.textContent = connectionDisplayName(connection);
@@ -176,14 +200,15 @@ export function createProfilesPanel(options: ProfilesPanelOptions): ProfilesPane
 		if (effortItem) effortItem.hidden = connection.kind !== 'cli-codex';
 		effortSelect.value = profile?.options?.reasoningEffort ?? '';
 		showDialogError(undefined);
-		showModal(modal);
+		showModal(modal, { onHide: resetProfileDialog, trapFocus: true, returnFocus: dialogOpener(connectionId, profile?.id) });
 		(connection.kind === 'cli-grok' ? labelInput : modelInput).focus();
 	}
 
 	function readDraft(): ProfileDraft | undefined {
 		if (!target || !labelInput || !modelInput || !effortSelect) return undefined;
 		const connection = controller.state.view.connections.find(item => item.id === target?.connectionId);
-		if (!connection) return undefined;
+		// Deleted while the dialog was open: the save goes on, so the controller reports it.
+		if (!connection) return { connectionId: target.connectionId, label: labelInput.value, model: modelInput.value.trim() };
 		const model = connection.kind === 'cli-grok' ? '' : modelInput.value.trim();
 		if (!model && !connection.kind.startsWith('cli-')) {
 			showDialogError(getMessage('aiProfileModelRequired'));
@@ -207,13 +232,15 @@ export function createProfilesPanel(options: ProfilesPanelOptions): ProfilesPane
 		if (!draft) return;
 		saving = true;
 		if (confirmButton) confirmButton.disabled = true;
+		const session = dialogSession;
 		try {
 			const saved = target.profile
 				? await controller.updateProfile(target.profile.id, draft)
 				: Boolean(await controller.addProfile(draft));
-			if (saved) {
+			if (session !== dialogSession) return;
+			if (saved || controller.error instanceof AiSettingsItemMissingError) {
+				// A profile or connection deleted while the dialog was open: the section's error card says so.
 				hideModal(modal);
-				target = undefined;
 			} else {
 				showDialogError(undefined, controller.error);
 			}
@@ -231,10 +258,7 @@ export function createProfilesPanel(options: ProfilesPanelOptions): ProfilesPane
 		event.preventDefault();
 		void save();
 	});
-	cancelButton?.addEventListener('click', () => {
-		hideModal(modal);
-		target = undefined;
-	});
+	cancelButton?.addEventListener('click', () => hideModal(modal));
 
 	function createRow(profile: ModelProfile, connection: Connection | undefined, state: AiSettingsState): HTMLElement {
 		const row = createElement(doc, 'div', 'ai-profile-row');

@@ -2,7 +2,7 @@ import { describeAiError, type AiErrorAction } from '../../ai/error-messages';
 import type { AiError } from '../../ai/errors';
 import { isAiSettingsStorageError, type AiSettingsStorageError } from '../../ai/settings';
 import { getMessage } from '../../utils/i18n';
-import { AiSettingsBootstrapFailedError, AiSettingsNotWritableError } from './controller';
+import { AiSettingsBootstrapFailedError, AiSettingsItemMissingError, AiSettingsNotWritableError } from './controller';
 import { createElement, createIcon, createIconButton, createTextButton, finishRender } from './dom';
 
 // The AI section's error card (decision 11): `describeAiError` for model and connection errors,
@@ -43,6 +43,14 @@ function storageBody(error: AiSettingsStorageError): string {
 	}
 }
 
+/**
+ * A failed bootstrap leaves the section read-only, so the body says how to get out: a full sync
+ * storage needs space freed and a reload, not another try from this page.
+ */
+function bootstrapStorageBody(error: AiSettingsStorageError): string {
+	return error.reason === 'total-quota' ? getMessage('aiSettingsBootstrapQuotaTotal') : storageBody(error);
+}
+
 function storageDetail(error: AiSettingsStorageError): string | undefined {
 	if (!error.key) return undefined;
 	return error.bytes !== undefined ? `${error.key}: ${error.bytes} B` : error.key;
@@ -60,7 +68,7 @@ export function describeSettingsError(error: unknown): SettingsErrorDescription 
 		const detail = storage ? storageDetail(cause) : messageOf(cause);
 		return {
 			title: getMessage('aiSettingsBootstrapFailedTitle'),
-			body: storage ? storageBody(cause) : getMessage('aiSettingsBootstrapFailedBody'),
+			body: storage ? bootstrapStorageBody(cause) : getMessage('aiSettingsBootstrapFailedBody'),
 			action: 'none',
 			...(detail ? { detail } : {})
 		};
@@ -72,6 +80,15 @@ export function describeSettingsError(error: unknown): SettingsErrorDescription 
 			body: storageBody(error),
 			action: 'none',
 			...(detail ? { detail } : {})
+		};
+	}
+	if (error instanceof AiSettingsItemMissingError) {
+		return {
+			title: error.item === 'profile'
+				? getMessage('aiSettingsProfileMissingTitle')
+				: getMessage('aiSettingsConnectionMissingTitle'),
+			body: getMessage('aiSettingsItemMissingBody'),
+			action: 'none'
 		};
 	}
 	if (error instanceof AiSettingsNotWritableError) {

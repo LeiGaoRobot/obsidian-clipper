@@ -79,6 +79,14 @@ describe('resolveProfile', () => {
 		}
 	});
 
+	test('a view without keys resolves by credential presence, never with a key', () => {
+		const present = resolveProfile(view({ credentials: {}, credentialIds: ['anthropic'] }), 'edit');
+		expect(present).toMatchObject({ ok: true, profile: { id: 'claude' } });
+		expect(present.ok && present.credential).toBeUndefined();
+		expect(resolveProfile(view({ credentials: {}, credentialIds: [] }), 'edit'))
+			.toMatchObject({ ok: false, error: { code: 'credential-missing' } });
+	});
+
 	test('rejects a connection without a base URL', () => {
 		const base = view();
 		base.connections[0] = { ...base.connections[0], baseUrl: ' ' };

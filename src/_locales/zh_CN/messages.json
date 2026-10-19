@@ -506,6 +506,18 @@
 	"aiSettingsBootstrapFailedBody": {
 		"message": "您之前的 AI 设置没有变化。请重新加载设置以重试。"
 	},
+	"aiSettingsBootstrapQuotaTotal": {
+		"message": "浏览器同步存储已满，因此无法在这台设备上初始化 AI 设置。您之前的 AI 设置没有变化。请释放空间（例如删除不再使用的模板），然后重新加载设置。"
+	},
+	"aiSettingsConnectionMissingTitle": {
+		"message": "此连接已被删除"
+	},
+	"aiSettingsProfileMissingTitle": {
+		"message": "此模型已被删除"
+	},
+	"aiSettingsItemMissingBody": {
+		"message": "在您编辑时它已被删除，可能是在另一台设备上。您的更改未保存。"
+	},
 	"aiDiagnostics": {
 		"message": "诊断"
 	},
@@ -1732,30 +1744,6 @@
 				"content": "<strong>"
 			}
 		}
-	},
-	"languageLearningReadinessApiMissing": {
-		"message": "添加并启用一个 API 模型"
-	},
-	"languageLearningReadinessApiConfigMissing": {
-		"message": "请完成所选模型的提供商和 API 密钥配置"
-	},
-	"languageLearningReadinessApiReady": {
-		"message": "API 模型已就绪"
-	},
-	"languageLearningReadinessCliFailed": {
-		"message": "本地 CLI 连接需要处理"
-	},
-	"languageLearningReadinessCliReady": {
-		"message": "本地 CLI 连接已就绪"
-	},
-	"languageLearningReadinessCliUnchecked": {
-		"message": "检查所选本地 CLI 的连接"
-	},
-	"languageLearningReadinessEnable": {
-		"message": "启用解释器"
-	},
-	"languageLearningReadinessEnabled": {
-		"message": "解释器已启用"
 	},
 	"readerAutoPause": {
 		"message": "每句结束后暂停"

@@ -48,7 +48,9 @@ export function resolveProfile(
 		return fail(new AiError('not-configured', { reason: 'base-url-missing', connectionId }));
 	}
 	const credential = view.credentials[connectionId]?.trim() ? view.credentials[connectionId] : undefined;
-	if (connection.apiKeyRequired && !credential) {
+	// A view loaded without keys still knows which connections have one.
+	const hasCredential = credential !== undefined || view.credentialIds?.includes(connectionId) === true;
+	if (connection.apiKeyRequired && !hasCredential) {
 		return fail(new AiError('credential-missing', { connectionId }));
 	}
 	return { ok: true, profile, connection, ...(credential ? { credential } : {}) };

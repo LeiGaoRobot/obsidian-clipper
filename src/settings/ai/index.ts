@@ -38,7 +38,9 @@ export interface InitializeAiSettingsOptions {
 
 export interface AiSettingsSection {
 	controller: AiSettingsController;
-	/** Saves pending edits and stops listening to storage. */
+	/** Dispatches the storage writes of pending edits before returning; for a page being hidden. */
+	flush(): void;
+	/** Saves pending edits, as `flush` does, and stops listening to storage. */
 	dispose(): void;
 }
 
@@ -175,6 +177,9 @@ export async function initializeAiSettings(options: InitializeAiSettingsOptions 
 
 	return {
 		controller,
+		flush() {
+			interpreter.flush();
+		},
 		dispose() {
 			stopObserving();
 			stopController();

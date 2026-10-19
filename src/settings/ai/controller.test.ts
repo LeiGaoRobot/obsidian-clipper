@@ -260,6 +260,39 @@ describe('AI settings controller: errors', () => {
 	});
 });
 
+describe('AI settings controller: prompt context flush', () => {
+	test('flushPromptContext dispatches the write before it returns and supersedes a queued save', async () => {
+		const { controller, sync } = await controllerFor({ promptContext: 'old' });
+		const queued = controller.setPromptContext('queued');
+		expect(controller.flushPromptContext('final')).toBe(true);
+		// Synchronously: no queue hop and no pre-read.
+		expect(sync.sets).toEqual([{ ai_prompt_context: { v: 1, text: 'final' } }]);
+		expect(controller.state.view.interpreter.defaultPromptContext).toBe('final');
+
+		await expect(queued).resolves.toBe(true);
+		await settle();
+		expect(sync.sets).toHaveLength(1);
+		expect(sync.data.ai_prompt_context).toEqual({ v: 1, text: 'final' });
+		expect(controller.state.view.interpreter.defaultPromptContext).toBe('final');
+	});
+
+	test('a refused flush reports the error and shows the stored text again', async () => {
+		const { controller, sync, onError } = await controllerFor({ promptContext: 'old' });
+		sync.failNextSet = new Error('QUOTA_BYTES quota exceeded');
+		expect(controller.flushPromptContext('new')).toBe(true);
+		await settle();
+		expect(controller.error).toMatchObject({ name: 'AiSettingsStorageError', reason: 'total-quota' });
+		expect(onError).toHaveBeenLastCalledWith(controller.error);
+		expect(controller.state.view.interpreter.defaultPromptContext).toBe('old');
+	});
+
+	test('in derived mode flushPromptContext writes nothing and leaves the save to the queue', async () => {
+		const { controller, sync } = await controllerFor({ derived: true });
+		expect(controller.flushPromptContext('text')).toBe(false);
+		expect(sync.sets).toEqual([]);
+	});
+});
+
 describe('AI settings controller: first write on this device', () => {
 	test('on a fresh install the first write creates v2 from the defaults, then applies', async () => {
 		const { controller, sync, local } = await controllerFor({ derived: true, bootstrapper: aiSettingsBootstrapper });

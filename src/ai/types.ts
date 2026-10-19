@@ -69,8 +69,16 @@ export interface AiSettingsView {
 	profiles: ModelProfile[];
 	routing: AiRouting;
 	interpreter: AiInterpreterSettings;
-	/** API keys by connection id. Device-local; never part of a synced connection. */
+	/**
+	 * API keys by connection id. Device-local; never part of a synced connection. Empty in a view
+	 * loaded without keys (the Popup and Reader stores).
+	 */
 	credentials: Record<string, string>;
+	/**
+	 * The connections that have a key on this device, without the keys: set only in a view loaded
+	 * for readiness checks (the Popup's), where `credentials` is empty.
+	 */
+	credentialIds?: string[];
 	nativeMessaging: NativeMessagingSupport;
 }
 
