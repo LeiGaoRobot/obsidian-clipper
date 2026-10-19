@@ -9,7 +9,8 @@ export function buildNativeCliInstallCommand(extensionId: string, workspaceRoot:
 }
 
 interface NativeCliInstallGuideOptions {
-	doc: Document;
+	/** Where the guide's elements are looked up by id; a scoped lookup works too. */
+	doc: Pick<Document, 'getElementById'>;
 	extensionId: string;
 	platform: string;
 	isChrome: boolean;

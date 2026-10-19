@@ -182,6 +182,288 @@
 	"aiLanguageToolsRequireModel": {
 		"message": "Enable an Interpreter model before using AI language tools."
 	},
+	"aiSettings": {
+		"message": "AI"
+	},
+	"aiConnections": {
+		"message": "Connections"
+	},
+	"aiConnectionsDescription": {
+		"message": "API providers and local CLIs that can run AI tasks. API keys are stored only on this device, in the browser's local extension storage. They don't sync to your other devices and aren't encrypted."
+	},
+	"aiConnectionsEmpty": {
+		"message": "No connections yet. Add an API provider or a local CLI to get started."
+	},
+	"aiAddApiProvider": {
+		"message": "+ Add API provider"
+	},
+	"aiCatalogTitle": {
+		"message": "Add API provider"
+	},
+	"aiCatalogDescription": {
+		"message": "Choose a provider, or choose Custom for any other endpoint."
+	},
+	"aiCatalogCustomDescription": {
+		"message": "Any other endpoint"
+	},
+	"aiConnectionAddTitle": {
+		"message": "Add API provider"
+	},
+	"aiConnectionEditTitle": {
+		"message": "Edit connection"
+	},
+	"aiConnectionLabel": {
+		"message": "Name"
+	},
+	"aiConnectionLabelDescription": {
+		"message": "Shown in Settings and in model menus."
+	},
+	"aiConnectionLabelRequired": {
+		"message": "Enter a name for this connection."
+	},
+	"aiConnectionBaseUrlDescription": {
+		"message": "The provider's chat endpoint. Replace any {placeholders} with your own values."
+	},
+	"aiConnectionBaseUrlInvalid": {
+		"message": "Enter the full endpoint URL, starting with https:// or http://, with any {placeholders} replaced."
+	},
+	"aiConnectionApiKeyDescription": {
+		"message": "Stored only on this device."
+	},
+	"aiConnectionShowKey": {
+		"message": "Show"
+	},
+	"aiConnectionHideKey": {
+		"message": "Hide"
+	},
+	"aiConnectionApiKeyRequired": {
+		"message": "Requires API key"
+	},
+	"aiConnectionApiKeyRequiredDescription": {
+		"message": "Turn off for local servers that accept requests without a key."
+	},
+	"aiConnectionMaxConcurrency": {
+		"message": "Max concurrent requests"
+	},
+	"aiConnectionMaxConcurrencyDescription": {
+		"message": "How many requests a long job, such as a transcript translation, sends to this connection at once. Leave blank to use the default."
+	},
+	"aiConnectionMaxConcurrencyPlaceholder": {
+		"message": "Default"
+	},
+	"aiConnectionMaxConcurrencyInvalid": {
+		"message": "Enter a whole number from 1 to $1, or leave it blank."
+	},
+	"aiConnectionDeleteConfirm": {
+		"message": "Delete “$1”? Its $2 model(s) and its API key on this device are deleted too."
+	},
+	"aiConnectionUnnamed": {
+		"message": "Unnamed connection"
+	},
+	"aiCliCodex": {
+		"message": "Codex CLI"
+	},
+	"aiCliGrok": {
+		"message": "Grok CLI"
+	},
+	"aiCliConnectionHost": {
+		"message": "Local CLI on this computer"
+	},
+	"aiCliAlreadyAdded": {
+		"message": "$1 is already added."
+	},
+	"aiAddLocalCli": {
+		"message": "Add local CLI"
+	},
+	"aiAddLocalCliDescription": {
+		"message": "Run tasks with a Codex or Grok CLI installed on this computer, through the Native Messaging Host. Install the host once with the command below."
+	},
+	"aiAddCli": {
+		"message": "Add $1"
+	},
+	"aiStatusUntested": {
+		"message": "Untested"
+	},
+	"aiStatusOk": {
+		"message": "OK"
+	},
+	"aiStatusFailing": {
+		"message": "Failing"
+	},
+	"aiStatusFailingReason": {
+		"message": "Failing: $1"
+	},
+	"aiStatusKeyMissing": {
+		"message": "Key missing on this device"
+	},
+	"aiStatusUnsupported": {
+		"message": "Unsupported in this browser"
+	},
+	"aiProfiles": {
+		"message": "Models"
+	},
+	"aiProfilesDescription": {
+		"message": "The models each connection offers. Only enabled models appear in task routing and model menus."
+	},
+	"aiProfilesEmpty": {
+		"message": "Add a connection first, then add its models here."
+	},
+	"aiAddProfile": {
+		"message": "+ Add model"
+	},
+	"aiProfileAddTitle": {
+		"message": "Add model"
+	},
+	"aiProfileEditTitle": {
+		"message": "Edit model"
+	},
+	"aiProfileModelDescription": {
+		"message": "The model identifier from your provider."
+	},
+	"aiProfileCodexModelDescription": {
+		"message": "Leave empty to use the Codex CLI default model."
+	},
+	"aiProfileModelRequired": {
+		"message": "Enter a model ID."
+	},
+	"aiProfileLabelDescription": {
+		"message": "Optional. Leave empty to show the model ID."
+	},
+	"aiProfileEffort": {
+		"message": "Reasoning effort"
+	},
+	"aiProfileEffortDescription": {
+		"message": "Higher effort can take longer and use more tokens. Unsupported model and effort combinations fail without fallback."
+	},
+	"aiProfileEffortDefault": {
+		"message": "Use Codex CLI default"
+	},
+	"aiProfileEffortValue": {
+		"message": "Effort: $1"
+	},
+	"aiProfileCliDefault": {
+		"message": "CLI default model"
+	},
+	"aiProfileUnnamed": {
+		"message": "Unnamed model"
+	},
+	"aiProfileCopyLabel": {
+		"message": "$1 (copy)"
+	},
+	"aiProfileDeleteConfirm": {
+		"message": "Delete “$1”? Any task routing that uses it is cleared."
+	},
+	"aiProfileEnabled": {
+		"message": "Enable $1"
+	},
+	"aiProfileOrphanGroup": {
+		"message": "Missing connection"
+	},
+	"aiRouting": {
+		"message": "Task routing"
+	},
+	"aiRoutingDescription": {
+		"message": "Choose the model for each task. Tasks set to Use default follow the default model."
+	},
+	"aiRoutingDefault": {
+		"message": "Default model"
+	},
+	"aiRoutingDefaultDescription": {
+		"message": "Used by every task set to Use default."
+	},
+	"aiRoutingNone": {
+		"message": "None"
+	},
+	"aiRoutingUseDefault": {
+		"message": "Use default"
+	},
+	"aiRoutingNotSet": {
+		"message": "Not set"
+	},
+	"aiRoutingUnavailable": {
+		"message": "Model unavailable"
+	},
+	"aiRoutingDisabledProfile": {
+		"message": "$1 (disabled)"
+	},
+	"aiRoutingMissingProfile": {
+		"message": "Deleted model"
+	},
+	"aiTaskInterpret": {
+		"message": "Interpreter"
+	},
+	"aiTaskInterpretDescription": {
+		"message": "Prompt variables in templates."
+	},
+	"aiTaskEdit": {
+		"message": "AI edit"
+	},
+	"aiTaskEditDescription": {
+		"message": "Editing clippings in the popup and side panel."
+	},
+	"aiTaskTranslate": {
+		"message": "Subtitle translation"
+	},
+	"aiTaskTranslateDescription": {
+		"message": "Bilingual subtitles in Reader."
+	},
+	"aiTaskReading": {
+		"message": "Japanese readings"
+	},
+	"aiTaskReadingDescription": {
+		"message": "Readings for Japanese subtitles in Reader."
+	},
+	"aiTaskExplain": {
+		"message": "Explanations"
+	},
+	"aiTaskExplainDescription": {
+		"message": "Word and sentence explanations in Reader."
+	},
+	"aiLanguage": {
+		"message": "Language"
+	},
+	"aiEnabled": {
+		"message": "Enable AI features"
+	},
+	"aiEnabledDescription": {
+		"message": "Lets Interpreter, AI edits, and Reader's language tools use the models set up above."
+	},
+	"aiErrorTechnicalDetails": {
+		"message": "Technical details"
+	},
+	"aiErrorActionRetry": {
+		"message": "Try again"
+	},
+	"aiErrorActionSwitchProfile": {
+		"message": "Choose another model"
+	},
+	"aiSettingsSaveFailedTitle": {
+		"message": "Couldn't save AI settings"
+	},
+	"aiSettingsQuotaItemTooLarge": {
+		"message": "This change is too large for browser sync storage, which allows 8 KB per item. Shorten the prompt context, or remove connections or models you don't use."
+	},
+	"aiSettingsQuotaTotal": {
+		"message": "Browser sync storage is full. Remove settings or templates you don't use, then try again."
+	},
+	"aiSettingsQuotaWriteRate": {
+		"message": "Too many changes in a short time. Wait a minute, then try again."
+	},
+	"aiSettingsUnexpectedBody": {
+		"message": "Something went wrong while saving. Reload Settings and try again."
+	},
+	"aiSettingsNotWritableTitle": {
+		"message": "AI settings aren't set up on this device"
+	},
+	"aiSettingsNotWritableBody": {
+		"message": "This change wasn't saved because there are no AI settings to update yet. Reload Settings and try again."
+	},
+	"aiSettingsBootstrapFailedTitle": {
+		"message": "Couldn't set up AI settings on this device"
+	},
+	"aiSettingsBootstrapFailedBody": {
+		"message": "Your previous AI settings are unchanged. Reload Settings to try again."
+	},
 	"allHighlights": {
 		"message": "All highlights"
 	},

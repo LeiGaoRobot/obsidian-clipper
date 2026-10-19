@@ -182,6 +182,288 @@
 	"aiLanguageToolsRequireModel": {
 		"message": "请先启用一个解释器模型，再使用 AI 语言学习工具。"
 	},
+	"aiSettings": {
+		"message": "AI"
+	},
+	"aiConnections": {
+		"message": "连接"
+	},
+	"aiConnectionsDescription": {
+		"message": "可以运行 AI 任务的 API 提供商和本地 CLI。API 密钥只保存在这台设备的浏览器扩展本地存储中，不会同步到您的其他设备，也没有加密。"
+	},
+	"aiConnectionsEmpty": {
+		"message": "还没有连接。添加一个 API 提供商或本地 CLI 即可开始。"
+	},
+	"aiAddApiProvider": {
+		"message": "+ 添加 API 提供商"
+	},
+	"aiCatalogTitle": {
+		"message": "添加 API 提供商"
+	},
+	"aiCatalogDescription": {
+		"message": "选择一个提供商，或选择“自定义”连接其他端点。"
+	},
+	"aiCatalogCustomDescription": {
+		"message": "其他任意端点"
+	},
+	"aiConnectionAddTitle": {
+		"message": "添加 API 提供商"
+	},
+	"aiConnectionEditTitle": {
+		"message": "编辑连接"
+	},
+	"aiConnectionLabel": {
+		"message": "名称"
+	},
+	"aiConnectionLabelDescription": {
+		"message": "显示在设置和模型菜单中。"
+	},
+	"aiConnectionLabelRequired": {
+		"message": "请输入此连接的名称。"
+	},
+	"aiConnectionBaseUrlDescription": {
+		"message": "提供商的对话端点。请将其中的 {占位符} 替换为您自己的值。"
+	},
+	"aiConnectionBaseUrlInvalid": {
+		"message": "请输入完整的端点 URL，以 https:// 或 http:// 开头，并替换其中的 {占位符}。"
+	},
+	"aiConnectionApiKeyDescription": {
+		"message": "仅保存在这台设备上。"
+	},
+	"aiConnectionShowKey": {
+		"message": "显示"
+	},
+	"aiConnectionHideKey": {
+		"message": "隐藏"
+	},
+	"aiConnectionApiKeyRequired": {
+		"message": "需要 API 密钥"
+	},
+	"aiConnectionApiKeyRequiredDescription": {
+		"message": "如果本地服务器无需密钥即可接受请求，请关闭此项。"
+	},
+	"aiConnectionMaxConcurrency": {
+		"message": "最大并发请求数"
+	},
+	"aiConnectionMaxConcurrencyDescription": {
+		"message": "长任务（例如字幕翻译）同时向此连接发送的请求数。留空则使用默认值。"
+	},
+	"aiConnectionMaxConcurrencyPlaceholder": {
+		"message": "默认"
+	},
+	"aiConnectionMaxConcurrencyInvalid": {
+		"message": "请输入 1 到 $1 之间的整数，或留空。"
+	},
+	"aiConnectionDeleteConfirm": {
+		"message": "删除“$1”？它的 $2 个模型以及这台设备上的 API 密钥也会一并删除。"
+	},
+	"aiConnectionUnnamed": {
+		"message": "未命名连接"
+	},
+	"aiCliCodex": {
+		"message": "Codex CLI"
+	},
+	"aiCliGrok": {
+		"message": "Grok CLI"
+	},
+	"aiCliConnectionHost": {
+		"message": "本机上的本地 CLI"
+	},
+	"aiCliAlreadyAdded": {
+		"message": "已添加 $1。"
+	},
+	"aiAddLocalCli": {
+		"message": "添加本地 CLI"
+	},
+	"aiAddLocalCliDescription": {
+		"message": "通过 Native Messaging Host 使用本机安装的 Codex 或 Grok CLI 运行任务。请先用下面的命令安装一次该主机程序。"
+	},
+	"aiAddCli": {
+		"message": "添加 $1"
+	},
+	"aiStatusUntested": {
+		"message": "未测试"
+	},
+	"aiStatusOk": {
+		"message": "正常"
+	},
+	"aiStatusFailing": {
+		"message": "失败"
+	},
+	"aiStatusFailingReason": {
+		"message": "失败：$1"
+	},
+	"aiStatusKeyMissing": {
+		"message": "此设备缺少密钥"
+	},
+	"aiStatusUnsupported": {
+		"message": "此浏览器不支持"
+	},
+	"aiProfiles": {
+		"message": "模型"
+	},
+	"aiProfilesDescription": {
+		"message": "每个连接提供的模型。只有已启用的模型才会出现在任务路由和模型菜单中。"
+	},
+	"aiProfilesEmpty": {
+		"message": "请先添加连接，然后在这里添加它的模型。"
+	},
+	"aiAddProfile": {
+		"message": "+ 添加模型"
+	},
+	"aiProfileAddTitle": {
+		"message": "添加模型"
+	},
+	"aiProfileEditTitle": {
+		"message": "编辑模型"
+	},
+	"aiProfileModelDescription": {
+		"message": "提供商使用的模型标识符。"
+	},
+	"aiProfileCodexModelDescription": {
+		"message": "留空则使用 Codex CLI 的默认模型。"
+	},
+	"aiProfileModelRequired": {
+		"message": "请输入模型 ID。"
+	},
+	"aiProfileLabelDescription": {
+		"message": "可选。留空则显示模型 ID。"
+	},
+	"aiProfileEffort": {
+		"message": "推理强度"
+	},
+	"aiProfileEffortDescription": {
+		"message": "强度越高，耗时可能越长、消耗的 token 越多。不受支持的模型与强度组合会直接失败，不会回退。"
+	},
+	"aiProfileEffortDefault": {
+		"message": "使用 Codex CLI 默认值"
+	},
+	"aiProfileEffortValue": {
+		"message": "强度：$1"
+	},
+	"aiProfileCliDefault": {
+		"message": "CLI 默认模型"
+	},
+	"aiProfileUnnamed": {
+		"message": "未命名模型"
+	},
+	"aiProfileCopyLabel": {
+		"message": "$1（副本）"
+	},
+	"aiProfileDeleteConfirm": {
+		"message": "删除“$1”？所有使用它的任务路由都会被清除。"
+	},
+	"aiProfileEnabled": {
+		"message": "启用 $1"
+	},
+	"aiProfileOrphanGroup": {
+		"message": "连接已缺失"
+	},
+	"aiRouting": {
+		"message": "任务路由"
+	},
+	"aiRoutingDescription": {
+		"message": "为每个任务选择模型。设为“使用默认”的任务会跟随默认模型。"
+	},
+	"aiRoutingDefault": {
+		"message": "默认模型"
+	},
+	"aiRoutingDefaultDescription": {
+		"message": "所有设为“使用默认”的任务都使用此模型。"
+	},
+	"aiRoutingNone": {
+		"message": "无"
+	},
+	"aiRoutingUseDefault": {
+		"message": "使用默认"
+	},
+	"aiRoutingNotSet": {
+		"message": "未设置"
+	},
+	"aiRoutingUnavailable": {
+		"message": "模型不可用"
+	},
+	"aiRoutingDisabledProfile": {
+		"message": "$1（已停用）"
+	},
+	"aiRoutingMissingProfile": {
+		"message": "已删除的模型"
+	},
+	"aiTaskInterpret": {
+		"message": "解释器"
+	},
+	"aiTaskInterpretDescription": {
+		"message": "模板中的提示变量。"
+	},
+	"aiTaskEdit": {
+		"message": "AI 编辑"
+	},
+	"aiTaskEditDescription": {
+		"message": "在弹出窗口和侧边栏中编辑剪藏内容。"
+	},
+	"aiTaskTranslate": {
+		"message": "字幕翻译"
+	},
+	"aiTaskTranslateDescription": {
+		"message": "阅读器中的双语字幕。"
+	},
+	"aiTaskReading": {
+		"message": "日语读音"
+	},
+	"aiTaskReadingDescription": {
+		"message": "为阅读器中的日语字幕标注读音。"
+	},
+	"aiTaskExplain": {
+		"message": "讲解"
+	},
+	"aiTaskExplainDescription": {
+		"message": "阅读器中的单词和句子讲解。"
+	},
+	"aiLanguage": {
+		"message": "语言"
+	},
+	"aiEnabled": {
+		"message": "启用 AI 功能"
+	},
+	"aiEnabledDescription": {
+		"message": "允许解释器、AI 编辑和阅读器的语言工具使用上面设置的模型。"
+	},
+	"aiErrorTechnicalDetails": {
+		"message": "技术详情"
+	},
+	"aiErrorActionRetry": {
+		"message": "重试"
+	},
+	"aiErrorActionSwitchProfile": {
+		"message": "选择其他模型"
+	},
+	"aiSettingsSaveFailedTitle": {
+		"message": "无法保存 AI 设置"
+	},
+	"aiSettingsQuotaItemTooLarge": {
+		"message": "此更改超出了浏览器同步存储的单项上限（8 KB）。请缩短提示上下文，或删除不再使用的连接或模型。"
+	},
+	"aiSettingsQuotaTotal": {
+		"message": "浏览器同步存储已满。请删除不再使用的设置或模板，然后重试。"
+	},
+	"aiSettingsQuotaWriteRate": {
+		"message": "短时间内更改过多。请等待一分钟后重试。"
+	},
+	"aiSettingsUnexpectedBody": {
+		"message": "保存时出现问题。请重新加载设置后重试。"
+	},
+	"aiSettingsNotWritableTitle": {
+		"message": "这台设备上还没有 AI 设置"
+	},
+	"aiSettingsNotWritableBody": {
+		"message": "由于还没有可更新的 AI 设置，此更改未保存。请重新加载设置后重试。"
+	},
+	"aiSettingsBootstrapFailedTitle": {
+		"message": "无法在这台设备上初始化 AI 设置"
+	},
+	"aiSettingsBootstrapFailedBody": {
+		"message": "您之前的 AI 设置没有变化。请重新加载设置以重试。"
+	},
 	"allHighlights": {
 		"message": "所有高亮"
 	},

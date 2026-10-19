@@ -710,6 +710,60 @@
 						</form>
 					</div>
 
+					<div id="ai-section" class="settings-section" hidden inert>
+						<div class="settings-section-header">
+							<h2 data-i18n="aiSettings">AI</h2>
+						</div>
+						<div id="ai-settings-error" class="ai-settings-error" hidden></div>
+						<div class="setting-group" id="ai-connections-group">
+							<div class="setting-item setting-item-heading">
+								<h3 data-i18n="aiConnections">Connections</h3>
+								<div class="setting-item-description ai-group-description" data-i18n="aiConnectionsDescription">API providers and local CLIs that can run AI tasks. API keys are stored only on this device, in the browser's local extension storage. They don't sync to your other devices and aren't encrypted.</div>
+								<div class="warning-container">
+									<div class="warning-icon">
+										<i data-lucide="alert-triangle"></i>
+									</div>
+									<div class="warning-text" data-i18n="apiKeysWarning">By using an external provider you agree to their terms and privacy policy. Interpreter requests are sent directly to the provider you choose. Obsidian does not gather or store any data about your requests.</div>
+								</div>
+							</div>
+							<div class="setting-items ai-connections-items">
+								<div id="ai-connections"></div>
+								<div id="ai-add-local-cli" class="ai-native-cli" hidden></div>
+							</div>
+						</div>
+						<div class="setting-group" id="ai-profiles-group">
+							<div class="setting-item setting-item-heading">
+								<h3 data-i18n="aiProfiles">Models</h3>
+								<div class="setting-item-description ai-group-description" data-i18n="aiProfilesDescription">The models each connection offers. Only enabled models appear in task routing and model menus.</div>
+							</div>
+							<div class="setting-items">
+								<div id="ai-profiles"></div>
+							</div>
+						</div>
+						<div class="setting-group" id="ai-routing-group">
+							<div class="setting-item setting-item-heading">
+								<h3 data-i18n="aiRouting">Task routing</h3>
+								<div class="setting-item-description ai-group-description" data-i18n="aiRoutingDescription">Choose the model for each task. Tasks set to Use default follow the default model.</div>
+							</div>
+							<div id="ai-routing"></div>
+						</div>
+						<div class="setting-group" id="ai-language-group">
+							<div class="setting-item setting-item-heading">
+								<h3 data-i18n="aiLanguage">Language</h3>
+							</div>
+							<div id="ai-language"></div>
+						</div>
+						<div class="setting-group" id="ai-interpreter-group">
+							<div class="setting-item setting-item-heading">
+								<h3 data-i18n="interpreter">Interpreter</h3>
+							</div>
+							<div id="ai-interpreter"></div>
+						</div>
+						<div class="setting-group" id="ai-diagnostics-group" hidden>
+							<div id="ai-diagnostics"></div>
+						</div>
+					</div>
+
 					<div id="properties-section" class="settings-section">
 						<div class="settings-section-header">
 							<h2 data-i18n="propertiesSettings">Properties</h2>
@@ -1036,6 +1090,138 @@
 				<div class="modal-button-container">
 					<button class="provider-confirm-btn mod-cta" data-i18n="save">Save</button>
 					<button class="provider-cancel-btn" data-i18n="cancel">Cancel</button>
+				</div>
+			</div>
+		</div>
+
+		<div id="ai-catalog-modal" class="modal-container">
+			<div class="modal-bg"></div>
+			<div class="modal">
+				<div class="modal-header">
+					<div class="modal-title" data-i18n="aiCatalogTitle">Add API provider</div>
+				</div>
+				<div class="modal-content">
+					<div class="setting-item-description" data-i18n="aiCatalogDescription">Choose a provider, or choose Custom for any other endpoint.</div>
+					<div id="ai-catalog-list" class="ai-catalog-list"></div>
+				</div>
+				<div class="modal-button-container">
+					<button type="button" class="ai-catalog-cancel-btn" data-i18n="cancel">Cancel</button>
+				</div>
+			</div>
+		</div>
+
+		<div id="ai-connection-modal" class="modal-container">
+			<div class="modal-bg"></div>
+			<div class="modal">
+				<div class="modal-header">
+					<div class="modal-title"></div>
+				</div>
+				<div class="modal-content">
+					<form id="ai-connection-form" class="ai-settings-form" novalidate>
+						<div class="setting-item">
+							<div class="setting-item-info">
+								<label for="ai-connection-label" data-i18n="aiConnectionLabel">Name</label>
+								<div class="setting-item-description" data-i18n="aiConnectionLabelDescription">Shown in Settings and in model menus.</div>
+							</div>
+							<div class="setting-item-control">
+								<input type="text" id="ai-connection-label" maxlength="100" autocomplete="off" required>
+							</div>
+						</div>
+						<div class="setting-item">
+							<div class="setting-item-info">
+								<label for="ai-connection-base-url" data-i18n="providerBaseUrl">Base URL</label>
+								<div class="setting-item-description" data-i18n="aiConnectionBaseUrlDescription">The provider's chat endpoint. Replace any {placeholders} with your own values.</div>
+							</div>
+							<div class="setting-item-control">
+								<input type="text" id="ai-connection-base-url" inputmode="url" autocomplete="off" spellcheck="false" required>
+							</div>
+						</div>
+						<div class="setting-item">
+							<div class="setting-item-info">
+								<label for="ai-connection-api-key" data-i18n="providerApiKey">API key</label>
+								<div class="setting-item-description" id="ai-connection-api-key-description"></div>
+							</div>
+							<div class="setting-item-control ai-api-key-control">
+								<input type="password" id="ai-connection-api-key" autocomplete="off" spellcheck="false">
+								<button type="button" id="ai-connection-api-key-toggle" aria-controls="ai-connection-api-key" aria-pressed="false" data-i18n="aiConnectionShowKey">Show</button>
+							</div>
+						</div>
+						<div class="setting-item mod-horizontal mod-toggle">
+							<div class="setting-item-info">
+								<label for="ai-connection-api-key-required" data-i18n="aiConnectionApiKeyRequired">Requires API key</label>
+								<div class="setting-item-description" data-i18n="aiConnectionApiKeyRequiredDescription">Turn off for local servers that accept requests without a key.</div>
+							</div>
+							<div class="setting-item-control">
+								<div class="checkbox-container">
+									<input type="checkbox" id="ai-connection-api-key-required" />
+								</div>
+							</div>
+						</div>
+						<details id="ai-connection-advanced" class="ai-connection-advanced">
+							<summary data-i18n="advanced">Advanced</summary>
+							<div class="setting-item">
+								<div class="setting-item-info">
+									<label for="ai-connection-max-concurrency" data-i18n="aiConnectionMaxConcurrency">Max concurrent requests</label>
+									<div class="setting-item-description" data-i18n="aiConnectionMaxConcurrencyDescription">How many requests a long job, such as a transcript translation, sends to this connection at once. Leave blank to use the default.</div>
+								</div>
+								<div class="setting-item-control">
+									<input type="text" id="ai-connection-max-concurrency" inputmode="numeric" maxlength="3" autocomplete="off" data-i18n="aiConnectionMaxConcurrencyPlaceholder">
+								</div>
+							</div>
+						</details>
+						<div id="ai-connection-error" class="ai-form-error-container" hidden></div>
+					</form>
+				</div>
+				<div class="modal-button-container">
+					<button type="button" class="ai-connection-confirm-btn mod-cta" data-i18n="save">Save</button>
+					<button type="button" class="ai-connection-cancel-btn" data-i18n="cancel">Cancel</button>
+				</div>
+			</div>
+		</div>
+
+		<div id="ai-profile-modal" class="modal-container">
+			<div class="modal-bg"></div>
+			<div class="modal">
+				<div class="modal-header">
+					<div class="modal-title"></div>
+					<div class="ai-modal-subtitle" id="ai-profile-connection-name"></div>
+				</div>
+				<div class="modal-content">
+					<form id="ai-profile-form" class="ai-settings-form" novalidate>
+						<div class="setting-item" id="ai-profile-model-item">
+							<div class="setting-item-info">
+								<label for="ai-profile-model" data-i18n="providerModelId">Model ID</label>
+								<div class="setting-item-description" id="ai-profile-model-description"></div>
+							</div>
+							<div class="setting-item-control">
+								<input type="text" id="ai-profile-model" list="ai-profile-model-options" autocomplete="off" spellcheck="false">
+								<datalist id="ai-profile-model-options"></datalist>
+							</div>
+						</div>
+						<div class="setting-item">
+							<div class="setting-item-info">
+								<label for="ai-profile-label" data-i18n="modelName">Display name</label>
+								<div class="setting-item-description" data-i18n="aiProfileLabelDescription">Optional. Leave empty to show the model ID.</div>
+							</div>
+							<div class="setting-item-control">
+								<input type="text" id="ai-profile-label" maxlength="100" autocomplete="off">
+							</div>
+						</div>
+						<div class="setting-item" id="ai-profile-effort-item" hidden>
+							<div class="setting-item-info">
+								<label for="ai-profile-effort" data-i18n="aiProfileEffort">Reasoning effort</label>
+								<div class="setting-item-description" data-i18n="aiProfileEffortDescription">Higher effort can take longer and use more tokens. Unsupported model and effort combinations fail without fallback.</div>
+							</div>
+							<div class="setting-item-control">
+								<select id="ai-profile-effort"></select>
+							</div>
+						</div>
+						<div id="ai-profile-error" class="ai-form-error-container" hidden></div>
+					</form>
+				</div>
+				<div class="modal-button-container">
+					<button type="button" class="ai-profile-confirm-btn mod-cta" data-i18n="save">Save</button>
+					<button type="button" class="ai-profile-cancel-btn" data-i18n="cancel">Cancel</button>
 				</div>
 			</div>
 		</div>
