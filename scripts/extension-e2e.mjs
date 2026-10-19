@@ -138,7 +138,32 @@ if (!existsSync(path.join(extensionPath, 'manifest.json'))) {
 const chrome = findChrome();
 if (!chrome) throw new Error('Chrome or Chromium is required. Set CHROME_PATH to its executable.');
 
-const server = http.createServer((_request, response) => {
+// A mock OpenAI-compatible provider that streams its envelope in delayed SSE deltas.
+const providerRequests = [];
+const streamedEnvelope = '{"prompts_responses":{"prompt_1":"Streamed summary"}}';
+async function streamMockCompletion(request, response) {
+	let body = '';
+	for await (const chunk of request) body += chunk;
+	providerRequests.push({ authorization: request.headers.authorization, body: JSON.parse(body) });
+	response.writeHead(200, {
+		'Content-Type': 'text/event-stream',
+		'Access-Control-Allow-Origin': '*'
+	});
+	for (let index = 0; index < streamedEnvelope.length; index += 12) {
+		const content = streamedEnvelope.slice(index, index + 12);
+		response.write(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);
+		await new Promise(resolve => setTimeout(resolve, 40));
+	}
+	response.end('data: [DONE]\n\n');
+}
+
+const server = http.createServer((request, response) => {
+	if (request.method === 'POST' && request.url === '/v1/chat/completions') {
+		streamMockCompletion(request, response).catch(error => {
+			response.destroy(error);
+		});
+		return;
+	}
 	response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
 	response.end(fixtureHtml);
 });
@@ -472,6 +497,47 @@ try {
 	if (readerState.transcript && (readerState.layout !== 'focus' || !readerState.compact)) {
 		throw new Error(`Reader transcript preferences were not applied: ${JSON.stringify(readerState)}`);
 	}
+	const providerUrl = `http://127.0.0.1:${address.port}/v1/chat/completions`;
+	await evaluate(settings, `new Promise((resolve, reject) => chrome.storage.sync.set({ interpreter_settings: {
+		interpreterEnabled: true,
+		interpreterExecutionMode: 'api',
+		interpreterModel: 'e2e-model',
+		providers: [{ id: 'e2e-provider', name: 'E2E Mock', baseUrl: ${JSON.stringify(providerUrl)}, apiKey: 'sk-e2e', apiKeyRequired: true }],
+		models: [{ id: 'e2e-model', providerId: 'e2e-provider', providerModelId: 'mock-model', name: 'Mock', enabled: true }]
+	} }, () => {
+		if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+		else resolve();
+	}))`);
+	const gatewayRun = await evaluate(settings, `new Promise((resolve, reject) => {
+		const port = chrome.runtime.connect({ name: 'ai' });
+		const messages = [];
+		const timer = setTimeout(() => reject(new Error('AI gateway timed out: ' + JSON.stringify(messages))), 20000);
+		port.onMessage.addListener(message => {
+			messages.push(message.type === 'progress' ? message.phase : message.type);
+			if (message.type === 'result' || message.type === 'error') {
+				clearTimeout(timer);
+				port.disconnect();
+				resolve({ messages, outcome: message });
+			}
+		});
+		port.postMessage({
+			type: 'start',
+			jobId: 'e2e-job',
+			task: 'interpret',
+			input: { context: 'E2E page', prompts: [{ key: 'prompt_1', prompt: 'Summarize' }] }
+		});
+	})`);
+	if (
+		gatewayRun.outcome?.type !== 'result'
+		|| gatewayRun.outcome.responses?.prompt_1 !== 'Streamed summary'
+		|| !gatewayRun.messages.includes('receiving')
+		|| providerRequests.length !== 1
+		|| providerRequests[0].body.stream !== true
+		|| providerRequests[0].body.model !== 'mock-model'
+		|| providerRequests[0].authorization !== 'Bearer sk-e2e'
+	) {
+		throw new Error(`AI gateway did not stream the mock provider response: ${JSON.stringify({ gatewayRun, providerRequests })}`);
+	}
 	const errors = [...runtimeErrors, ...settingsErrors, ...fixtureErrors].filter(Boolean);
 	if (errors.length > 0) throw new Error(`Extension runtime errors:\n${errors.join('\n')}`);
 
@@ -480,6 +546,7 @@ try {
 	console.log(`Native CLI install guide: ${JSON.stringify(nativeCliInstallGuide)}`);
 	console.log('Reader restored bilingual subtitles and Japanese readings without starting a model request.');
 	console.log(`Reader lazy chunks: ${loadedChunkUrls.join(', ')}`);
+	console.log(`AI gateway streamed a mock provider response: ${gatewayRun.messages.join(' → ')}`);
 } finally {
 	clients.forEach(client => client.close());
 	stopProcessGroup(child);

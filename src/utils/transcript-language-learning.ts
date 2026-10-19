@@ -576,9 +576,11 @@ export function wireTranscriptLanguageLearning({
 		} else {
 			cardBody.textContent = error instanceof Error ? error.message : getMessage('error');
 		}
-		const technicalMessage = error instanceof Error
-			? error.message
-			: structuredError?.message;
+		const technicalMessage = typeof structuredError?.details?.technicalDetail === 'string'
+			? structuredError.details.technicalDetail
+			: error instanceof Error
+				? error.message
+				: structuredError?.message;
 		if (technicalMessage && structuredError?.code) {
 			const summary = doc.createElement('summary');
 			summary.textContent = getMessage('readerTechnicalDetails');

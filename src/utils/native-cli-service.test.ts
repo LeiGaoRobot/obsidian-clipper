@@ -23,7 +23,6 @@ vi.mock('./browser-polyfill', () => ({
 import { RequestCancelledError } from './request-cancellation';
 import {
 	checkNativeCliHealth,
-	executeNativeCliForPrompts,
 	sendNativeCliRequest
 } from './native-cli-service';
 import { buildNativeCliRequest, NATIVE_CLI_PROTOCOL_VERSION } from './native-cli-contract';
@@ -126,12 +125,12 @@ describe('Native CLI service', () => {
 	test('forwards canonical Codex model and effort on the Native Messaging request', async () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
-		const response = executeNativeCliForPrompts(
+		const response = sendNativeCliRequest(buildNativeCliRequest(
 			'codex',
 			'Context',
 			[{ key: 'prompt_1', prompt: 'Summarize' }],
 			{ model: '  gpt-5.6-sol  ', effort: 'ultra' }
-		);
+		));
 		const request = port.posted[0] as {
 			requestId: string;
 			mode: string;
@@ -145,17 +144,17 @@ describe('Native CLI service', () => {
 			ok: true,
 			stdout: '{"prompt_1":"Done"}'
 		});
-		await expect(response).resolves.toEqual({ prompt_1: 'Done' });
+		await expect(response).resolves.toMatchObject({ ok: true, stdout: '{"prompt_1":"Done"}' });
 	});
 
 	test('does not put Codex model or effort properties on Grok Native Messaging requests', async () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
-		const response = executeNativeCliForPrompts(
+		const response = sendNativeCliRequest(buildNativeCliRequest(
 			'grok',
 			'Context',
 			[{ key: 'prompt_1', prompt: 'Summarize' }]
-		);
+		));
 		const grokRequest = port.posted[0] as { requestId: string };
 
 		expect((Object as ObjectConstructor & {
@@ -169,19 +168,18 @@ describe('Native CLI service', () => {
 			ok: true,
 			stdout: '{"prompt_1":"Done"}'
 		});
-		await expect(response).resolves.toEqual({ prompt_1: 'Done' });
+		await expect(response).resolves.toMatchObject({ ok: true, stdout: '{"prompt_1":"Done"}' });
 	});
 
 	test('forwards cancellation from prompt execution over the same Native Messaging port', async () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
 		const controller = new AbortController();
-		const response = executeNativeCliForPrompts(
+		const response = sendNativeCliRequest(buildNativeCliRequest(
 			'codex',
 			'Context',
-			[{ key: 'prompt_1', prompt: 'Summarize' }],
-			{ signal: controller.signal }
-		);
+			[{ key: 'prompt_1', prompt: 'Summarize' }]
+		), controller.signal);
 		const request = port.posted[0] as { requestId: string };
 
 		controller.abort();

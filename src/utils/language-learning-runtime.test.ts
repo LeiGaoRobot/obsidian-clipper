@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { Settings } from '../types/types';
+import { AiError } from '../ai/errors';
+import { RequestCancelledError } from './request-cancellation';
 
 const mocks = vi.hoisted(() => ({
 	loadSettings: vi.fn(),
-	sendMessage: vi.fn(),
+	runAiTask: vi.fn(),
 	storageSessionGet: vi.fn(),
 	storageSessionSet: vi.fn(),
 	storageSessionRemove: vi.fn(),
@@ -18,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('./browser-polyfill', () => ({
 	default: {
-		runtime: { sendMessage: mocks.sendMessage },
+		runtime: {},
 		storage: {
 			session: {
 				get: mocks.storageSessionGet,
@@ -32,6 +34,7 @@ vi.mock('./browser-polyfill', () => ({
 		}
 	}
 }));
+vi.mock('../ai/client', () => ({ runAiTask: mocks.runAiTask }));
 vi.mock('./storage-utils', () => ({
 	loadSettings: mocks.loadSettings,
 	saveSettings: mocks.saveSettings
@@ -96,10 +99,20 @@ const settings: Settings = {
 	saveBehavior: 'addToObsidian'
 };
 
+function aiResult(responses: Record<string, unknown>, connectionKind = 'openai-compatible') {
+	return { responses, connectionKind };
+}
+
+interface AiTaskInput {
+	context: string;
+	prompts: Array<{ key: string; prompt: string }>;
+	maxTokens?: number;
+}
+
 describe('Configured language learning runtime', () => {
 	beforeEach(() => {
 		mocks.loadSettings.mockReset();
-		mocks.sendMessage.mockReset();
+		mocks.runAiTask.mockReset();
 		mocks.storageSessionGet.mockReset();
 		mocks.storageSessionSet.mockReset();
 		mocks.storageSessionRemove.mockReset();
@@ -154,7 +167,7 @@ describe('Configured language learning runtime', () => {
 		const translations = await configuredLanguageLearning.translateTranscript(['Hello.']);
 
 		expect(translations).toEqual(['你好。']);
-		expect(mocks.sendMessage).not.toHaveBeenCalled();
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
 	test('loads saved translations without requiring an enabled Interpreter', async () => {
@@ -163,11 +176,11 @@ describe('Configured language learning runtime', () => {
 			...settings,
 			interpreterEnabled: false
 		});
-		mocks.sendMessage.mockClear();
+		mocks.runAiTask.mockClear();
 
 		await expect(configuredLanguageLearning.loadTranscriptTranslations(['Hello.']))
 			.resolves.toEqual(['你好。']);
-		expect(mocks.sendMessage).not.toHaveBeenCalled();
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
 	test('reuses completed transcript work after an explicit engine switch', async () => {
@@ -183,30 +196,24 @@ describe('Configured language learning runtime', () => {
 
 		await expect(configuredLanguageLearning.translateTranscript(['Hello.']))
 			.resolves.toEqual(['你好。']);
-		expect(mocks.sendMessage).not.toHaveBeenCalled();
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
 	test('translates transcript to fixed Japanese without colliding with the configured response language', async () => {
-		mocks.sendMessage.mockResolvedValue({
-			success: true,
-			promptResponses: [{
-				key: 'prompt_1',
-				prompt: 'translate',
-				user_response: '0|||こんにちは、世界。'
-			}]
-		});
+		mocks.runAiTask.mockResolvedValue(aiResult({ prompt_1: '0|||こんにちは、世界。' }));
 
 		await expect(configuredLanguageLearning.translateTranscriptToJapanese(['Hello world.']))
 			.resolves.toEqual(['こんにちは、世界。']);
 
-		expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-			action: 'languageLearningRequest',
-			request: expect.objectContaining({
+		expect(mocks.runAiTask).toHaveBeenCalledWith(
+			'translate',
+			expect.objectContaining({
 				prompts: [expect.objectContaining({
 					prompt: expect.stringContaining('Translate each transcript segment into Japanese.')
 				})]
-			})
-		}));
+			}),
+			expect.anything()
+		);
 		expect(await configuredLanguageLearning.loadJapaneseTranscriptTranslations(['Hello world.']))
 			.toEqual(['こんにちは、世界。']);
 		expect(await configuredLanguageLearning.loadTranscriptTranslations(['Hello world.']))
@@ -222,39 +229,25 @@ describe('Configured language learning runtime', () => {
 			}
 		});
 		await configuredLanguageLearning.saveTranscriptTranslations(['Hello world.'], ['手動の普通訳。']);
-		mocks.sendMessage.mockResolvedValue({
-			success: true,
-			promptResponses: [{
-				key: 'prompt_1',
-				prompt: 'translate',
-				user_response: '0|||固定の日本語訳。'
-			}]
-		});
-		mocks.sendMessage.mockClear();
+		mocks.runAiTask.mockResolvedValue(aiResult({ prompt_1: '0|||固定の日本語訳。' }));
+		mocks.runAiTask.mockClear();
 
 		await expect(configuredLanguageLearning.translateTranscriptToJapanese(['Hello world.']))
 			.resolves.toEqual(['固定の日本語訳。']);
-		expect(mocks.sendMessage).toHaveBeenCalledOnce();
+		expect(mocks.runAiTask).toHaveBeenCalledOnce();
 		await expect(configuredLanguageLearning.loadTranscriptTranslations(['Hello world.']))
 			.resolves.toEqual(['手動の普通訳。']);
 	});
 
 	test('loads saved Japanese transcript translation without an enabled Interpreter', async () => {
-		mocks.sendMessage.mockResolvedValue({
-			success: true,
-			promptResponses: [{
-				key: 'prompt_1',
-				prompt: 'translate',
-				user_response: '0|||日本語です。'
-			}]
-		});
+		mocks.runAiTask.mockResolvedValue(aiResult({ prompt_1: '0|||日本語です。' }));
 		await configuredLanguageLearning.translateTranscriptToJapanese(['This is Japanese.']);
 		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterEnabled: false });
-		mocks.sendMessage.mockClear();
+		mocks.runAiTask.mockClear();
 
 		await expect(configuredLanguageLearning.loadJapaneseTranscriptTranslations(['This is Japanese.']))
 			.resolves.toEqual(['日本語です。']);
-		expect(mocks.sendMessage).not.toHaveBeenCalled();
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
 	test('clears a saved Japanese reading before explicit regeneration', async () => {
@@ -263,21 +256,12 @@ describe('Configured language learning runtime', () => {
 			{ text: '日本語', reading: 'にほんご' }
 		]]);
 		await configuredLanguageLearning.clearJapaneseReadings(segments);
-		mocks.sendMessage.mockResolvedValue({
-			success: true,
-			promptResponses: [{
-				key: 'prompt_1',
-				prompt: 'annotate',
-				user_response: '0|||[["日本語","にっぽんご"]]'
-			}]
-		});
+		mocks.runAiTask.mockResolvedValue(aiResult({ prompt_1: '0|||[["日本語","にっぽんご"]]' }));
 
 		await expect(configuredLanguageLearning.annotateJapaneseTranscript(segments)).resolves.toEqual([[
 			{ text: '日本語', reading: 'にっぽんご' }
 		]]);
-		expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-			action: 'languageLearningRequest'
-		}));
+		expect(mocks.runAiTask).toHaveBeenCalledWith('reading', expect.anything(), expect.anything());
 	});
 
 	test('loads saved Japanese readings without requiring an enabled Interpreter', async () => {
@@ -288,11 +272,11 @@ describe('Configured language learning runtime', () => {
 			...settings,
 			interpreterEnabled: false
 		});
-		mocks.sendMessage.mockClear();
+		mocks.runAiTask.mockClear();
 
 		await expect(configuredLanguageLearning.loadJapaneseReadings(segments))
 			.resolves.toEqual(readings);
-		expect(mocks.sendMessage).not.toHaveBeenCalled();
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
 	test('reuses personal Japanese readings without sending an AI request', async () => {
@@ -304,7 +288,7 @@ describe('Configured language learning runtime', () => {
 			{ text: '日本語', reading: 'にほんご' },
 			{ text: 'です。', reading: '' }
 		]]);
-		expect(mocks.sendMessage).not.toHaveBeenCalled();
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
 		expect(await configuredLanguageLearning.listJapaneseReadingDictionary()).toEqual([
 			expect.objectContaining({ surface: '日本語', reading: 'にほんご' })
 		]);
@@ -351,14 +335,7 @@ describe('Configured language learning runtime', () => {
 	});
 
 	test('sends model work through the extension background', async () => {
-		mocks.sendMessage.mockResolvedValue({
-			success: true,
-			promptResponses: [{
-				key: 'prompt_1',
-				prompt: 'explain',
-				user_response: 'encounter: 遇到'
-			}]
-		});
+		mocks.runAiTask.mockResolvedValue(aiResult({ prompt_1: 'encounter: 遇到' }));
 
 		const output = await configuredLanguageLearning.explainSelection({
 			kind: 'word',
@@ -367,27 +344,21 @@ describe('Configured language learning runtime', () => {
 		});
 
 		expect(output).toBe('encounter: 遇到');
-		expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-			action: 'languageLearningRequest',
-			request: {
+		expect(mocks.runAiTask).toHaveBeenCalledWith(
+			'explain',
+			{
 				context: 'Selected word: encountered\nContext: I encountered an unfamiliar word.',
 				prompts: [{
 					key: 'prompt_1',
 					prompt: 'Explain the selected word for a language learner in Simplified Chinese. Use only Simplified Chinese for all explanation text, labels, and translations. Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.'
 				}]
-			}
-		}));
+			},
+			expect.anything()
+		);
 	});
 
 		test('sends Japanese reading work through the extension background', async () => {
-		mocks.sendMessage.mockResolvedValue({
-			success: true,
-			promptResponses: [{
-				key: 'prompt_1',
-				prompt: 'annotate',
-				user_response: '0|||[{"text":"日本語","reading":"にほんご"}]'
-			}]
-		});
+		mocks.runAiTask.mockResolvedValue(aiResult({ prompt_1: '0|||[{"text":"日本語","reading":"にほんご"}]' }));
 
 		const progress: TranscriptReadingProgress[] = [];
 		const output = await configuredLanguageLearning.annotateJapaneseTranscript(
@@ -402,13 +373,13 @@ describe('Configured language learning runtime', () => {
 		]);
 		expect(progress[1].readings).toEqual([[{ text: '日本語', reading: 'にほんご' }]]);
 		expect(mocks.storageSessionSet).toHaveBeenCalled();
-		expect(mocks.sendMessage).toHaveBeenCalledWith({
-			action: 'languageLearningRequest',
-			requestId: expect.any(String),
-			request: expect.objectContaining({
+		expect(mocks.runAiTask).toHaveBeenCalledWith(
+			'reading',
+			expect.objectContaining({
 				context: 'Annotate Japanese transcript segments with aligned ruby readings.'
-			})
-		});
+			}),
+			expect.anything()
+		);
 	});
 
 	test('uses smaller Japanese reading batches for local CLI execution', async () => {
@@ -418,24 +389,11 @@ describe('Configured language learning runtime', () => {
 		});
 		const segmentA = '日'.repeat(800);
 		const segmentB = '本'.repeat(800);
-		mocks.sendMessage.mockImplementation((message: {
-			action: string;
-			request?: { prompts: Array<{ prompt: string }> };
-		}) => {
-			if (message.action !== 'languageLearningRequest' || !message.request) {
-				return Promise.resolve({ success: true });
-			}
-			const prompt = message.request.prompts[0].prompt;
+		mocks.runAiTask.mockImplementation((_task: string, input: AiTaskInput) => {
+			const prompt = input.prompts[0].prompt;
 			const segmentId = prompt.includes('0|||') ? 0 : 1;
 			const text = segmentId === 0 ? segmentA : segmentB;
-			return Promise.resolve({
-				success: true,
-				promptResponses: [{
-					key: 'prompt_1',
-					prompt,
-					user_response: `${segmentId}|||[{"text":"${text}","reading":"ひ"}]`
-				}]
-			});
+			return Promise.resolve(aiResult({ prompt_1: `${segmentId}|||[{"text":"${text}","reading":"ひ"}]` }));
 		});
 		const progress: TranscriptReadingProgress[] = [];
 
@@ -451,7 +409,7 @@ describe('Configured language learning runtime', () => {
 			{ completed: 1, total: 2, completedSegments: 1, totalSegments: 2 },
 			{ completed: 2, total: 2, completedSegments: 2, totalSegments: 2 }
 		]);
-		expect(mocks.sendMessage).toHaveBeenCalledTimes(2);
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(2);
 	});
 
 	test('keeps the larger Japanese reading batch for Codex CLI', async () => {
@@ -460,33 +418,20 @@ describe('Configured language learning runtime', () => {
 			interpreterExecutionMode: 'codex'
 		});
 		const segments = ['日'.repeat(800), '本'.repeat(800)];
-		mocks.sendMessage.mockImplementation((message: {
-			action: string;
-			request?: { prompts: Array<{ prompt: string }> };
-		}) => {
-			if (message.action !== 'languageLearningRequest' || !message.request) {
-				return Promise.resolve({ success: true });
-			}
-			const prompt = message.request.prompts[0].prompt;
-			return Promise.resolve({
-				success: true,
-				promptResponses: [{
-					key: 'prompt_1',
-					prompt,
-					user_response: segments.map((segment, index) => (
+		mocks.runAiTask.mockImplementation((_task: string, input: AiTaskInput) => {
+			const prompt = input.prompts[0].prompt;
+			return Promise.resolve(aiResult({ prompt_1: segments.map((segment, index) => (
 						`${index}|||[["${segment}","ひ"]]`
-					)).join('\n')
-				}]
-			});
+					)).join('\n') }));
 		});
 
 		const output = await configuredLanguageLearning.annotateJapaneseTranscript(segments);
 
 		expect(output.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([800, 800]);
-		expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
-		expect(mocks.sendMessage.mock.calls[0][0].request.prompts[0].prompt)
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(1);
+		expect(mocks.runAiTask.mock.calls[0][1].prompts[0].prompt)
 			.toContain('0|||');
-		expect(mocks.sendMessage.mock.calls[0][0].request.prompts[0].prompt)
+		expect(mocks.runAiTask.mock.calls[0][1].prompts[0].prompt)
 			.toContain('1|||');
 	});
 
@@ -498,33 +443,17 @@ describe('Configured language learning runtime', () => {
 		const segments = ['A'.repeat(2500), 'B'.repeat(2500)];
 		const requestedPrompts: string[] = [];
 		let timedOut = false;
-		mocks.sendMessage.mockImplementation((message: {
-			action: string;
-			request?: { prompts: Array<{ prompt: string }> };
-		}) => {
-			if (message.action !== 'languageLearningRequest' || !message.request) {
-				return Promise.resolve({ success: true });
-			}
-			const prompt = message.request.prompts[0].prompt;
+		mocks.runAiTask.mockImplementation((_task: string, input: AiTaskInput) => {
+			const prompt = input.prompts[0].prompt;
 			requestedPrompts.push(prompt);
 			if (!timedOut && prompt.includes('0|||') && prompt.includes('1|||')) {
 				timedOut = true;
-				return Promise.resolve({
-					success: false,
-					error: 'codex CLI timed out after 120 seconds.',
-					errorCode: 'timeout',
-					errorDetails: { mode: 'codex', timeoutSeconds: 120 }
-				});
+				return Promise.reject(new AiError('timeout', {
+					detail: 'codex CLI timed out after 300 seconds.'
+				}));
 			}
 			const index = prompt.includes('0|||') ? 0 : 1;
-			return Promise.resolve({
-				success: true,
-				promptResponses: [{
-					key: 'prompt_1',
-					prompt,
-					user_response: `${index}|||${index === 0 ? '第一段' : '第二段'}`
-				}]
-			});
+			return Promise.resolve(aiResult({ prompt_1: `${index}|||${index === 0 ? '第一段' : '第二段'}` }));
 		});
 
 		const translations = await configuredLanguageLearning.translateTranscript(segments);
@@ -544,22 +473,17 @@ describe('Configured language learning runtime', () => {
 			...settings,
 			interpreterExecutionMode: 'codex'
 		});
-		mocks.sendMessage.mockResolvedValue({
-			success: false,
-			error: 'codex CLI timed out after 120 seconds.',
-			errorCode: 'timeout',
-			errorDetails: { mode: 'codex', timeoutSeconds: 120 }
-		});
+		mocks.runAiTask.mockRejectedValue(new AiError('timeout', {
+			detail: 'codex CLI timed out after 300 seconds.'
+		}));
 
 		await expect(configuredLanguageLearning.translateTranscript(['always fails']))
 			.rejects.toMatchObject({
 				code: 'failed',
 				message: 'readerTranscriptTranslationBatchFailed'
 			});
-		expect(mocks.sendMessage).toHaveBeenCalledTimes(4);
-		expect(mocks.sendMessage.mock.calls[3][0]).toEqual(expect.objectContaining({
-			action: 'languageLearningRequest'
-		}));
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(4);
+		expect(mocks.runAiTask.mock.calls[3][0]).toBe('translate');
 	});
 
 	test('reduces Japanese reading batch size on explicit retry after a Grok timeout', async () => {
@@ -569,31 +493,20 @@ describe('Configured language learning runtime', () => {
 		});
 		const segments = ['日'.repeat(500), '本'.repeat(500)];
 		const requestedPrompts: string[] = [];
-		mocks.sendMessage.mockImplementation((message: {
-			action: string;
-			request?: { prompts: Array<{ prompt: string }> };
-		}) => {
-			if (message.action !== 'languageLearningRequest' || !message.request) {
-				return Promise.resolve({ success: true });
-			}
-			const prompt = message.request.prompts[0].prompt;
+		mocks.runAiTask.mockImplementation((_task: string, input: AiTaskInput) => {
+			const prompt = input.prompts[0].prompt;
 			requestedPrompts.push(prompt);
 			if (prompt.includes('0|||') && prompt.includes('1|||')) {
-				return Promise.reject(new Error('grok CLI timed out after 120 seconds.'));
+				return Promise.reject(new AiError('timeout', {
+					detail: 'grok CLI timed out after 300 seconds.'
+				}));
 			}
 			const index = prompt.includes('0|||') ? 0 : 1;
-			return Promise.resolve({
-				success: true,
-				promptResponses: [{
-					key: 'prompt_1',
-					prompt,
-					user_response: `${index}|||[["${segments[index]}","ひ"]]`
-				}]
-			});
+			return Promise.resolve(aiResult({ prompt_1: `${index}|||[["${segments[index]}","ひ"]]` }));
 		});
 
 		await expect(configuredLanguageLearning.annotateJapaneseTranscript(segments))
-			.rejects.toThrow(/grok CLI timed out after 120 seconds.*readerJapaneseReadingsTimeoutRetry/);
+			.rejects.toThrow(/aiErrorTimeoutBody.*readerJapaneseReadingsTimeoutRetry/);
 		const readings = await configuredLanguageLearning.annotateJapaneseTranscript(segments);
 
 		expect(readings.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([500, 500]);
@@ -615,35 +528,24 @@ describe('Configured language learning runtime', () => {
 			'語'.repeat(500)
 		];
 		const requestedPrompts: string[] = [];
-		mocks.sendMessage.mockImplementation((message: {
-			action: string;
-			request?: { prompts: Array<{ prompt: string }> };
-		}) => {
-			if (message.action !== 'languageLearningRequest' || !message.request) {
-				return Promise.resolve({ success: true });
-			}
-			const prompt = message.request.prompts[0].prompt;
+		mocks.runAiTask.mockImplementation((_task: string, input: AiTaskInput) => {
+			const prompt = input.prompts[0].prompt;
 			requestedPrompts.push(prompt);
 			if (requestedPrompts.length === 2) {
-				return Promise.reject(new Error('grok CLI timed out'));
+				return Promise.reject(new AiError('timeout', {
+					detail: 'grok CLI timed out after 300 seconds.'
+				}));
 			}
 			const ids = requestedPrompts.length === 3
 				? [0, 2]
 				: prompt.includes('0|||') ? [0, 1] : [2];
-			return Promise.resolve({
-				success: true,
-				promptResponses: [{
-					key: 'prompt_1',
-					prompt,
-					user_response: ids.map(index => (
+			return Promise.resolve(aiResult({ prompt_1: ids.map(index => (
 						`${index}|||[["${segments[index]}","${index === 0 && requestedPrompts.length === 3 ? 'にゅー' : 'ひ'}"]]`
-					)).join('\n')
-				}]
-			});
+					)).join('\n') }));
 		});
 
 		await expect(configuredLanguageLearning.annotateJapaneseTranscript(segments))
-			.rejects.toThrow('grok CLI timed out');
+			.rejects.toThrow('aiErrorTimeoutBody');
 		const retryProgress: TranscriptReadingProgress[] = [];
 		const readings = await configuredLanguageLearning.annotateJapaneseTranscript(
 			segments,
@@ -666,31 +568,18 @@ describe('Configured language learning runtime', () => {
 	test('persists completed translation batches and retries only missing segments', async () => {
 		const segments = ['A'.repeat(3500), 'B'.repeat(3500)];
 		const requestedPrompts: string[] = [];
-		mocks.sendMessage.mockImplementation((message: {
-			action: string;
-			request?: { prompts: Array<{ prompt: string }> };
-		}) => {
-			if (message.action !== 'languageLearningRequest' || !message.request) {
-				return Promise.resolve({ success: true });
-			}
-			const prompt = message.request.prompts[0].prompt;
+		mocks.runAiTask.mockImplementation((_task: string, input: AiTaskInput) => {
+			const prompt = input.prompts[0].prompt;
 			requestedPrompts.push(prompt);
 			if (requestedPrompts.length === 2) {
-				return Promise.reject(new Error('provider timed out'));
+				return Promise.reject(new AiError('timeout', { detail: 'provider timed out' }));
 			}
 			const index = prompt.includes('0|||') ? 0 : 1;
-			return Promise.resolve({
-				success: true,
-				promptResponses: [{
-					key: 'prompt_1',
-					prompt,
-					user_response: `${index}|||${index === 0 ? '第一段' : '第二段'}`
-				}]
-			});
+			return Promise.resolve(aiResult({ prompt_1: `${index}|||${index === 0 ? '第一段' : '第二段'}` }));
 		});
 
 		await expect(configuredLanguageLearning.translateTranscript(segments))
-			.rejects.toThrow('provider timed out');
+			.rejects.toMatchObject({ code: 'failed', message: 'aiErrorTimeoutBody' });
 		const translations = await configuredLanguageLearning.translateTranscript(segments);
 
 		expect(translations).toEqual(['第一段', '第二段']);
@@ -700,30 +589,56 @@ describe('Configured language learning runtime', () => {
 		expect(mocks.storageSessionSet).toHaveBeenCalled();
 	});
 
-	test('sends a cancellation message when an active request is aborted', async () => {
+	test('passes the abort signal to the AI gateway and surfaces cancellation', async () => {
 		const abortController = new AbortController();
-		let resolveRequest: ((response: unknown) => void) | undefined;
-		mocks.sendMessage.mockImplementation((message: { action: string }) => {
-			if (message.action === 'languageLearningCancel') return Promise.resolve({ success: true });
-			return new Promise(resolve => { resolveRequest = resolve; });
-		});
+		mocks.runAiTask.mockImplementation((
+			_task: string,
+			_input: AiTaskInput,
+			options?: { signal?: AbortSignal }
+		) => new Promise((_resolve, reject) => {
+			options?.signal?.addEventListener('abort', () => reject(new AiError('cancelled')));
+		}));
 
 		const request = configuredLanguageLearning.explainSelection({
 			kind: 'word',
 			text: 'encountered',
 			context: 'I encountered an unfamiliar word.'
 		}, abortController.signal);
-		await vi.waitFor(() => expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-			action: 'languageLearningRequest'
-		})));
+		await vi.waitFor(() => expect(mocks.runAiTask).toHaveBeenCalledWith(
+			'explain',
+			expect.anything(),
+			expect.objectContaining({ signal: abortController.signal })
+		));
 		abortController.abort();
 
-		await expect(request).rejects.toThrow('cancelled');
-		expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-			action: 'languageLearningCancel',
-			requestId: expect.any(String)
-		}));
-		resolveRequest?.({ success: false });
+		await expect(request).rejects.toBeInstanceOf(RequestCancelledError);
+	});
+
+	test('surfaces a gateway cancellation as RequestCancelledError', async () => {
+		mocks.runAiTask.mockRejectedValue(new AiError('cancelled'));
+
+		await expect(configuredLanguageLearning.explainSelection({
+			kind: 'word',
+			text: 'encountered',
+			context: 'I encountered an unfamiliar word.'
+		})).rejects.toBeInstanceOf(RequestCancelledError);
+	});
+
+	test('maps non-timeout gateway errors to a failed request with localized text', async () => {
+		mocks.runAiTask.mockRejectedValue(new AiError('auth', { status: 401, detail: 'invalid key' }));
+
+		const error = await configuredLanguageLearning.explainSelection({
+			kind: 'word',
+			text: 'encountered',
+			context: 'I encountered an unfamiliar word.'
+		}).catch(caught => caught);
+
+		expect(error).toMatchObject({
+			name: 'LanguageLearningRequestError',
+			code: 'failed',
+			message: 'aiErrorAuthBody',
+			details: expect.objectContaining({ aiCode: 'auth', technicalDetail: 'invalid key' })
+		});
 	});
 
 	test('preserves structured CLI errors for localized Reader recovery', async () => {
@@ -731,12 +646,9 @@ describe('Configured language learning runtime', () => {
 			...settings,
 			interpreterExecutionMode: 'grok'
 		});
-		mocks.sendMessage.mockResolvedValue({
-			success: false,
-			error: 'grok CLI timed out after 120 seconds.',
-			errorCode: 'timeout',
-			errorDetails: { mode: 'grok', timeoutSeconds: 120 }
-		});
+		mocks.runAiTask.mockRejectedValue(new AiError('timeout', {
+			detail: 'grok CLI timed out after 120 seconds.'
+		}));
 
 		await expect(configuredLanguageLearning.explainSelection({
 			kind: 'word',

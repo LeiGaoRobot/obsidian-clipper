@@ -1,6 +1,7 @@
-import browser from './browser-polyfill';
+import { runAiTask } from '../ai/client';
+import { describeAiError } from '../ai/error-messages';
+import { toAiError, type AiErrorCode } from '../ai/errors';
 import {
-	LanguageLearningResponse,
 	LearningSelection,
 	TranscriptReadingCheckpointStore,
 	TranscriptReadingProgressHandler,
@@ -12,7 +13,7 @@ import {
 } from './language-learning';
 import { getMessage } from './i18n';
 import type { NativeCliErrorCode } from './native-cli-contract';
-import { raceWithRequestCancellation, throwIfRequestAborted } from './request-cancellation';
+import { RequestCancelledError, throwIfRequestAborted } from './request-cancellation';
 import { loadSettings, saveSettings } from './storage-utils';
 import { createSessionTranscriptCheckpointStore } from './transcript-checkpoint-storage';
 import { configuredLanguageLearningVocabulary } from './language-learning-vocabulary';
@@ -25,7 +26,6 @@ import {
 	listJapaneseReadingDictionary
 } from './japanese-reading-dictionary-storage';
 
-let languageLearningRequestSequence = 0;
 const GROK_JAPANESE_READING_PROMPT_CHAR_LIMIT = 1600;
 const CODEX_JAPANESE_READING_PROMPT_CHAR_LIMIT = 2500;
 const MIN_CLI_JAPANESE_READING_PROMPT_CHAR_LIMIT = 600;
@@ -119,9 +119,28 @@ function isCliTimeoutError(error: unknown): error is Error {
 		: error instanceof Error && /\bCLI timed out\b/i.test(error.message);
 }
 
-function createLanguageLearningRequestId(): string {
-	languageLearningRequestSequence += 1;
-	return `language-learning-${Date.now()}-${languageLearningRequestSequence}`;
+// Gateway errors keep the legacy codes the Reader card already localizes until the Reader moves to AiError.
+const LEGACY_ERROR_CODES: Partial<Record<AiErrorCode, NativeCliErrorCode>> = {
+	'host-missing': 'unavailable',
+	'host-outdated': 'protocol-mismatch',
+	'cli-missing': 'launch-failed'
+};
+
+function toLanguageLearningError(error: unknown, mode: string): Error {
+	const aiError = toAiError(error);
+	if (aiError.code === 'cancelled') return new RequestCancelledError();
+	const timeoutSeconds = aiError.code === 'timeout'
+		? aiError.detail?.match(/(\d+)\s*seconds?/i)?.[1]
+		: undefined;
+	const code = timeoutSeconds ? 'timeout' : LEGACY_ERROR_CODES[aiError.code] ?? 'failed';
+	const description = describeAiError(aiError);
+	return new LanguageLearningRequestError(code, description.body, {
+		mode,
+		aiCode: aiError.code,
+		retryable: aiError.retryable,
+		...(timeoutSeconds ? { timeoutSeconds: Number(timeoutSeconds) } : {}),
+		...(description.detail ? { technicalDetail: description.detail } : {})
+	});
 }
 
 interface ConfiguredAssistantOptions {
@@ -190,44 +209,20 @@ async function loadConfiguredAssistant({
 	);
 	const assistant = createLanguageLearningAssistant(async (request, signal) => {
 		throwIfRequestAborted(signal);
-		const requestId = createLanguageLearningRequestId();
-		const cancelRequest = () => {
-			void Promise.resolve(browser.runtime.sendMessage({
-				action: 'languageLearningCancel',
-				requestId
-			})).catch(() => {});
-		};
-		signal?.addEventListener('abort', cancelRequest, { once: true });
-		let response: {
-			success: boolean;
-			promptResponses?: LanguageLearningResponse[];
-			error?: string;
-			errorCode?: NativeCliErrorCode | 'failed';
-			errorDetails?: Record<string, unknown>;
-		};
 		try {
-			response = await raceWithRequestCancellation(browser.runtime.sendMessage({
-				action: 'languageLearningRequest',
-				requestId,
-				request
-			}) as Promise<{
-				success: boolean;
-				promptResponses?: LanguageLearningResponse[];
-				error?: string;
-				errorCode?: NativeCliErrorCode | 'failed';
-				errorDetails?: Record<string, unknown>;
-			}>, signal);
-		} finally {
-			signal?.removeEventListener('abort', cancelRequest);
+			const { responses } = await runAiTask(request.task, {
+				context: request.context,
+				prompts: request.prompts,
+				...(request.maxTokens ? { maxTokens: request.maxTokens } : {})
+			}, { signal });
+			return request.prompts.map(prompt => ({
+				key: prompt.key,
+				prompt: prompt.prompt,
+				user_response: responses[prompt.key]
+			}));
+		} catch (error) {
+			throw toLanguageLearningError(error, executionMode);
 		}
-		if (!response?.success || !Array.isArray(response.promptResponses)) {
-			throw new LanguageLearningRequestError(
-				response?.errorCode || 'failed',
-				response?.error || getMessage('error'),
-				response?.errorDetails
-			);
-		}
-		return response.promptResponses;
 	}, {
 		japaneseReadingPromptCharLimit,
 		transcriptTranslationPromptCharLimit,

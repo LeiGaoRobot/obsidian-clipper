@@ -1,3 +1,4 @@
+import type { AiTask } from '../ai/types';
 import { PromptVariable } from '../types/types';
 import { throwIfRequestAborted } from './request-cancellation';
 
@@ -8,6 +9,7 @@ export interface LanguageLearningResponse {
 }
 
 export interface LanguageLearningRequest {
+	task: Extract<AiTask, 'edit' | 'explain' | 'reading' | 'translate'>;
 	context: string;
 	prompts: PromptVariable[];
 	maxTokens?: number;
@@ -226,6 +228,7 @@ export function createLanguageLearningAssistant(
 			throwIfRequestAborted(signal);
 			const prompt = `${instruction.trim()} Return only the revised content in Markdown.`;
 			const responses = await sendRequest({
+				task: 'edit',
 				context: content,
 				prompts: [{ key: 'prompt_1', prompt }],
 				maxTokens: Math.min(12000, Math.max(1600, Math.ceil(content.length * 1.2)))
@@ -242,6 +245,7 @@ export function createLanguageLearningAssistant(
 				? `Explain the selected word for a language learner in ${responseLanguage}. ${languageInstruction} Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.`
 				: `Explain the selected sentence for a language learner in ${responseLanguage}. ${languageInstruction} Include a natural translation, its grammar structure, and the key expressions in context. Return concise plain text.`;
 			const responses = await sendRequest({
+				task: 'explain',
 				context: `Selected ${selection.kind}: ${selection.text}\nContext: ${selection.context}`,
 				prompts: [{ key: 'prompt_1', prompt }]
 			}, signal);
@@ -288,6 +292,7 @@ export function createLanguageLearningAssistant(
 			for (const [groupIndex, group] of promptGroups.entries()) {
 				throwIfRequestAborted(signal);
 				const responses = await sendRequest({
+					task: 'reading',
 					context: 'Annotate Japanese transcript segments with aligned ruby readings.',
 					prompts: [{
 						key: 'prompt_1',
@@ -346,6 +351,7 @@ export function createLanguageLearningAssistant(
 			for (const [groupIndex, group] of promptGroups.entries()) {
 				throwIfRequestAborted(signal);
 				const responses = await sendRequest({
+					task: 'translate',
 					context: 'Translate timed transcript segments without changing their alignment.',
 					prompts: [{
 						key: 'prompt_1',

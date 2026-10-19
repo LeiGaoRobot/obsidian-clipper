@@ -7,11 +7,10 @@ import { adjustNoteNameHeight } from './ui-utils';
 import { debugLog } from './debug';
 import { getMessage } from './i18n';
 import { updateTokenCount } from './token-counter';
-import { sendToLLM } from './llm-client';
-import { executeNativeCli } from './native-cli-client';
+import { runAiTask } from '../ai/client';
+import { describeAiError } from '../ai/error-messages';
+import { isAiError } from '../ai/errors';
 
-export { sendToLLM };
-export type { LLMRequestOptions } from './llm-client';
 
 // Store event listeners for cleanup
 const eventListeners = new WeakMap<HTMLElement, { [key: string]: EventListener }>();
@@ -190,22 +189,6 @@ export async function handleInterpreterUI(
 		interpreterContainer?.classList.remove('done', 'error');
 
 		const executionMode = generalSettings.interpreterExecutionMode ?? 'api';
-		if (executionMode === 'api') {
-			if (!modelConfig) {
-				throw new Error('Interpreter model configuration is missing.');
-			}
-
-			// Find the provider for this model
-			const provider = generalSettings.providers.find(p => p.id === modelConfig.providerId);
-			if (!provider) {
-				throw new Error(`Provider not found for model ${modelConfig.name}`);
-			}
-
-			// Only check for API key if the provider requires it
-			if (provider.apiKeyRequired && !provider.apiKey) {
-				throw new Error(`API key is not set for provider ${provider.name}`);
-			}
-		}
 
 		const promptVariables = collectPromptVariables(template);
 
@@ -238,31 +221,16 @@ export async function handleInterpreterUI(
 			responseTimer.textContent = formatDuration(elapsedTime);
 		}, 10);
 
-		let promptResponses;
-		if (executionMode === 'api') {
-			promptResponses = (await sendToLLM(contextToUse, contentToProcess, promptVariables, modelConfig as ModelConfig)).promptResponses;
-		} else {
-			const responses = await executeNativeCli(
-				executionMode,
-				contextToUse,
-				promptVariables,
-				executionMode === 'codex'
-					? {
-						...(generalSettings.interpreterCodexModel
-							? { model: generalSettings.interpreterCodexModel }
-							: {}),
-						...(generalSettings.interpreterCodexReasoningEffort
-							? { effort: generalSettings.interpreterCodexReasoningEffort }
-							: {})
-					}
-					: {}
-			);
-			promptResponses = promptVariables.map(variable => ({
-				key: variable.key,
-				prompt: variable.prompt,
-				user_response: responses[variable.key]
-			}));
-		}
+		// The model select picks the profile for API runs; CLI modes use their own profile.
+		const { responses } = await runAiTask('interpret', {
+			context: contextToUse,
+			prompts: promptVariables
+		}, executionMode === 'api' && modelConfig ? { profileId: modelConfig.id } : {});
+		const promptResponses = promptVariables.map(variable => ({
+			key: variable.key,
+			prompt: variable.prompt,
+			user_response: responses[variable.key]
+		}));
 		debugLog('Interpreter', 'LLM response:', { promptResponses });
 
 		// Stop the timer and update UI
@@ -309,19 +277,44 @@ export async function handleInterpreterUI(
 		responseTimer.style.display = 'none';
 
 		// Display the error message
-		interpreterErrorMessage.textContent = error instanceof Error ? error.message : 'An unknown error occurred while processing the interpreter request.';
-		interpreterErrorMessage.style.display = 'block';
+		showInterpreterError(interpreterErrorMessage, error);
 
 		// Re-enable the clip button
 		clipButton.disabled = false;
 		moreButton.disabled = false;
 
-		if (error instanceof Error) {
+		if (isAiError(error)) {
+			throw new Error(describeAiError(error).body);
+		} else if (error instanceof Error) {
 			throw new Error(`${error.message}`);
 		} else {
 			throw new Error('An unknown error occurred while processing the interpreter request.');
 		}
 	}
+}
+
+function showInterpreterError(container: HTMLElement, error: unknown): void {
+	container.replaceChildren();
+	if (isAiError(error)) {
+		const description = describeAiError(error);
+		const title = document.createElement('strong');
+		title.textContent = description.title;
+		container.append(title, ` ${description.body}`);
+		if (description.detail) {
+			const details = document.createElement('details');
+			const summary = document.createElement('summary');
+			summary.textContent = getMessage('readerTechnicalDetails');
+			const detail = document.createElement('div');
+			detail.textContent = description.detail;
+			details.append(summary, detail);
+			container.append(details);
+		}
+	} else {
+		container.textContent = error instanceof Error
+			? error.message
+			: 'An unknown error occurred while processing the interpreter request.';
+	}
+	container.style.display = 'block';
 }
 
 // Similar to replaceVariables, but happens after the LLM response is received

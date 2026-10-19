@@ -1,5 +1,4 @@
 import browser from './browser-polyfill';
-import type { CodexReasoningEffort, PromptVariable } from '../types/types';
 import {
 	NATIVE_CLI_HOST_NAME,
 	NATIVE_CLI_PROTOCOL_VERSION,
@@ -10,10 +9,8 @@ import {
 	NativeCliHeartbeat,
 	buildNativeCliCancelRequest,
 	isNativeCliHeartbeat,
-	buildNativeCliHealthRequest,
-	buildNativeCliRequest
+	buildNativeCliHealthRequest
 } from './native-cli-contract';
-import { parsePromptResponses } from './cli-execution-contract';
 import {
 	RequestCancelledError,
 	isRequestCancelled,
@@ -255,28 +252,4 @@ export async function checkNativeCliHealth(mode: 'grok' | 'codex'): Promise<Nati
 	const response = await sendThroughNativePort(request, undefined, NATIVE_CLI_HEALTH_TIMEOUT_MS);
 	if (!response.ok || !response.health) throw responseError(response);
 	return response.health;
-}
-
-export interface NativeCliExecutionOptions {
-	model?: string;
-	effort?: CodexReasoningEffort;
-	signal?: AbortSignal;
-	onHeartbeat?: (heartbeat: NativeCliHeartbeat) => void;
-}
-
-export async function executeNativeCliForPrompts(
-	mode: 'grok' | 'codex',
-	context: string,
-	promptVariables: PromptVariable[],
-	options: NativeCliExecutionOptions = {}
-): Promise<Record<string, unknown>> {
-	const response = await sendNativeCliRequest(
-		buildNativeCliRequest(mode, context, promptVariables, {
-			model: options.model,
-			effort: options.effort
-		}),
-		options.signal,
-		options.onHeartbeat
-	);
-	return parsePromptResponses(response.stdout || '', promptVariables);
 }

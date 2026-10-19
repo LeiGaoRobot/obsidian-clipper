@@ -5,16 +5,17 @@ import { TextHighlightData } from './utils/highlighter';
 import { debounce } from './utils/debounce';
 import { Settings } from './types/types';
 import { debugLog } from './utils/debug';
-import { LanguageLearningRequest } from './utils/language-learning';
-import { runLanguageLearningRequest } from './utils/language-learning-service';
-import { isCliExecutionMode, isNativeCliRequest } from './utils/native-cli-contract';
+import { createAiGateway } from './ai/gateway';
+import type { NativeMessagingSupport } from './ai/types';
+import { getExtensionBranding } from './utils/extension-branding';
+import { isCliExecutionMode } from './utils/native-cli-contract';
 import {
 	NATIVE_CLI_LAST_RUN_STORAGE_KEY,
 	NativeCliExecutionError,
 	NativeCliUnavailableError,
-	checkNativeCliHealth,
-	sendNativeCliRequest
+	checkNativeCliHealth
 } from './utils/native-cli-service';
+import { loadSettings } from './utils/storage-utils';
 import { TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX } from './utils/transcript-checkpoint-storage';
 import { fetchBilibiliTranscript } from './utils/bilibili-transcript';
 import { fetchBilibiliPageJson } from './utils/bilibili-page-fetch';
@@ -23,7 +24,6 @@ import { fetchCurrentBilibiliPlayerJson } from './utils/bilibili-player-page';
 const YOUTUBE_EMBED_RULE_ID = 9001;
 const YOUTUBE_INNERTUBE_RULE_ID = 9002;
 const BILIBILI_TRANSCRIPT_REQUEST_TIMEOUT_MS = 3_000;
-const activeLanguageLearningRequests = new Map<string, AbortController>();
 
 type TranscriptCheckpointStorageRequest = {
 	action?: string;
@@ -469,30 +469,6 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 
 browser.runtime.onMessage.addListener((request: unknown) => {
 	if (typeof request !== 'object' || request === null) return;
-	const message = request as { action?: string; request?: unknown };
-	if (message.action !== 'nativeCliRequest') return;
-	if (!isNativeCliRequest(message.request)) {
-		return Promise.resolve({
-			success: false,
-			errorCode: 'invalid',
-			error: 'Invalid native CLI request.'
-		});
-	}
-
-	return sendNativeCliRequest(message.request)
-		.then(response => ({ success: true, stdout: response.stdout || '' }))
-		.catch(error => ({
-			success: false,
-			errorCode: error instanceof NativeCliUnavailableError
-				? 'unavailable'
-				: error instanceof NativeCliExecutionError ? error.code : 'failed',
-			error: error instanceof Error ? error.message : String(error),
-			errorDetails: error instanceof NativeCliExecutionError ? error.details : undefined
-		}));
-});
-
-browser.runtime.onMessage.addListener((request: unknown) => {
-	if (typeof request !== 'object' || request === null) return;
 	const message = request as { action?: string; mode?: unknown };
 	if (message.action !== 'nativeCliHealth') return;
 	if (!isCliExecutionMode(message.mode)) {
@@ -561,45 +537,23 @@ browser.runtime.onMessage.addListener((request: unknown) => {
 	})();
 });
 
-// Language-learning requests can originate in Reader content scripts, where
-// cross-origin model requests are subject to the page's CORS policy. Execute
-// them in the extension service worker and only use stored model configuration.
-browser.runtime.onMessage.addListener((request: unknown) => {
-	if (typeof request !== 'object' || request === null) return;
-	const message = request as { action?: string; request?: LanguageLearningRequest; requestId?: string };
-	if (message.action === 'languageLearningCancel') {
-		if (!message.requestId) {
-			return Promise.resolve({ success: false, error: 'Invalid language-learning request ID.' });
-		}
-		activeLanguageLearningRequests.get(message.requestId)?.abort();
-		return Promise.resolve({ success: true });
+function detectNativeMessaging(): NativeMessagingSupport {
+	const runtime = browser.runtime as unknown as { connectNative?: unknown; sendNativeMessage?: unknown };
+	if (typeof runtime.connectNative === 'function') return 'port';
+	return typeof runtime.sendNativeMessage === 'function' ? 'message' : 'none';
+}
+
+// Every model request runs here, never in Reader or page content scripts, so provider
+// credentials stay in extension storage and cross-origin requests avoid page CORS rules.
+const aiGateway = createAiGateway({
+	loadSettings,
+	nativeMessaging: detectNativeMessaging,
+	app: () => {
+		const { name, homepageUrl } = getExtensionBranding();
+		return { name, homepageUrl };
 	}
-	if (message.action !== 'languageLearningRequest') return;
-	if (!message.request || typeof message.request.context !== 'string' || !Array.isArray(message.request.prompts)) {
-		return Promise.resolve({ success: false, error: 'Invalid language-learning request.' });
-	}
-	const requestId = message.requestId || `language-learning-legacy-${Date.now()}-${Math.random()}`;
-	if (activeLanguageLearningRequests.has(requestId)) {
-		return Promise.resolve({ success: false, error: 'A language-learning request with this ID is already running.' });
-	}
-	const requestController = new AbortController();
-	activeLanguageLearningRequests.set(requestId, requestController);
-	return runLanguageLearningRequest(message.request, requestController.signal)
-		.then(promptResponses => ({ success: true, promptResponses }))
-		.catch(error => ({
-			success: false,
-			error: error instanceof Error ? error.message : String(error),
-			errorCode: error instanceof NativeCliExecutionError
-				? error.code
-				: error instanceof NativeCliUnavailableError ? 'unavailable' : undefined,
-			errorDetails: error instanceof NativeCliExecutionError ? error.details : undefined
-		}))
-		.finally(() => {
-			if (activeLanguageLearningRequests.get(requestId) === requestController) {
-				activeLanguageLearningRequests.delete(requestId);
-			}
-		});
 });
+browser.runtime.onConnect.addListener(port => aiGateway.handlePort(port));
 
 browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void): true | undefined => {
 	if (typeof request === 'object' && request !== null) {
