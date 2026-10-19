@@ -26,7 +26,7 @@ export function routingSelectId(row: RoutingRowKey): string {
 	return `ai-routing-${row}`;
 }
 
-function rowLabel(row: RoutingRowKey): string {
+export function routingRowLabel(row: RoutingRowKey): string {
 	switch (row) {
 		case 'default': return getMessage('aiRoutingDefault');
 		case 'interpret': return getMessage('aiTaskInterpret');
@@ -170,7 +170,7 @@ export function createRoutingPanel(options: RoutingPanelOptions): RoutingPanel {
 		const items = createElement(doc, 'div', 'setting-items ai-routing-table');
 		for (const row of ROUTING_ROWS) {
 			const { item, control } = createSettingItem(doc, {
-				label: rowLabel(row),
+				label: routingRowLabel(row),
 				description: rowDescription(row),
 				forId: routingSelectId(row)
 			});

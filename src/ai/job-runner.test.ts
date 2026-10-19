@@ -19,7 +19,7 @@ import {
 } from './job-runner';
 import { aiJobInputStorageKey, aiJobStorageKey, createAiJobStore, type AiJobRecord, type StorageAreaLike } from './job-store';
 import type { AiJobInput, AiJobProgressMessage, AiJobRetryMessage, AiJobStateMessage } from './protocol';
-import type { ConnectionKind } from './types';
+import type { AiDiagnosticEntry, ConnectionKind } from './types';
 
 // ---------------------------------------------------------------------------------------------
 // Fakes
@@ -151,7 +151,8 @@ function setup(options: SetupOptions = {}) {
 	const clock = fakeClock();
 	const calls: ExecCall[] = [];
 	const stats = { inFlight: 0, maxInFlight: 0 };
-	const connection = { kind: options.kind ?? 'openai-compatible' as ConnectionKind, maxConcurrency: options.maxConcurrency };
+	const connection = { kind: options.kind ?? 'openai-compatible' as ConnectionKind, id: 'conn-1', maxConcurrency: options.maxConcurrency };
+	const diagnostics: AiDiagnosticEntry[] = [];
 	const respond = options.respond ?? echo;
 	const execute = ((task: TranscriptJobTask, input: ExecCall['input'], { signal }: { signal: AbortSignal }) => (
 		new Promise<unknown>((resolve, reject) => {
@@ -194,7 +195,8 @@ function setup(options: SetupOptions = {}) {
 		random: () => 0.5,
 		setTimeout: clock.setTimeout,
 		clearTimeout: clock.clearTimeout,
-		heartbeatMs: 20_000
+		heartbeatMs: 20_000,
+		recordDiagnostics: entry => diagnostics.push(entry)
 	});
 	const events: JobRunnerEvent[] = [];
 	const listener = (event: JobRunnerEvent) => {
@@ -204,7 +206,7 @@ function setup(options: SetupOptions = {}) {
 	const progress = () => events.filter((event): event is AiJobProgressMessage => event.type === 'job-progress');
 	const retries = () => events.filter((event): event is AiJobRetryMessage => event.type === 'job-retry');
 	const final = () => states().find(state => state.status !== 'running');
-	return { area, store, clock, calls, stats, connection, runner, events, listener, states, progress, retries, final };
+	return { area, store, clock, calls, stats, connection, diagnostics, runner, events, listener, states, progress, retries, final };
 }
 
 const IDENTITY = { namespace: 'transcript-translation', scope: 'video:zh-CN' };
@@ -493,6 +495,48 @@ describe('job runner retry', () => {
 		expect(harness.calls).toHaveLength(2);
 		expect(harness.calls[1].ids).toEqual([0]);
 		expect(harness.final()).toMatchObject({ status: 'completed', attempts: { requests: 2, retries: 1, splits: 0 } });
+	});
+
+	test('records one diagnostics entry per finished job with group and retry counts', async () => {
+		const harness = setup({
+			maxConcurrency: 1,
+			respond: (call, index) => index === 0 ? new AiError('rate-limited', { status: 429, retryAfterMs: 1000 }) : echo(call, index)
+		});
+		const { jobId, input } = jobInput('translate', oneGroupEach(3));
+		await harness.runner.start(jobId, 'translate', input, undefined, harness.listener);
+		await flush();
+		await harness.clock.advance(1000);
+		await flush(8);
+		expect(harness.final()).toMatchObject({ status: 'completed' });
+		expect(harness.diagnostics).toEqual([{
+			at: harness.clock.now(),
+			task: 'translate',
+			kind: 'openai-compatible',
+			connectionId: 'conn-1',
+			durationMs: 1000,
+			outcome: 'ok',
+			groups: 3,
+			retries: 1
+		}]);
+		// Never content, prompts, keys, or job ids.
+		expect(Object.keys(harness.diagnostics[0]).sort()).toEqual(
+			['at', 'connectionId', 'durationMs', 'groups', 'kind', 'outcome', 'retries', 'task']
+		);
+	});
+
+	test('records a failed and a cancelled job with their codes', async () => {
+		const failed = setup({ respond: () => new AiError('auth', { status: 401 }) });
+		const first = jobInput('translate', ['hello']);
+		await failed.runner.start(first.jobId, 'translate', first.input, undefined, failed.listener);
+		await flush(8);
+		expect(failed.diagnostics).toEqual([expect.objectContaining({ outcome: 'error', code: 'auth', status: 401, groups: 1, retries: 0 })]);
+
+		const cancelled = setup({ respond: () => 'hold' });
+		const second = jobInput('translate', ['hello']);
+		await cancelled.runner.start(second.jobId, 'translate', second.input, undefined, cancelled.listener);
+		await flush();
+		await cancelled.runner.cancel(second.jobId);
+		expect(cancelled.diagnostics).toEqual([expect.objectContaining({ outcome: 'cancelled', code: 'cancelled' })]);
 	});
 
 	test('retries a 503 twice, then fails the job', async () => {

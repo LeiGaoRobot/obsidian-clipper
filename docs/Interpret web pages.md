@@ -34,15 +34,33 @@ Interpreter works with almost any language model provider, including options tha
 1. Go to the **AI** section in Web Clipper settings.
 2. Under **Connections**, select **Add API provider**, choose your provider (or **Custom**), and enter its API key. See [[Interpret web pages#Models|models]] below.
 3. Under **Models**, add the model you want to use for that connection. The first model you add becomes the **Default model** in **Task routing**.
-4. Under **Interpreter**, toggle on **Enable AI features**.
-5. Add [[Variables|prompt variables]] to your [[Obsidian Web Clipper/Templates|templates]].
-6. If your template includes prompt variables, the Interpreter section will be visible when you [[Clip web pages|clip a page]]. Click **interpret** to process the prompt variables.
+4. Optionally select **Test** on the connection to check the key and the model. See [[Interpret web pages#Test a connection|Test a connection]].
+5. Under **Interpreter**, toggle on **Enable AI features**.
+6. Add [[Variables|prompt variables]] to your [[Obsidian Web Clipper/Templates|templates]].
+7. If your template includes prompt variables, the Interpreter section will be visible when you [[Clip web pages|clip a page]]. Click **interpret** to process the prompt variables.
 
 > [!info] API keys stay on this device
 > API keys are stored only on the device where you enter them, in the browser's local extension storage, as plain text. They are not encrypted and do not sync to your other devices, which also keeps them out of the browser's sync storage limits. Connections, models, and task routing do sync. On another device a synced connection that needs a key shows **Key missing on this device** until you enter the key there.
 
 > [!note] Upgrading from the Interpreter settings section
 > The first time this version runs, it copies your providers, models, selected model, and Interpreter options into the **AI** section once, and leaves the previous settings unchanged in sync storage so an older version still works. API keys saved by the previous version are imported on each device where they are still present. A key you enter afterwards must be entered on each device. If you used **Grok CLI** or **Codex CLI** as the execution mode, that CLI is carried over as a connection; add the other one with **Add local CLI**. Model ordering is no longer used; choose the model per task in **Task routing** instead.
+
+### Test a connection
+
+Select **Test** on a connection in **Settings → AI → Connections** to check it. A Test runs only when you select it; adding, editing, or loading a connection never sends a request.
+
+- For an API provider, Test first lists the provider's models with your key, which is free. The result says how many of the connection's models the provider lists, a model it does not list shows **Model not listed** under **Models**, and the listed models become the model ID suggestions.
+- For a compatible server other than OpenAI's own API, such as DeepSeek, OpenRouter, or Gemini, Test then sends one minimal request to find the structured-output mode the server accepts: JSON schema, JSON object, or none. The mode is stored with the connection and used for later requests. Providers without a model list, such as Azure OpenAI, Hugging Face, and Perplexity, get a minimal 1-token request instead.
+- For a local CLI, Test checks the Native Messaging Host, then runs the CLI once with a short prompt: once for each enabled Codex CLI model, or once for Grok CLI.
+
+> [!warning] Test may send a billable request
+> A Test that sends a structured-output probe, a 1-token request, or a CLI run may be billed by the provider or count against your CLI plan. The connection shows this note above **Test** whenever it applies. A Test that only lists models, such as for OpenAI, Anthropic, or Ollama, is not billed.
+
+The result is stored on this device. The connection's badge shows **OK**, or **Failing** with the reason, and a failing Test shows the error with an action such as **Try again** or **Copy install command**. **Test** waits while a settings change is being saved. Changing a connection's base URL clears its status and its detected structured-output mode; changing its API key clears its status. In Safari, the Host check is a single message, and **Cancel** stops waiting but cannot stop a CLI run that has already started.
+
+### Diagnostics
+
+**Settings → AI → Diagnostics** lists the last 100 model runs and connection Tests in this browser, newest first: the task, connection, outcome, HTTP status, duration, structured-output mode, and, for transcript jobs, the number of groups and retries. Prompts, page content, API keys, and provider error text are never recorded. The list lives in the browser's session storage, so it is cleared when the browser closes. **Copy as JSON** copies it, for example for a bug report, and **Clear** empties it.
 
 ### Local Grok and Codex CLI connections
 

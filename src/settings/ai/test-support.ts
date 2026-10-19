@@ -98,12 +98,15 @@ export interface FakeSettings {
 	v1?: Record<string, unknown>;
 	/** Makes the store a bootstrapping one, as the Settings page's is. */
 	bootstrapper?: AiSettingsBootstrapper;
+	/** Seeds `storage.session`, which only the Diagnostics panel reads. */
+	session?: Record<string, unknown>;
 }
 
 export interface FakeStore {
 	store: AiSettingsStore;
 	sync: MemoryArea;
 	local: MemoryArea;
+	session: MemoryArea;
 	onChanged: FakeOnChanged;
 }
 
@@ -123,6 +126,7 @@ export function createFakeStore(settings: FakeSettings = {}): FakeStore {
 	};
 	const sync = createMemoryArea('sync', syncData, onChanged);
 	const local = createMemoryArea('local', localData, onChanged);
+	const session = createMemoryArea('session', settings.session ?? {}, onChanged);
 	const store = createAiSettingsStore({
 		sync,
 		local,
@@ -131,7 +135,7 @@ export function createFakeStore(settings: FakeSettings = {}): FakeStore {
 		bootstrap: Boolean(settings.bootstrapper),
 		...(settings.bootstrapper ? { bootstrapper: settings.bootstrapper, build: '9.9.9' } : {})
 	});
-	return { store, sync, local, onChanged };
+	return { store, sync, local, session, onChanged };
 }
 
 let settingsHtml: string | undefined;

@@ -15,14 +15,17 @@ export interface SettingsErrorDescription {
 	detail?: string;
 }
 
-/** Settings controls the card's action button can drive. A missing handler hides the button. */
+/**
+ * Settings controls the card's action button can drive, called with the click event. A missing
+ * handler hides the button.
+ */
 export interface ErrorCardHandlers {
-	/** Runs the Test again (5c). */
-	retry?: () => void;
+	/** Runs the Test again; it checks that the click is trusted, since a Test may be billed. */
+	retry?: (event: Event) => void;
 	/** The install guide's copy button. */
-	copyInstallCommand?: () => void;
+	copyInstallCommand?: (event: Event) => void;
 	/** Focuses the routing table. */
-	switchProfile?: () => void;
+	switchProfile?: (event: Event) => void;
 }
 
 function isAiError(error: unknown): error is AiError {

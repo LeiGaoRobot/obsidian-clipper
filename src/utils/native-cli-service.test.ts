@@ -232,9 +232,54 @@ describe('Native CLI service', () => {
 		});
 
 		await expect(response).resolves.toEqual({
-			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
-			mode: 'codex',
-			command: '/usr/local/bin/codex'
+			health: {
+				protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+				mode: 'codex',
+				command: '/usr/local/bin/codex'
+			},
+			transport: 'port'
+		});
+	});
+
+	async function withoutConnectNative(run: () => Promise<void>): Promise<void> {
+		const runtime = (await import('./browser-polyfill')).default.runtime as { connectNative?: unknown };
+		const connectNative = runtime.connectNative;
+		runtime.connectNative = undefined;
+		try {
+			await run();
+		} finally {
+			runtime.connectNative = connectNative;
+		}
+	}
+
+	test('checks health over one-shot sendNativeMessage when connectNative is absent', async () => {
+		await withoutConnectNative(async () => {
+			mocks.sendNativeMessage.mockImplementation(async (_host: string, request: { requestId: string }) => ({
+				requestId: request.requestId,
+				ok: true,
+				health: { protocolVersion: NATIVE_CLI_PROTOCOL_VERSION, mode: 'grok', command: '/usr/local/bin/grok' }
+			}));
+
+			await expect(checkNativeCliHealth('grok')).resolves.toEqual({
+				health: { protocolVersion: NATIVE_CLI_PROTOCOL_VERSION, mode: 'grok', command: '/usr/local/bin/grok' },
+				transport: 'message'
+			});
+			expect(mocks.connectNative).not.toHaveBeenCalled();
+			expect(mocks.sendNativeMessage).toHaveBeenCalledOnce();
+			expect(mocks.sendNativeMessage.mock.calls[0][1]).toMatchObject({ type: 'healthCheck', mode: 'grok' });
+		});
+	});
+
+	test('a one-shot health check reports a setup failure and an old Host', async () => {
+		await withoutConnectNative(async () => {
+			mocks.sendNativeMessage.mockResolvedValueOnce({ requestId: 'x', ok: false, errorCode: 'config', error: 'Grok is not configured.' });
+			await expect(checkNativeCliHealth('grok')).rejects.toMatchObject({ name: 'NativeCliExecutionError', code: 'config' });
+
+			mocks.sendNativeMessage.mockResolvedValueOnce({ ok: false, error: 'Unsupported native host request.' });
+			await expect(checkNativeCliHealth('grok')).rejects.toMatchObject({ code: 'protocol-mismatch' });
+
+			mocks.sendNativeMessage.mockRejectedValueOnce(new Error('Specified native messaging host not found.'));
+			await expect(checkNativeCliHealth('codex')).rejects.toMatchObject({ name: 'NativeCliUnavailableError' });
 		});
 	});
 

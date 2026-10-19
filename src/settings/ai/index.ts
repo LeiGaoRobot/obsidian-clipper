@@ -1,10 +1,12 @@
+import type { StorageAreaLike } from '../../ai/job-store';
 import { aiSettingsBootstrapper } from '../../ai/migrate';
-import type { AiSettingsStore, AiStorageKey } from '../../ai/settings';
-import { createBrowserAiSettingsStore } from '../../utils/ai-settings';
+import { AI_DIAGNOSTICS_KEY, type AiSettingsStore, type AiStorageKey } from '../../ai/settings';
+import { browserSessionArea, createBrowserAiSettingsStore } from '../../utils/ai-settings';
 import browser from '../../utils/browser-polyfill';
 import { createAiSettingsController, type AiSettingsController, type AiSettingsControllerOptions } from './controller';
-import { createConnectionsPanel } from './connections';
-import { renderErrorCard } from './error-card';
+import { createConnectionsPanel, type RunConnectionTest } from './connections';
+import { createDiagnosticsPanel } from './diagnostics';
+import { renderErrorCard, type ErrorCardHandlers } from './error-card';
 import { createInterpreterPanel } from './interpreter';
 import { createLanguagePanel } from './language';
 import { createNativeCliPanel, type NativeCliInstallEnvironment } from './native-cli';
@@ -12,9 +14,9 @@ import type { AiSettingsPanel } from './panel';
 import { createProfilesPanel } from './profiles';
 import { createRoutingPanel } from './routing';
 
-// Entry of the AI settings section (lazy `settings-ai` chunk once Task 9 wires it). Loads the view,
-// builds the panels into their static containers, and re-renders a panel when the controller or
-// `storage.onChanged` reports one of its keys and what it shows actually changed.
+// Entry of the AI settings section (lazy `settings-ai` chunk). Loads the view, builds the panels
+// into their static containers, and re-renders a panel when the controller or `storage.onChanged`
+// reports one of its keys and what it shows actually changed. Diagnostics follow `storage.session`.
 
 export interface InitializeAiSettingsOptions {
 	doc?: Document;
@@ -25,6 +27,13 @@ export interface InitializeAiSettingsOptions {
 	installGuide?: NativeCliInstallEnvironment | (() => Promise<NativeCliInstallEnvironment | undefined>);
 	confirm?: (message: string) => boolean;
 	promptContextDebounceMs?: number;
+	/** Runs a connection Test; defaults to the gateway. */
+	runTest?: RunConnectionTest;
+	/** Whether a click may start a Test; defaults to `event.isTrusted`. */
+	isTrusted?: (event: Event) => boolean;
+	/** `storage.session` for Diagnostics; defaults to the browser's, `null` for none. */
+	session?: StorageAreaLike | null;
+	copyText?: (text: string) => Promise<void>;
 }
 
 export interface AiSettingsSection {
@@ -97,7 +106,16 @@ export async function initializeAiSettings(options: InitializeAiSettingsOptions 
 	]);
 
 	const confirm = options.confirm;
-	const connections = createConnectionsPanel({ doc, controller, container: requireContainer(doc, 'ai-connections'), ...(confirm ? { confirm } : {}) });
+	let errorHandlers: () => ErrorCardHandlers = () => ({});
+	const connections = createConnectionsPanel({
+		doc,
+		controller,
+		container: requireContainer(doc, 'ai-connections'),
+		...(confirm ? { confirm } : {}),
+		...(options.runTest ? { runTest: options.runTest } : {}),
+		...(options.isTrusted ? { isTrusted: options.isTrusted } : {}),
+		errorHandlers: () => errorHandlers()
+	});
 	const nativeCli = createNativeCliPanel({
 		doc,
 		controller,
@@ -114,12 +132,21 @@ export async function initializeAiSettings(options: InitializeAiSettingsOptions 
 		...(options.promptContextDebounceMs !== undefined ? { debounceMs: options.promptContextDebounceMs } : {})
 	});
 	const panels: AiSettingsPanel[] = [connections, nativeCli, profiles, routing, language, interpreter];
+	const session = options.session === null ? undefined : options.session ?? browserSessionArea();
+	const diagnostics = createDiagnosticsPanel({
+		doc,
+		container: requireContainer(doc, 'ai-diagnostics'),
+		...(session ? { session } : {}),
+		view: () => controller.state.view,
+		...(options.copyText ? { copyText: options.copyText } : {})
+	});
 
+	errorHandlers = () => ({
+		switchProfile: () => routing.focus(),
+		...(nativeCli.canCopyInstallCommand() ? { copyInstallCommand: () => nativeCli.copyInstallCommand() } : {})
+	});
 	showError = error => renderErrorCard(errorContainer, error, {
-		handlers: {
-			switchProfile: () => routing.focus(),
-			...(nativeCli.canCopyInstallCommand() ? { copyInstallCommand: () => nativeCli.copyInstallCommand() } : {})
-		},
+		handlers: errorHandlers(),
 		onDismiss: () => controller.clearError()
 	});
 	if (loaded) showError(controller.error);
@@ -139,7 +166,10 @@ export async function initializeAiSettings(options: InitializeAiSettingsOptions 
 		}
 	});
 	const stopObserving = store.observe(change => {
-		if (change.area === 'session') return;
+		if (change.area === 'session') {
+			if (change.keys.includes(AI_DIAGNOSTICS_KEY)) void diagnostics.refresh();
+			return;
+		}
 		void controller.reload(change.keys);
 	});
 

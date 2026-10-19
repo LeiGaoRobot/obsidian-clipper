@@ -10,7 +10,7 @@ import {
 import { AI_ERROR_CODES, AiError, type AiErrorCode, type AiNotConfiguredReason } from './errors';
 import { hasIndexIds, type TranscriptJobIdentity, type TranscriptJobTask } from './job-identity';
 import type { AiJobAttempts, AiJobStatus } from './job-store';
-import { AI_TASKS, type AiTask, type ConnectionKind } from './types';
+import { AI_TASKS, type AiTask, type AiTestResult, type AiTestStep, type ConnectionKind } from './types';
 
 export const AI_PORT_NAME = 'ai';
 
@@ -74,9 +74,20 @@ export type AiClientMessage =
 	| AiCheckpointPutMessage
 	| { type: 'checkpoint-get'; requestId: string; jobId: string }
 	| { type: 'checkpoint-clear'; requestId: string; jobId: string }
+	| AiTestMessage
 	| { type: 'cancel'; jobId: string }
 	| { type: 'attach'; jobId: string }
 	| { type: 'ping' };
+
+/**
+ * Tests a connection (D3), only after an explicit click. It carries no credential: the gateway
+ * reads the key of `connectionId` from `ai_credentials`. `cancel` with the same `jobId` stops it.
+ */
+export interface AiTestMessage {
+	type: 'test';
+	jobId: string;
+	connectionId: string;
+}
 
 export type AiProgressPhase = 'started' | 'heartbeat' | 'receiving';
 
@@ -149,7 +160,24 @@ export type AiGatewayMessage =
 	| AiJobStateMessage
 	| AiJobProgressMessage
 	| AiJobRetryMessage
-	| AiCheckpointMessage;
+	| AiCheckpointMessage
+	| AiTestStepMessage
+	| AiTestResultMessage;
+
+/** A Test step started; `profileId` names the profile a CLI exec runs with. */
+export interface AiTestStepMessage {
+	type: 'test-step';
+	jobId: string;
+	step: AiTestStep;
+	profileId?: string;
+}
+
+/** The finished Test; a cancelled or invalid Test answers `error` instead. */
+export interface AiTestResultMessage {
+	type: 'test-result';
+	jobId: string;
+	result: AiTestResult;
+}
 
 export function serializeAiError(error: AiError): SerializedAiError {
 	return {
@@ -388,6 +416,8 @@ export function isAiClientMessage(value: unknown): value is AiClientMessage {
 			return isJobId(message.requestId) && isJobId(message.jobId);
 		case 'checkpoint-put':
 			return sanitizeCheckpointPut(message) !== undefined;
+		case 'test':
+			return isJobId(message.jobId) && isJobId(message.connectionId);
 		default:
 			return false;
 	}

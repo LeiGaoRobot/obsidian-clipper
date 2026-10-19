@@ -65,6 +65,11 @@ function sessionArea(): StorageAreaLike | undefined {
 	}
 }
 
+/** `storage.session` for the Settings page's Diagnostics panel; undefined where the browser lacks it. */
+export function browserSessionArea(): StorageAreaLike | undefined {
+	return sessionArea();
+}
+
 /** A store over `browser.storage`; it bootstraps per `AI_V2_BOOTSTRAP` only when given a bootstrapper. */
 export function createBrowserAiSettingsStore(bootstrapper?: AiSettingsBootstrapper): AiSettingsStore {
 	const session = sessionArea();

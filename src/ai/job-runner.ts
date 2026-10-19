@@ -11,7 +11,7 @@ import {
 	type AiJobStateMessage,
 	type JobResultItem
 } from './protocol';
-import type { CliConnectionKind, ConnectionKind } from './types';
+import type { AiDiagnosticEntry, CliConnectionKind, ConnectionKind } from './types';
 
 // Durable transcript jobs: one job runs a whole transcript task as groups in a bounded pool,
 // checkpoints every finished group through serialized store writes, retries rate limits and
@@ -62,6 +62,8 @@ export function transcriptGroupBudget(kind: ConnectionKind, task: TranscriptJobT
 
 export interface JobConnection {
 	kind: ConnectionKind;
+	/** The connection's id, for the Diagnostics entry. */
+	id?: string;
 	/** `Connection.maxConcurrency`; defaults apply when absent or not a positive integer. */
 	maxConcurrency?: number;
 }
@@ -176,6 +178,11 @@ export interface JobRunnerDeps {
 	setTimeout?: (callback: () => void, ms: number) => unknown;
 	clearTimeout?: (handle: unknown) => void;
 	heartbeatMs?: number;
+	/**
+	 * Receives one redacted entry per run that leaves `running`, with its group and retry counts;
+	 * never one per group. Not called when no connection was ever resolved.
+	 */
+	recordDiagnostics?: (entry: AiDiagnosticEntry) => void;
 }
 
 export type JobRunnerEvent = AiJobStateMessage | AiJobProgressMessage | AiJobRetryMessage;
@@ -250,6 +257,10 @@ interface Job {
 	/** Set when the job starts to settle; the job keeps its id until the final write lands. */
 	settling?: Promise<void>;
 	heartbeat?: unknown;
+	/** When this run launched, for the Diagnostics duration. */
+	startedAt: number;
+	/** The connection last resolved for this run. */
+	connection?: JobConnection;
 }
 
 const NOT_OK: GroupOutcome = { ok: false, items: [] };
@@ -411,6 +422,27 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		beat();
 	};
 
+	const recordDiagnostics = (job: Job, status: Exclude<AiJobStatus, 'running'>, error?: AiError) => {
+		const connection = job.connection;
+		if (!deps.recordDiagnostics || !connection?.id) return;
+		try {
+			deps.recordDiagnostics({
+				at: now(),
+				task: job.task,
+				kind: connection.kind,
+				connectionId: connection.id,
+				durationMs: Math.max(0, now() - job.startedAt),
+				outcome: status === 'completed' ? 'ok' : status === 'cancelled' ? 'cancelled' : 'error',
+				...(status !== 'completed' && error ? { code: error.code } : {}),
+				...(status !== 'completed' && error?.status !== undefined ? { status: error.status } : {}),
+				groups: job.totalGroups,
+				retries: job.retriesThisRun
+			});
+		} catch {
+			// Diagnostics never change a job's outcome.
+		}
+	};
+
 	// The job keeps its id until its final write lands, so a start, attach, or cancel of the same id
 	// waits for `settling` and then reads the final record instead of a stale one.
 	const settle = (job: Job, status: Exclude<AiJobStatus, 'running'>, error?: AiError): Promise<void> => {
@@ -420,6 +452,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		if (error) job.record.error = serializeAiError(error);
 		else delete job.record.error;
 		checkpoint(job);
+		recordDiagnostics(job, status, error);
 		job.settling = (async () => {
 			await job.writes;
 			// The stored record is an older `running` one; left behind, an attach would resume it.
@@ -641,6 +674,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			if (next > 0) {
 				try {
 					connection = await deps.resolveConnection(job.task, job.record.profileId);
+					job.connection = connection;
 				} catch (error) {
 					fail(job, toAiError(error));
 					break;
@@ -677,6 +711,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 				let connection: JobConnection;
 				try {
 					connection = await deps.resolveConnection(job.task, job.record.profileId);
+					job.connection = connection;
 				} catch (error) {
 					fail(job, toAiError(error));
 					break;
@@ -726,7 +761,8 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			retryBudget: 0,
 			writes: Promise.resolve(),
 			durable: true,
-			warned: false
+			warned: false,
+			startedAt: now()
 		};
 		jobs.set(job.id, job);
 		checkpoint(job);

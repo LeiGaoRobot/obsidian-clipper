@@ -11,10 +11,12 @@ import {
 	type AiSettingsStore,
 	type AiStorageKey
 } from '../../ai/settings';
+import { statusFromTestResult } from '../../ai/test-connection';
 import type {
 	AiRouting,
 	AiSettingsView,
 	AiTask,
+	AiTestResult,
 	CliConnectionKind,
 	Connection,
 	ConnectionStatus,
@@ -116,6 +118,18 @@ export interface AiSettingsController {
 	setInterpreterEnabled(enabled: boolean): Promise<boolean>;
 	setAutoRun(autoRun: boolean): Promise<boolean>;
 	setPromptContext(text: string): Promise<boolean>;
+
+	/** True while a mutation is queued or running; Test waits for saves to land. */
+	readonly saving: boolean;
+	/** Called whenever `saving` changes. Returns the unsubscribe function. */
+	onSavingChange(listener: (saving: boolean) => void): () => void;
+	/**
+	 * Shows a finished Test: its status (the gateway already stored it on this device) and, when
+	 * the Test detected a structured-output mode, writes it to the synced connection.
+	 */
+	applyTestResult(result: AiTestResult): Promise<boolean>;
+	/** The model ids the last Test in this page listed for a connection, if any. */
+	listedModels(connectionId: string): readonly string[] | undefined;
 }
 
 function defaultCreateId(prefix: string): string {
@@ -184,6 +198,16 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 	let state = emptyState();
 	let currentError: unknown;
 	let queue: Promise<unknown> = Promise.resolve();
+	let pending = 0;
+	const savingListeners = new Set<(saving: boolean) => void>();
+	const listings = new Map<string, readonly string[]>();
+
+	function setPending(delta: number): void {
+		const before = pending > 0;
+		pending += delta;
+		if (before === pending > 0) return;
+		for (const listener of [...savingListeners]) listener(pending > 0);
+	}
 
 	function setError(error: unknown): void {
 		currentError = error;
@@ -221,6 +245,7 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 
 	/** Runs one mutation at a time; reports its error and resolves `fallback` when it throws. */
 	function enqueue<T>(fallback: T, run: (changed: AiStorageKey[]) => Promise<T>): Promise<T> {
+		setPending(1);
 		const result = queue.then(async () => {
 			const changed: AiStorageKey[] = [];
 			try {
@@ -233,6 +258,7 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 				return fallback;
 			} finally {
 				notify(changed);
+				setPending(-1);
 			}
 		});
 		queue = result.catch(() => undefined);
@@ -533,6 +559,41 @@ export function createAiSettingsController(options: AiSettingsControllerOptions)
 				requireWritten(await store.saveInterpreter({ enabled: state.view.enabled, autoRun }));
 				setView({ interpreter: { ...state.view.interpreter, autoRun } });
 				changed.push(AI_INTERPRETER_KEY);
+				return true;
+			});
+		},
+
+		get saving() {
+			return pending > 0;
+		},
+
+		onSavingChange(listener) {
+			savingListeners.add(listener);
+			return () => savingListeners.delete(listener);
+		},
+
+		listedModels(connectionId) {
+			return listings.get(connectionId);
+		},
+
+		applyTestResult(result) {
+			if (result.listedModels) listings.set(result.connectionId, [...result.listedModels]);
+			return enqueue(false, async changed => {
+				const id = result.connectionId;
+				const current = state.view.connections.find(connection => connection.id === id);
+				if (!current) return false;
+				state = {
+					...state,
+					connectionStatus: { ...state.connectionStatus, [id]: statusFromTestResult(result, state.connectionStatus[id]) }
+				};
+				changed.push(AI_CONNECTION_STATUS_KEY);
+				const mode = result.structuredOutput;
+				if (mode && current.structuredOutput !== mode) {
+					await writeConnections(
+						state.view.connections.map(connection => connection.id === id ? { ...connection, structuredOutput: mode } : connection),
+						changed
+					);
+				}
 				return true;
 			});
 		},

@@ -77,6 +77,15 @@ describe('AI port protocol', () => {
 		expect(isAiClientMessage({ ...translate, input: { instruction: 'T.', segments: [{ id: 0.5, text: 'a' }] } })).toBe(false);
 	});
 
+	test('accepts a test message with a string connection id and rejects any other', () => {
+		expect(isAiClientMessage({ type: 'test', jobId: 'test-1', connectionId: 'openai' })).toBe(true);
+		expect(isAiClientMessage({ type: 'test', jobId: 'test-1' })).toBe(false);
+		expect(isAiClientMessage({ type: 'test', jobId: 'test-1', connectionId: 7 })).toBe(false);
+		expect(isAiClientMessage({ type: 'test', jobId: 'test-1', connectionId: '' })).toBe(false);
+		expect(isAiClientMessage({ type: 'test', jobId: 'test-1', connectionId: { id: 'openai' } })).toBe(false);
+		expect(isAiClientMessage({ type: 'test', connectionId: 'openai' })).toBe(false);
+	});
+
 	test('copies only contract fields from a task input', () => {
 		expect(sanitizeTaskInput('translate', {
 			instruction: 'T.',

@@ -1,11 +1,6 @@
 import { executeApiCall, type AppIdentity } from './adapters/http';
-import { runCliPrompt } from './adapters/native-cli';
-import {
-	isStructuredOutputRejection,
-	probeStructuredOutput,
-	type StructuredOutputCache,
-	type StructuredOutputMode
-} from './capabilities';
+import { checkCliHealth, runCliPrompt } from './adapters/native-cli';
+import { isStructuredOutputRejection, type StructuredOutputMode } from './capabilities';
 import { isCliKind } from './connection-kind';
 import {
 	outputSpec,
@@ -16,6 +11,7 @@ import {
 	type AiTaskOutput,
 	type ReadingToken
 } from './contracts';
+import { createAiDiagnostics, type AiDiagnostics } from './diagnostics';
 import { AiError, toAiError } from './errors';
 import { hashSegments, parseJobId, transcriptJobId, type TranscriptJobTask } from './job-identity';
 import {
@@ -39,8 +35,18 @@ import {
 	type AiGatewayMessage,
 	type AiProgressPhase
 } from './protocol';
-import { resolveProfile } from './resolve';
-import type { AiSettingsView, AiTask, ApiConnectionKind, CliConnectionKind, ConnectionKind } from './types';
+import { effectiveStructuredOutput, resolveProfile } from './resolve';
+import { createConnectionStatusStore, type ConnectionStatusStore } from './settings';
+import { runConnectionTest, statusFromTestResult, type ConnectionTestDeps } from './test-connection';
+import type {
+	AiDiagnosticEntry,
+	AiSettingsView,
+	AiTask,
+	ApiConnectionKind,
+	CliConnectionKind,
+	Connection,
+	ConnectionKind
+} from './types';
 
 export interface AiPortLike {
 	name: string;
@@ -55,8 +61,17 @@ export interface AiGatewayDeps {
 	app: () => AppIdentity;
 	executeApi?: typeof executeApiCall;
 	executeCli?: typeof runCliPrompt;
-	/** Remembers a structured-output downgrade per connection. Omit to always use the default. */
-	structuredOutput?: StructuredOutputCache;
+	/**
+	 * Per-device connection status (`ai_connection_status`): Test results and structured-output
+	 * downgrades. Omit for an in-memory store that lasts as long as the worker.
+	 */
+	connectionStatus?: ConnectionStatusStore;
+	/** The redacted Diagnostics log. Omit for an in-memory log. */
+	diagnostics?: AiDiagnostics;
+	/** The Host health check of a CLI Test. Defaults to Native Messaging. */
+	checkCliHealth?: ConnectionTestDeps['health'];
+	/** The fetch of a Test's model listing. Defaults to the global fetch. */
+	fetchImpl?: typeof fetch;
 	now?: () => number;
 	/**
 	 * Called while any job is unfinished. In Chrome, an extension API call resets the service
@@ -98,6 +113,18 @@ interface Job {
 	outcome?: Outcome;
 }
 
+/** What a single call used, filled in as it runs, for its Diagnostics entry. */
+interface ExecuteInfo {
+	connection?: Connection;
+	structuredMode?: StructuredOutputMode;
+	fallback?: true;
+}
+
+interface TestRun {
+	controller: AbortController;
+	port: AiPortLike;
+}
+
 interface PortState {
 	/** Durable job listeners of this port, by job id. */
 	durable: Map<string, JobDetach>;
@@ -107,8 +134,8 @@ interface PortState {
 export interface AiGateway {
 	handlePort(port: AiPortLike): void;
 	/**
-	 * Worker start: removes Phase 3 Reader checkpoints, resumes recent `running` jobs, and marks
-	 * older ones `incomplete`. Idempotent. An `attach` or `start-job` that arrives first is safe:
+	 * Worker start: removes Phase 3 Reader checkpoints and the Phase 3 structured-output cache,
+	 * resumes recent `running` jobs, and marks older ones `incomplete`. Idempotent. An `attach` or `start-job` that arrives first is safe:
 	 * the runner runs one job per id.
 	 */
 	init(): Promise<{ resumed: string[]; expired: string[] }>;
@@ -139,6 +166,9 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 	const executeCli = deps.executeCli ?? runCliPrompt;
 	const retainMs = deps.retainMs ?? DEFAULT_RETAIN_MS;
 	const store = deps.jobStore ?? createAiJobStore();
+	const statusStore = deps.connectionStatus ?? createConnectionStatusStore();
+	const diagnostics = deps.diagnostics ?? createAiDiagnostics();
+	const tests = new Map<string, TestRun>();
 	// Durable job ids this gateway started, attached, or resumed; pruned once they stop running.
 	const durableIds = new Set<string>();
 	const ports = new WeakMap<AiPortLike, PortState>();
@@ -151,7 +181,9 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		}
 		return Array.from(durableIds);
 	};
-	const hasUnfinishedJobs = () => Array.from(jobs.values()).some(job => !job.outcome) || activeDurableIds().length > 0;
+	const hasUnfinishedJobs = () => tests.size > 0
+		|| Array.from(jobs.values()).some(job => !job.outcome)
+		|| activeDurableIds().length > 0;
 	const updateKeepAlive = () => {
 		if (!deps.keepAlive) return;
 		if (hasUnfinishedJobs()) {
@@ -213,6 +245,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		const { connection } = resolveTask(await deps.loadAiSettings(), task, profileId);
 		return {
 			kind: connection.kind,
+			id: connection.id,
 			...(connection.maxConcurrency !== undefined ? { maxConcurrency: connection.maxConcurrency } : {})
 		};
 	};
@@ -221,15 +254,19 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 	const executeTask = async (
 		task: AiTask,
 		input: AiTaskInput,
-		options: AiExecuteOptions
+		options: AiExecuteOptions,
+		info: ExecuteInfo = {}
 	): Promise<{ output: unknown; connectionKind: ConnectionKind }> => {
 		const { profile, connection, credential } = resolveTask(await deps.loadAiSettings(), task, options.profileId);
+		info.connection = connection;
 		const { signal, onProgress } = options;
 		if (signal.aborted) throw new AiError('cancelled', { connectionId: connection.id });
 		const spec = outputSpec(task, input);
+		// This device's override (Test, downgrade), then the connection's detected mode, then the default.
 		const mode: StructuredOutputMode = spec
-			? await probeStructuredOutput(connection, deps.structuredOutput)
+			? effectiveStructuredOutput(connection, await statusStore.get(connection.id))
 			: 'none';
+		if (spec) info.structuredMode = mode;
 		const parse = (text: string) => {
 			try {
 				return parseOutput(task, input, text);
@@ -240,7 +277,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		};
 
 		// A rejected structured-output parameter is not billed; retry once with prompt rules only, and
-		// remember the downgrade only after the retry succeeds.
+		// remember the downgrade on this device only after the retry succeeds. A later Test overwrites it.
 		const withFallback = async (run: (structuredMode: StructuredOutputMode) => Promise<string>) => {
 			try {
 				return await run(mode);
@@ -248,7 +285,9 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 				const aiError = toAiError(error, connection.id);
 				if (mode === 'none' || signal.aborted || !isStructuredOutputRejection(aiError)) throw aiError;
 				const text = await run('none');
-				await deps.structuredOutput?.set(connection.id, connection.baseUrl, 'none');
+				info.fallback = true;
+				await statusStore.update(connection.id, current => ({ ...(current ?? {}), structuredOutput: 'none' }))
+					.catch(() => undefined);
 				return text;
 			}
 		};
@@ -307,8 +346,27 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 			return { output: result.output as AiTaskOutput<T>, connectionKind: result.connectionKind };
 		},
 		now,
+		recordDiagnostics: entry => {
+			void diagnostics.record(entry);
+		},
 		...deps.jobTiming
 	});
+
+	const recordCall = (task: AiDiagnosticEntry['task'], startedAt: number, info: ExecuteInfo, error?: AiError) => {
+		if (!info.connection) return;
+		void diagnostics.record({
+			at: now(),
+			task,
+			kind: info.connection.kind,
+			connectionId: info.connection.id,
+			durationMs: Math.max(0, now() - startedAt),
+			outcome: !error ? 'ok' : error.code === 'cancelled' ? 'cancelled' : 'error',
+			...(error ? { code: error.code } : {}),
+			...(error?.status !== undefined ? { status: error.status } : {}),
+			...(info.structuredMode ? { structuredMode: info.structuredMode } : {}),
+			...(info.fallback ? { fallback: true as const } : {})
+		});
+	};
 
 	// One start-job or checkpoint operation at a time per job id, so a checkpoint-put cannot
 	// overwrite a record that a concurrent start-job is turning into a running job.
@@ -347,20 +405,102 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		jobs.set(jobId, job);
 		updateKeepAlive();
 		progress(job, 'started');
+		const info: ExecuteInfo = {};
 		executeTask(task, input, {
 			...(profileId ? { profileId } : {}),
 			signal: job.controller.signal,
 			onProgress: (phase, receivedChars) => progress(job, phase, receivedChars)
-		}).then(
-			result => finish(job, { type: 'result', jobId, ...result }),
+		}, info).then(
+			result => {
+				finish(job, { type: 'result', jobId, ...result });
+				recordCall(task, job.startedAt, info);
+			},
 			error => {
 				const aiError = job.controller.signal.aborted ? new AiError('cancelled') : toAiError(error);
 				finish(job, { type: 'error', jobId, error: serializeAiError(aiError) });
+				recordCall(task, job.startedAt, info, aiError);
 			}
 		);
 	};
 
+	/** A connection Test, after an explicit click. The credential is read here, never sent by the client. */
+	const startTest = (port: AiPortLike, jobId: string, connectionId: string) => {
+		if (tests.has(jobId) || jobs.has(jobId)) {
+			post(port, {
+				type: 'error',
+				jobId,
+				error: serializeAiError(new AiError('provider-error', { detail: 'A job with this ID already exists.' }))
+			});
+			return;
+		}
+		const run: TestRun = { controller: new AbortController(), port };
+		tests.set(jobId, run);
+		updateKeepAlive();
+		const startedAt = now();
+		let connection: Connection | undefined;
+		const record = (outcome: AiDiagnosticEntry['outcome'], fields: Partial<AiDiagnosticEntry> = {}) => {
+			if (!connection) return;
+			void diagnostics.record({
+				at: now(),
+				task: 'test',
+				kind: connection.kind,
+				connectionId: connection.id,
+				durationMs: Math.max(0, now() - startedAt),
+				outcome,
+				...fields
+			});
+		};
+		void (async () => {
+			try {
+				const view = await deps.loadAiSettings();
+				connection = view.connections.find(item => item.id === connectionId);
+				if (!connection) throw new AiError('not-configured', { reason: 'connection-missing', connectionId });
+				const credential = view.credentials[connectionId]?.trim() ? view.credentials[connectionId] : undefined;
+				const result = await runConnectionTest({
+					connection,
+					profiles: view.profiles.filter(profile => profile.connectionId === connectionId && profile.enabled),
+					...(credential ? { credential } : {}),
+					nativeMessaging: view.nativeMessaging
+				}, {
+					app: deps.app(),
+					executeApi,
+					executeCli,
+					health: deps.checkCliHealth ?? ((kind, options) => checkCliHealth(kind, options)),
+					...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+					now
+				}, {
+					signal: run.controller.signal,
+					onStep: (step, profileId) => post(port, { type: 'test-step', jobId, step, ...(profileId ? { profileId } : {}) })
+				});
+				// Status is per device: only this gateway creates entries; Settings may delete them.
+				await statusStore.update(connectionId, previous => statusFromTestResult(result, previous)).catch(error => {
+					console.warn('[ai] The connection status was not saved:', error instanceof Error ? error.message : String(error));
+				});
+				record(result.state === 'ok' ? 'ok' : 'error', {
+					...(result.error ? { code: result.error.code } : {}),
+					...(result.error?.status !== undefined ? { status: result.error.status } : {}),
+					...(result.structuredOutput ? { structuredMode: result.structuredOutput } : {})
+				});
+				post(port, { type: 'test-result', jobId, result });
+			} catch (error) {
+				const aiError = run.controller.signal.aborted ? new AiError('cancelled', { connectionId }) : toAiError(error, connectionId);
+				record(aiError.code === 'cancelled' ? 'cancelled' : 'error', {
+					code: aiError.code,
+					...(aiError.status !== undefined ? { status: aiError.status } : {})
+				});
+				post(port, { type: 'error', jobId, error: serializeAiError(aiError) });
+			} finally {
+				tests.delete(jobId);
+				updateKeepAlive();
+			}
+		})();
+	};
+
 	const detach = (port: AiPortLike) => {
+		// A Test is interactive: it stops when its Settings page goes away.
+		for (const run of tests.values()) {
+			if (run.port === port) run.controller.abort();
+		}
 		for (const job of jobs.values()) {
 			if (!job.listeners.delete(port)) continue;
 			if (!job.outcome && job.listeners.size === 0 && CANCEL_ON_DETACH.has(job.task)) {
@@ -574,7 +714,11 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 					case 'start-job':
 						startJob(port, state, message);
 						return;
+					case 'test':
+						startTest(port, message.jobId, message.connectionId);
+						return;
 					case 'cancel':
+						tests.get(message.jobId)?.controller.abort();
 						jobs.get(message.jobId)?.controller.abort();
 						if (parseJobId(message.jobId)) {
 							// Queued behind a pending start-job of this id, so a cancel sent right after it applies.
@@ -601,8 +745,9 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		},
 		init() {
 			initPromise ??= (async () => {
-				// Best effort: a leftover Phase 3 key only wastes session storage.
+				// Best effort: a leftover Phase 3 key only wastes storage.
 				await store.removeLegacyCheckpoints().catch(() => undefined);
+				await statusStore.removeLegacyCache().catch(() => undefined);
 				const outcome = await runner.resumeRunning();
 				outcome.resumed.forEach(trackDurable);
 				return outcome;
@@ -611,6 +756,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		},
 		activeJobIds() {
 			return [
+				...Array.from(tests.keys()),
 				...Array.from(jobs.values()).filter(job => !job.outcome).map(job => job.id),
 				...activeDurableIds()
 			];

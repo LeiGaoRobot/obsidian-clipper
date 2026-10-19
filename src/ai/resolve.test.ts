@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { Settings } from '../types/types';
 import { deriveAiSettings, LEGACY_CODEX_PROFILE_ID } from './settings-view';
-import { resolveProfile, resolveResponseLanguage } from './resolve';
+import { effectiveStructuredOutput, resolveProfile, resolveResponseLanguage } from './resolve';
 import type { AiSettingsView } from './types';
 
 function view(overrides: Partial<AiSettingsView> = {}): AiSettingsView {
@@ -128,5 +128,18 @@ describe('v1 parity', () => {
 			profile: { id: LEGACY_CODEX_PROFILE_ID, model: 'gpt-codex' },
 			connection: { kind: 'cli-codex' }
 		});
+	});
+});
+
+describe('effectiveStructuredOutput', () => {
+	const compatible = { kind: 'openai-compatible' as const, baseUrl: 'https://api.deepseek.com/v1/chat/completions' };
+
+	test('uses the device override, then the connection, then the kind default', () => {
+		expect(effectiveStructuredOutput(compatible)).toBe('json_object');
+		expect(effectiveStructuredOutput({ ...compatible, structuredOutput: 'unknown' })).toBe('json_object');
+		expect(effectiveStructuredOutput({ ...compatible, structuredOutput: 'json_schema' })).toBe('json_schema');
+		expect(effectiveStructuredOutput({ ...compatible, structuredOutput: 'json_schema' }, { structuredOutput: 'none' })).toBe('none');
+		expect(effectiveStructuredOutput(compatible, {})).toBe('json_object');
+		expect(effectiveStructuredOutput({ kind: 'anthropic' })).toBe('json_schema');
 	});
 });

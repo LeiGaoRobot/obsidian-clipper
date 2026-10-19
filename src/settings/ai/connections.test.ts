@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { CATALOG } from '../../ai/catalog';
-import { initializeAiSettings } from './index';
+import type { TestConnectionOptions } from '../../ai/client';
+import { AiError } from '../../ai/errors';
+import type { AiTestResult } from '../../ai/types';
+import { initializeAiSettings, type InitializeAiSettingsOptions } from './index';
 import {
 	API_CONNECTION,
 	CODEX_CONNECTION,
@@ -19,13 +22,19 @@ function sequentialIds() {
 	return (prefix: string) => `${prefix}-${++next}`;
 }
 
-async function section(settings: FakeSettings, confirm: (message: string) => boolean = () => true) {
+async function section(
+	settings: FakeSettings,
+	confirm: (message: string) => boolean = () => true,
+	extra: Partial<InitializeAiSettingsOptions> = {}
+) {
 	const fake = createFakeStore(settings);
 	const handle = await initializeAiSettings({
 		store: fake.store,
 		createId: sequentialIds(),
 		installGuide: installGuideEnvironment(),
-		confirm
+		confirm,
+		session: null,
+		...extra
 	});
 	return { ...fake, handle };
 }
@@ -81,7 +90,7 @@ describe('Connection cards', () => {
 		expect(badge('codex')?.className).toContain('is-unsupported');
 	});
 
-	test('show the name, host, and kind icon, with no Test or cost note before 5c', async () => {
+	test('show the name, host, and kind icon, and a Test button', async () => {
 		await section({ connections: [API_CONNECTION, CODEX_CONNECTION], credentials: { openai: 'sk' } });
 		const card = document.querySelector('[data-connection-id="openai"]')!;
 		expect(card.querySelector('.ai-connection-name')?.textContent).toBe('OpenAI');
@@ -90,7 +99,9 @@ describe('Connection cards', () => {
 		expect(card.querySelector('.ai-connection-edit')).not.toBeNull();
 		expect(document.querySelector('[data-connection-id="codex"] .ai-connection-edit')).toBeNull();
 		expect(document.querySelector('[data-connection-id="codex"] .ai-connection-name')?.textContent).toBe('Codex CLI');
-		expect(document.querySelector('#ai-section .ai-connection-test, #ai-section .ai-connection-cost-note')).toBeNull();
+		expect(card.querySelector('.ai-connection-test')?.textContent).toBe('Test');
+		// OpenAI's own API is only listed: no billable step, no cost note.
+		expect(card.querySelector('.ai-connection-cost-note')).toBeNull();
 		expect(document.getElementById('ai-settings-error')?.hidden).toBe(true);
 	});
 
@@ -260,5 +271,191 @@ describe('Deleting a connection', () => {
 		expect(local.data.ai_credentials).toEqual({});
 		expect(document.querySelector('[data-connection-id="openai"]')).toBeNull();
 		expect(document.querySelector('#ai-profiles .ai-empty-state')).not.toBeNull();
+	});
+});
+
+describe('Connection Test', () => {
+	const DEEPSEEK = {
+		id: 'deepseek',
+		kind: 'openai-compatible' as const,
+		label: 'DeepSeek',
+		presetId: 'deepseek',
+		baseUrl: 'https://api.deepseek.com/v1/chat/completions',
+		apiKeyRequired: true
+	};
+	const CHAT = { id: 'chat', connectionId: 'deepseek', model: 'deepseek-chat', label: 'Chat', enabled: true };
+	const OLD = { id: 'old', connectionId: 'deepseek', model: 'deepseek-old', label: 'Old', enabled: true };
+
+	interface PendingTest {
+		connectionId: string;
+		options: TestConnectionOptions;
+		resolve(result: AiTestResult): void;
+		reject(error: unknown): void;
+	}
+
+	async function testSection(settings: FakeSettings, extra: Partial<InitializeAiSettingsOptions> = {}) {
+		const pending: PendingTest[] = [];
+		const runTest = vi.fn((connectionId: string, options: TestConnectionOptions) => new Promise<AiTestResult>((resolve, reject) => {
+			pending.push({ connectionId, options, resolve, reject });
+			options.signal?.addEventListener('abort', () => reject(new AiError('cancelled')));
+		}));
+		const result = await section(settings, () => true, { runTest, isTrusted: () => true, ...extra });
+		return { ...result, pending, runTest };
+	}
+
+	const item = (id: string) => document.querySelector(`.ai-connection-item[data-connection-id="${id}"]`)!;
+	const testButton = (id: string) => item(id).querySelector('.ai-connection-test') as HTMLButtonElement;
+	const progress = (id: string) => item(id).querySelector('.ai-connection-test-progress')?.textContent;
+
+	test('shows the cost note above Test for billable plans only', async () => {
+		await testSection({
+			connections: [API_CONNECTION, DEEPSEEK, CODEX_CONNECTION, LOCAL_CONNECTION],
+			profiles: [CHAT, GPT_PROFILE],
+			credentials: { openai: 'sk', deepseek: 'sk' }
+		});
+		const note = (id: string) => item(id).querySelector('.ai-connection-cost-note');
+		// Listing only: free. Ollama is listed and probed for nothing without a profile.
+		expect(note('openai')).toBeNull();
+		expect(note('ollama')).toBeNull();
+		expect(note('deepseek')?.textContent).toContain('may bill');
+		expect(note('codex')?.textContent).toContain('CLI');
+		const panel = item('deepseek').querySelector('.ai-connection-test-panel')!;
+		expect(panel.firstElementChild?.classList.contains('ai-connection-cost-note')).toBe(true);
+	});
+
+	test('an untrusted click does not run Test', async () => {
+		const { runTest } = await testSection({ connections: [DEEPSEEK], profiles: [CHAT], credentials: { deepseek: 'sk' } }, { isTrusted: () => false });
+		testButton('deepseek').click();
+		await settle();
+		expect(runTest).not.toHaveBeenCalled();
+		expect(progress('deepseek')).toBeUndefined();
+	});
+
+	test('the default guard rejects synthetic clicks', async () => {
+		const runTest = vi.fn();
+		await section({ connections: [DEEPSEEK], profiles: [CHAT], credentials: { deepseek: 'sk' } }, () => true, { runTest });
+		testButton('deepseek').click();
+		await settle();
+		expect(runTest).not.toHaveBeenCalled();
+	});
+
+	test('shows steps while running, then the OK badge, and writes the detected structured output', async () => {
+		const { pending, runTest, sync, local } = await testSection({ connections: [DEEPSEEK], profiles: [CHAT, OLD], credentials: { deepseek: 'sk' } });
+		testButton('deepseek').click();
+		await settle();
+
+		// Only the connection id goes to the gateway, which resolves the key itself.
+		expect(runTest.mock.calls[0][0]).toBe('deepseek');
+		expect(testButton('deepseek').disabled).toBe(true);
+		expect(progress('deepseek')).toBeTruthy();
+		pending[0].options.onStep?.('listing');
+		expect(progress('deepseek')).toContain('listing models');
+		pending[0].options.onStep?.('structured');
+		expect(progress('deepseek')).toContain('structured output');
+
+		// The gateway stores the status on this device before it answers.
+		await local.set({ ai_connection_status: { deepseek: { state: 'ok', testedAt: 1, models: [{ profileId: 'chat', model: 'deepseek-chat', listed: true }, { profileId: 'old', model: 'deepseek-old', listed: false }] } } });
+		pending[0].resolve({
+			connectionId: 'deepseek',
+			state: 'ok',
+			testedAt: 1,
+			billable: true,
+			structuredOutput: 'json_schema',
+			listedModels: ['deepseek-chat', 'deepseek-reasoner'],
+			models: [{ profileId: 'chat', model: 'deepseek-chat', listed: true }, { profileId: 'old', model: 'deepseek-old', listed: false }]
+		});
+		await settle();
+
+		expect(badge('deepseek')?.textContent).toBe('OK');
+		expect(progress('deepseek')).toBeUndefined();
+		expect(testButton('deepseek').disabled).toBe(false);
+		const result = item('deepseek').querySelector('.ai-connection-test-result')!;
+		expect(result.classList.contains('is-ok')).toBe(true);
+		expect(result.textContent).toContain('1 of 2 models');
+		expect(result.textContent).toContain('Not listed: deepseek-old');
+		expect(result.textContent).toContain('JSON schema');
+		expect(result.textContent).toContain('may bill');
+		const stored = sync.data.ai_connections as { items: Array<{ id: string; structuredOutput?: string }> };
+		expect(stored.items.find(entry => entry.id === 'deepseek')?.structuredOutput).toBe('json_schema');
+		// Model not listed on the profile row, only for the unlisted model.
+		expect(document.querySelector('[data-profile-id="old"] .ai-profile-model-not-listed')?.textContent).toBe('Model not listed');
+		expect(document.querySelector('[data-profile-id="chat"] .ai-profile-model-not-listed')).toBeNull();
+		// The last listing feeds the model suggestions.
+		(document.querySelector('.ai-profile-group[data-connection-id="deepseek"] .ai-add-profile, [data-connection-id="deepseek"] .ai-add-profile') as HTMLElement).click();
+		expect(Array.from(document.querySelectorAll<HTMLOptionElement>('#ai-profile-model-options option')).map(option => option.value))
+			.toEqual(['deepseek-chat', 'deepseek-reasoner']);
+	});
+
+	test('a failing result shows the error card, whose Try again runs Test again', async () => {
+		const { pending, runTest } = await testSection({ connections: [DEEPSEEK], profiles: [CHAT], credentials: { deepseek: 'sk' } });
+		testButton('deepseek').click();
+		await settle();
+		pending[0].resolve({
+			connectionId: 'deepseek',
+			state: 'failing',
+			testedAt: 1,
+			billable: false,
+			error: { code: 'rate-limited', retryable: true, status: 429, detail: 'slow down' }
+		});
+		await settle();
+
+		expect(badge('deepseek')?.textContent).toContain('Failing');
+		const card = item('deepseek').querySelector('.ai-connection-test-result.is-failing .ai-error-card')!;
+		expect(card.querySelector('.ai-error-card-detail code')?.textContent).toBe('slow down');
+		const retry = card.querySelector('.ai-error-card-action') as HTMLButtonElement;
+		expect(retry.textContent).toBe('Try again');
+		retry.click();
+		await settle();
+		expect(runTest).toHaveBeenCalledTimes(2);
+	});
+
+	test('a missing CLI host offers the install command', async () => {
+		const copyText = vi.fn(async () => undefined);
+		const { pending } = await testSection({ connections: [CODEX_CONNECTION] }, { installGuide: installGuideEnvironment({ copyText }) });
+		expect(item('codex').querySelector('.ai-connection-cost-note')).not.toBeNull();
+		testButton('codex').click();
+		await settle();
+		pending[0].options.onStep?.('health');
+		expect(progress('codex')).toContain('CLI host');
+		pending[0].reject(new AiError('host-missing', { detail: 'Specified native messaging host not found.' }));
+		await settle();
+		const action = item('codex').querySelector('.ai-error-card-action') as HTMLButtonElement;
+		expect(action.textContent).toBe('Copy install command');
+		action.click();
+		await settle();
+		expect(copyText).toHaveBeenCalled();
+	});
+
+	test('Cancel stops a running Test without a result', async () => {
+		const { pending } = await testSection({ connections: [DEEPSEEK], profiles: [CHAT], credentials: { deepseek: 'sk' } });
+		testButton('deepseek').click();
+		await settle();
+		(item('deepseek').querySelector('.ai-connection-test-cancel') as HTMLButtonElement).click();
+		await settle();
+		expect(pending[0].options.signal?.aborted).toBe(true);
+		expect(item('deepseek').querySelector('.ai-connection-test-result')).toBeNull();
+		expect(progress('deepseek')).toBeUndefined();
+		expect(badge('deepseek')?.textContent).toBe('Untested');
+	});
+
+	test('Test is disabled while a save is pending', async () => {
+		const { handle, sync, runTest } = await testSection({ connections: [DEEPSEEK], profiles: [CHAT], credentials: { deepseek: 'sk' } });
+		let release!: () => void;
+		const set = sync.set.bind(sync);
+		sync.set = async values => {
+			await new Promise<void>(resolve => { release = resolve; });
+			return set(values);
+		};
+		const saving = handle.controller.setAutoRun(true);
+		await settle();
+		expect(testButton('deepseek').disabled).toBe(true);
+		testButton('deepseek').click();
+		await settle();
+		expect(runTest).not.toHaveBeenCalled();
+
+		release();
+		await saving;
+		await settle();
+		expect(testButton('deepseek').disabled).toBe(false);
 	});
 });

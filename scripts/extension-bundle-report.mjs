@@ -24,8 +24,9 @@ const chunkBudgets = {
 	'reader-language-learning.js': 160_000,
 	'reader-markdown.js': 10_000,
 	'reader-syntax-highlighting.js': 250_000,
-	// The AI settings section (Phase 5b): about 103 KB measured, about 17% headroom.
-	'settings-ai.js': 120_000,
+	// The AI settings section: about 103 KB in Phase 5b; 124 KB measured in Phase 5c after the
+	// connection Test panel, the Diagnostics panel, and the model-listing badges. About 17% headroom.
+	'settings-ai.js': 145_000,
 	'src_utils_language-learning-runtime_ts.js': 40_000,
 	'vendors-node_modules_defuddle_dist_index_full_js.js': 800_000
 };

@@ -5,19 +5,17 @@ import { TextHighlightData } from './utils/highlighter';
 import { debounce } from './utils/debounce';
 import { Settings } from './types/types';
 import { debugLog } from './utils/debug';
-import { createStructuredOutputCache } from './ai/capabilities';
+import { createAiDiagnostics } from './ai/diagnostics';
 import { createAiGateway } from './ai/gateway';
 import { createAiJobStore, type StorageAreaLike } from './ai/job-store';
 import { aiSettingsBootstrapper } from './ai/migrate';
-import { AI_V2_BOOTSTRAP, createAiSettingsStore, type StorageChangedEventLike } from './ai/settings';
-import { getExtensionBranding } from './utils/extension-branding';
-import { isCliExecutionMode } from './utils/native-cli-contract';
 import {
-	NATIVE_CLI_LAST_RUN_STORAGE_KEY,
-	NativeCliExecutionError,
-	NativeCliUnavailableError,
-	checkNativeCliHealth
-} from './utils/native-cli-service';
+	AI_V2_BOOTSTRAP,
+	createAiSettingsStore,
+	createConnectionStatusStore,
+	type StorageChangedEventLike
+} from './ai/settings';
+import { getExtensionBranding } from './utils/extension-branding';
 import { detectNativeMessaging } from './utils/native-messaging-support';
 import { fetchBilibiliTranscript } from './utils/bilibili-transcript';
 import { fetchBilibiliPageJson } from './utils/bilibili-page-fetch';
@@ -454,35 +452,6 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 		.catch(() => ({ success: false }));
 });
 
-browser.runtime.onMessage.addListener((request: unknown) => {
-	if (typeof request !== 'object' || request === null) return;
-	const message = request as { action?: string; mode?: unknown };
-	if (message.action !== 'nativeCliHealth') return;
-	if (!isCliExecutionMode(message.mode)) {
-		return Promise.resolve({ success: false, errorCode: 'invalid', error: 'Invalid CLI mode.' });
-	}
-	return checkNativeCliHealth(message.mode)
-		.then(async health => {
-			const session = (browser.storage as unknown as {
-				session?: { get(key: string): Promise<Record<string, unknown>> };
-			}).session;
-			const stored = session ? await session.get(NATIVE_CLI_LAST_RUN_STORAGE_KEY) : {};
-			return {
-				success: true,
-				health,
-				lastRun: stored[NATIVE_CLI_LAST_RUN_STORAGE_KEY]
-			};
-		})
-		.catch(error => ({
-			success: false,
-			errorCode: error instanceof NativeCliExecutionError
-				? error.code
-				: error instanceof NativeCliUnavailableError ? 'unavailable' : 'failed',
-			error: error instanceof Error ? error.message : String(error),
-			errorDetails: error instanceof NativeCliExecutionError ? error.details : undefined
-		}));
-});
-
 // Durable transcript jobs live in storage.session, which survives a service worker restart but not
 // a browser restart. Without it (Safari < 16.4) records last only as long as this worker.
 const aiJobSession = (browser.storage as unknown as { session?: StorageAreaLike }).session;
@@ -504,7 +473,10 @@ const aiSettingsStore = createAiSettingsStore({
 // credentials stay in extension storage and cross-origin requests avoid page CORS rules.
 const aiGateway = createAiGateway({
 	loadAiSettings: () => aiSettingsStore.load(),
-	structuredOutput: createStructuredOutputCache(browser.storage.local),
+	// Test results and structured-output downgrades, per device.
+	connectionStatus: createConnectionStatusStore(browser.storage.local as unknown as StorageAreaLike),
+	// The redacted run and Test log shown under Settings → AI → Diagnostics.
+	diagnostics: createAiDiagnostics(aiJobSession),
 	jobStore: createAiJobStore(aiJobSession),
 	keepAlive: () => {
 		void browser.runtime.getPlatformInfo();

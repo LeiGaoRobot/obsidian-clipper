@@ -1,13 +1,18 @@
 import { CATALOG, findCatalogEntryByBaseUrl, getCatalogEntry, type CatalogEntry } from '../../ai/catalog';
+import { testConnection, type TestConnectionOptions } from '../../ai/client';
 import { isCliKind } from '../../ai/connection-kind';
 import { aiErrorMessageKeys } from '../../ai/error-messages';
+import { isAiError } from '../../ai/errors';
+import { deserializeAiError } from '../../ai/protocol';
+import { connectionTestPlan, type ConnectionTestPlan } from '../../ai/test-connection';
 import {
 	AI_CONNECTIONS_KEY,
 	AI_CONNECTION_STATUS_KEY,
 	AI_CREDENTIALS_KEY,
+	AI_PROFILES_KEY,
 	type AiStorageKey
 } from '../../ai/settings';
-import type { Connection } from '../../ai/types';
+import type { AiTestResult, AiTestStep, Connection, StructuredOutputSupport } from '../../ai/types';
 import { getMessage } from '../../utils/i18n';
 import { hideModal, showModal } from '../../utils/modal-utils';
 import type { AiSettingsController, AiSettingsState, ConnectionDraft } from './controller';
@@ -16,10 +21,11 @@ import {
 	createElement,
 	createIcon,
 	createIconButton,
+	createTextButton,
 	finishRender,
 	syncToggle
 } from './dom';
-import { renderErrorCard } from './error-card';
+import { renderErrorCard, type ErrorCardHandlers } from './error-card';
 import type { AiSettingsPanel } from './panel';
 
 // Connections panel (decision 8): one card per connection with its status badge, the catalog
@@ -123,6 +129,32 @@ function isHttpUrl(value: string): boolean {
 	}
 }
 
+/** The Test plan for a connection with its enabled profiles. */
+export function testPlanFor(connection: Connection, state: AiSettingsState): ConnectionTestPlan {
+	return connectionTestPlan(
+		connection,
+		state.view.profiles.filter(profile => profile.connectionId === connection.id && profile.enabled)
+	);
+}
+
+export function structuredOutputLabel(mode: Exclude<StructuredOutputSupport, 'unknown'>): string {
+	switch (mode) {
+		case 'json_schema': return getMessage('aiStructuredOutputJsonSchema');
+		case 'json_object': return getMessage('aiStructuredOutputJsonObject');
+		default: return getMessage('aiStructuredOutputNone');
+	}
+}
+
+export type RunConnectionTest = (connectionId: string, options: TestConnectionOptions) => Promise<AiTestResult>;
+
+/** A Test in this page: running with its current step, or its last outcome. */
+interface TestState {
+	running?: { step?: AiTestStep; profileId?: string; controller: AbortController };
+	result?: AiTestResult;
+	/** A Test that ended without a result (not a cancel). */
+	error?: unknown;
+}
+
 interface ConnectionDialogTarget {
 	connection?: Connection;
 	preset?: CatalogEntry;
@@ -134,6 +166,15 @@ export interface ConnectionsPanelOptions {
 	/** `#ai-connections`. */
 	container: HTMLElement;
 	confirm?: (message: string) => boolean;
+	/** Runs a Test through the gateway. Injected by tests. */
+	runTest?: RunConnectionTest;
+	/**
+	 * Whether a click may start a Test, which can send a billable request: only a real user click.
+	 * Injected by DOM tests, whose synthetic clicks are never trusted.
+	 */
+	isTrusted?: (event: Event) => boolean;
+	/** The section's install-guide and routing actions for a failing Test's error card. */
+	errorHandlers?: () => ErrorCardHandlers;
 }
 
 export interface ConnectionsPanel extends AiSettingsPanel {
@@ -145,13 +186,20 @@ export function connectionsPanelState(state: AiSettingsState): unknown {
 	return state.view.connections.map(connection => ({
 		connection,
 		name: connectionDisplayName(connection),
-		badge: connectionBadge(connection, state)
+		badge: connectionBadge(connection, state),
+		billable: testPlanFor(connection, state).billable,
+		profiles: state.view.profiles
+			.filter(profile => profile.connectionId === connection.id)
+			.map(profile => [profile.id, profile.label, profile.model, profile.enabled])
 	}));
 }
 
 export function createConnectionsPanel(options: ConnectionsPanelOptions): ConnectionsPanel {
 	const { doc, controller, container } = options;
 	const confirmAction = options.confirm ?? ((message: string) => doc.defaultView?.confirm(message) ?? false);
+	const runTest: RunConnectionTest = options.runTest ?? testConnection;
+	const isTrusted = options.isTrusted ?? ((event: Event) => event.isTrusted);
+	const tests = new Map<string, TestState>();
 	const list = createElement(doc, 'div', 'ai-connection-list');
 	list.id = 'ai-connection-list';
 	const { container: addContainer, link: addLink } = createAddLink(doc, getMessage('aiAddApiProvider'), 'ai-add-api-provider');
@@ -346,9 +394,132 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		void controller.deleteConnection(connection.id);
 	}
 
+	function profileName(connectionId: string, profileId: string | undefined): string {
+		const profile = controller.state.view.profiles.find(item => item.id === profileId && item.connectionId === connectionId);
+		return profile ? (profile.label.trim() || profile.model || getMessage('aiProfileCliDefault')) : '';
+	}
+
+	function stepText(connectionId: string, step: AiTestStep | undefined, profileId: string | undefined): string {
+		switch (step) {
+			case 'listing': return getMessage('aiTestStepListing');
+			case 'structured': return getMessage('aiTestStepStructured');
+			case 'probe': return getMessage('aiTestStepProbe');
+			case 'exec': {
+				const name = profileName(connectionId, profileId);
+				return name ? getMessage('aiTestStepExecProfile', name) : getMessage('aiTestStepExec');
+			}
+			default: return getMessage('aiTestStepHealth');
+		}
+	}
+
+	function rerender(): void {
+		render(controller.state);
+	}
+
+	/** Starts a Test, which may send a billable request; only after a trusted click. */
+	async function startTest(connectionId: string): Promise<void> {
+		if (tests.get(connectionId)?.running || controller.saving) return;
+		const abort = new AbortController();
+		tests.set(connectionId, { running: { controller: abort } });
+		rerender();
+		try {
+			const result = await runTest(connectionId, {
+				signal: abort.signal,
+				onStep: (step, profileId) => {
+					if (tests.get(connectionId)?.running?.controller !== abort) return;
+					tests.set(connectionId, { running: { step, ...(profileId ? { profileId } : {}), controller: abort } });
+					rerender();
+				}
+			});
+			tests.set(connectionId, { result });
+			await controller.applyTestResult(result);
+		} catch (error) {
+			const cancelled = isAiError(error) && error.code === 'cancelled';
+			if (cancelled) tests.delete(connectionId);
+			else tests.set(connectionId, { error });
+		}
+		rerender();
+	}
+
+	function onTrustedClick(handler: () => void): (event: Event) => void {
+		return event => {
+			if (!isTrusted(event)) return;
+			handler();
+		};
+	}
+
+	function errorCardHandlers(connectionId: string): ErrorCardHandlers {
+		return {
+			...(options.errorHandlers?.() ?? {}),
+			retry: onTrustedClick(() => void startTest(connectionId))
+		};
+	}
+
+	function renderResult(connection: Connection, result: AiTestResult): HTMLElement {
+		const element = createElement(doc, 'div', `ai-connection-test-result is-${result.state}`);
+		if (result.state === 'failing') {
+			renderErrorCard(element, deserializeAiError(result.error), { handlers: errorCardHandlers(connection.id) });
+			element.hidden = false;
+		} else {
+			element.appendChild(createElement(doc, 'div', 'ai-connection-test-result-title', getMessage('aiTestResultOk')));
+			const lines: string[] = [];
+			const models = result.models ?? [];
+			if (models.length > 0) {
+				lines.push(getMessage('aiTestResultModels', [String(models.filter(model => model.listed).length), String(models.length)]));
+				const missing = models.filter(model => !model.listed).map(model => model.model);
+				if (missing.length > 0) lines.push(getMessage('aiTestResultNotListed', missing.join(', ')));
+			}
+			if (result.structuredOutput) lines.push(getMessage('aiTestResultStructured', structuredOutputLabel(result.structuredOutput)));
+			for (const line of lines) element.appendChild(createElement(doc, 'div', 'ai-connection-test-result-line', line));
+		}
+		if (result.billable) element.appendChild(createElement(doc, 'div', 'ai-connection-test-result-note', getMessage('aiTestResultBillable')));
+		if (result.transport === 'message') {
+			element.appendChild(createElement(doc, 'div', 'ai-connection-test-result-note', getMessage('aiTestResultOneShot')));
+		}
+		return element;
+	}
+
+	function createTestPanel(connection: Connection, state: AiSettingsState): HTMLElement {
+		const panel = createElement(doc, 'div', 'ai-connection-test-panel');
+		const test = tests.get(connection.id);
+		// The cost note sits above Test whenever the plan has a billable step.
+		const plan = testPlanFor(connection, state);
+		if (plan.billable) {
+			panel.appendChild(createElement(
+				doc,
+				'div',
+				'ai-connection-cost-note',
+				isCliKind(connection.kind) ? getMessage('aiConnectionTestCostNoteCli') : getMessage('aiConnectionTestCostNote')
+			));
+		}
+		const bar = createElement(doc, 'div', 'ai-connection-test-bar');
+		const button = createTextButton(doc, getMessage('aiConnectionTest'), 'ai-connection-test');
+		button.disabled = Boolean(test?.running) || controller.saving;
+		button.addEventListener('click', onTrustedClick(() => void startTest(connection.id)));
+		bar.appendChild(button);
+		if (test?.running) {
+			const cancel = createTextButton(doc, getMessage('cancel'), 'ai-connection-test-cancel');
+			const running = test.running;
+			cancel.addEventListener('click', () => running.controller.abort());
+			const progress = createElement(doc, 'span', 'ai-connection-test-progress', stepText(connection.id, running.step, running.profileId));
+			progress.setAttribute('role', 'status');
+			bar.append(cancel, progress);
+		}
+		panel.appendChild(bar);
+		if (test?.result) panel.appendChild(renderResult(connection, test.result));
+		else if (test?.error !== undefined) {
+			const element = createElement(doc, 'div', 'ai-connection-test-result is-failing');
+			renderErrorCard(element, test.error, { handlers: errorCardHandlers(connection.id) });
+			element.hidden = false;
+			panel.appendChild(element);
+		}
+		return panel;
+	}
+
 	function createCard(connection: Connection, state: AiSettingsState): HTMLElement {
+		const item = createElement(doc, 'div', 'ai-connection-item');
+		item.dataset.connectionId = connection.id;
 		const card = createElement(doc, 'div', 'ai-connection-card');
-		card.dataset.connectionId = connection.id;
 		const info = createElement(doc, 'div', 'ai-connection-info');
 		info.append(
 			createElement(doc, 'div', 'ai-connection-name', connectionDisplayName(connection)),
@@ -364,20 +535,48 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		remove.addEventListener('click', () => deleteConnection(connection));
 		actions.appendChild(remove);
 		card.append(createKindIcon(doc, connection), info, createBadgeElement(doc, connectionBadge(connection, state)), actions);
-		return card;
+		item.append(card, createTestPanel(connection, state));
+		return item;
 	}
 
+	function render(state: AiSettingsState): void {
+		list.replaceChildren();
+		const ids = new Set(state.view.connections.map(connection => connection.id));
+		for (const [id, test] of tests) {
+			if (ids.has(id)) continue;
+			test.running?.controller.abort();
+			tests.delete(id);
+		}
+		if (state.view.connections.length === 0) {
+			list.appendChild(createElement(doc, 'div', 'setting-item-description ai-empty-state', getMessage('aiConnectionsEmpty')));
+			return;
+		}
+		for (const connection of state.view.connections) list.appendChild(createCard(connection, state));
+		finishRender(list);
+	}
+
+	// Test waits for pending saves, so it never runs against settings that are still being written.
+	const stopSaving = controller.onSavingChange(saving => {
+		list.querySelectorAll<HTMLButtonElement>('.ai-connection-test').forEach(button => {
+			const id = button.closest<HTMLElement>('.ai-connection-item')?.dataset.connectionId ?? '';
+			button.disabled = saving || Boolean(tests.get(id)?.running);
+		});
+	});
+
 	return {
-		keys: [AI_CONNECTIONS_KEY, AI_CREDENTIALS_KEY, AI_CONNECTION_STATUS_KEY] as readonly AiStorageKey[],
-		stateOf: connectionsPanelState,
-		render(state) {
-			list.replaceChildren();
-			if (state.view.connections.length === 0) {
-				list.appendChild(createElement(doc, 'div', 'setting-item-description ai-empty-state', getMessage('aiConnectionsEmpty')));
-				return;
-			}
-			for (const connection of state.view.connections) list.appendChild(createCard(connection, state));
-			finishRender(list);
+		// Profiles change the Test plan (models to check, cost note) and the exec step labels.
+		keys: [AI_CONNECTIONS_KEY, AI_PROFILES_KEY, AI_CREDENTIALS_KEY, AI_CONNECTION_STATUS_KEY] as readonly AiStorageKey[],
+		stateOf(state) {
+			return {
+				cards: connectionsPanelState(state),
+				tests: Array.from(tests.entries()).map(([id, test]) => [id, test.running ? [test.running.step, test.running.profileId] : null, test.result ?? null, test.error !== undefined])
+			};
+		},
+		render,
+		dispose() {
+			stopSaving();
+			for (const test of tests.values()) test.running?.controller.abort();
+			tests.clear();
 		},
 		openCatalogPicker,
 		openConnectionDialog

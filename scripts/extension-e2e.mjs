@@ -152,8 +152,11 @@ if (!chrome) throw new Error('Chrome or Chromium is required. Set CHROME_PATH to
 
 // A mock OpenAI-compatible provider that answers by task in SSE deltas: interpret with a fixed
 // contract object in small delayed deltas, translate with `T:` + source text for every requested
-// segment id. `providerHook(request)` may delay a reply or answer it with an error status.
+// segment id, and the connection Test's probe with `{"ok":true}`. It accepts `json_object` and
+// `json_schema` alike, and lists one model at `GET /v1/models`. `providerHook(request)` may delay a
+// reply or answer it with an error status.
 const providerRequests = [];
+const modelListRequests = [];
 let providerHook = () => ({});
 const streamedEnvelope = '{"prompt_1":"Streamed summary"}';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -161,6 +164,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 function requestedSegments(body) {
 	const messages = Array.isArray(body.messages) ? body.messages : [];
 	const system = messages.find(message => message.role === 'system')?.content || '';
+	if (system.includes('connection test')) return { task: 'probe' };
 	if (!system.includes('{"translations":')) return { task: 'interpret' };
 	const user = messages.find(message => message.role === 'user')?.content || '{}';
 	return { task: 'translate', segments: JSON.parse(user).segments || [] };
@@ -204,7 +208,7 @@ async function streamMockCompletion(request, response) {
 	});
 	const envelope = task === 'translate'
 		? JSON.stringify({ translations: segments.map(segment => ({ id: segment.id, text: `T:${segment.text}` })) })
-		: streamedEnvelope;
+		: task === 'probe' ? '{"ok":true}' : streamedEnvelope;
 	const chunkSize = task === 'translate' ? 2000 : 12;
 	for (let index = 0; index < envelope.length; index += chunkSize) {
 		if (response.destroyed) return;
@@ -216,6 +220,12 @@ async function streamMockCompletion(request, response) {
 }
 
 const server = http.createServer((request, response) => {
+	if (request.method === 'GET' && request.url === '/v1/models') {
+		modelListRequests.push({ at: Date.now(), authorization: request.headers.authorization });
+		response.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+		response.end(JSON.stringify({ data: [{ id: 'mock-model' }] }));
+		return;
+	}
 	if (request.method === 'POST' && request.url === '/v1/chat/completions') {
 		streamMockCompletion(request, response).catch(error => {
 			response.destroy(error);
@@ -698,8 +708,85 @@ try {
 	await waitForValue(async () => (
 		(await syncAndLocal()).sync.ai_routing?.taskProfiles?.translate === 'e2e-model'
 	), 'The translate routing select did not persist ai_routing.taskProfiles.translate.');
-	if (providerRequests.length !== requestsBeforeSmoke) {
+	if (providerRequests.length !== requestsBeforeSmoke || modelListRequests.length !== 0) {
 		throw new Error('The AI section sent a model request without a Test click.');
+	}
+	// Connection Test. A synthetic click is ignored (Test may be billed); a real click, sent as CDP
+	// input, lists the models for free, then probes structured output with one minimal request.
+	const testItem = `document.querySelector('.ai-connection-item[data-connection-id="e2e-provider"]')`;
+	const testButtonCenter = await waitForValue(async () => evaluate(settings, `(() => {
+		const item = ${testItem};
+		const button = item?.querySelector('.ai-connection-test');
+		if (!button || button.disabled || !item.querySelector('.ai-connection-cost-note')) return null;
+		button.click();
+		button.scrollIntoView({ block: 'center' });
+		const rect = button.getBoundingClientRect();
+		return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+	})()`), 'The E2E Mock card did not show Test with its cost note.');
+	await sleep(300);
+	if (providerRequests.length !== requestsBeforeSmoke || modelListRequests.length !== 0) {
+		throw new Error('A synthetic click started a connection Test.');
+	}
+	for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+		await settings.send('Input.dispatchMouseEvent', { type, ...testButtonCenter, button: 'left', clickCount: type === 'mouseMoved' ? 0 : 1 });
+	}
+	const testResult = await waitForValue(async () => evaluate(settings, `(() => {
+		const item = ${testItem};
+		const result = item?.querySelector('.ai-connection-test-result');
+		if (!result) return null;
+		return {
+			state: result.className,
+			text: result.textContent,
+			badge: item.querySelector('.ai-status-badge')?.className,
+			running: Boolean(item.querySelector('.ai-connection-test-progress'))
+		};
+	})()`), 'The connection Test did not finish.');
+	const testRequests = providerRequests.slice(requestsBeforeSmoke);
+	const afterTest = await syncAndLocal();
+	const testStatus = afterTest.local.ai_connection_status?.['e2e-provider'];
+	const testedConnection = afterTest.sync.ai_connections?.items?.find(item => item.id === 'e2e-provider');
+	if (
+		!testResult.state.includes('is-ok')
+		|| !testResult.badge?.includes('is-ok')
+		|| testResult.running
+		|| modelListRequests.length !== 1
+		|| modelListRequests[0].authorization !== 'Bearer sk-e2e'
+		|| testRequests.length !== 1
+		|| testRequests[0].task !== 'probe'
+		|| testRequests[0].body.model !== 'mock-model'
+		|| testRequests[0].body.max_tokens !== 16
+		|| testRequests[0].body.response_format?.type !== 'json_schema'
+		|| testRequests[0].authorization !== 'Bearer sk-e2e'
+		|| testStatus?.state !== 'ok'
+		|| testStatus.structuredOutput !== 'json_schema'
+		|| testStatus.models?.[0]?.model !== 'mock-model'
+		|| testStatus.models[0].listed !== true
+		|| JSON.stringify(testStatus).includes('sk-e2e')
+		|| testedConnection?.structuredOutput !== 'json_schema'
+		|| 'ai_structured_output' in afterTest.local
+	) {
+		throw new Error(`Unexpected connection Test: ${JSON.stringify({
+			testResult,
+			modelListRequests,
+			testRequests: testRequests.map(({ task, body, status }) => ({ task, status, model: body.model, max_tokens: body.max_tokens, response_format: body.response_format?.type })),
+			testStatus,
+			testedConnection
+		})}`);
+	}
+	// Diagnostics: the interpret run and the Test, redacted, and listed in the Settings panel.
+	const diagnosticsAfterTest = await evaluate(settings, 'new Promise(resolve => chrome.storage.session.get("ai_diagnostics", resolve))');
+	const diagnosticEntries = diagnosticsAfterTest.ai_diagnostics?.entries ?? [];
+	const diagnosticRows = await waitForValue(async () => evaluate(settings, `(() => {
+		const rows = document.querySelectorAll('#ai-diagnostics .ai-diagnostics-entry');
+		return rows.length >= 2 ? rows.length : null;
+	})()`), 'The Diagnostics panel did not list the interpret run and the Test.');
+	if (
+		!diagnosticEntries.some(entry => entry.task === 'interpret' && entry.outcome === 'ok' && entry.structuredMode === 'json_object' && entry.connectionId === 'e2e-provider')
+		|| !diagnosticEntries.some(entry => entry.task === 'test' && entry.outcome === 'ok' && entry.structuredMode === 'json_schema' && entry.connectionId === 'e2e-provider')
+		|| /sk-e2e|Summarize|E2E page|e2e-job/.test(JSON.stringify(diagnosticEntries))
+		|| diagnosticEntries.some(entry => ['jobId', 'prompt', 'content', 'key', 'detail'].some(field => field in entry))
+	) {
+		throw new Error(`Unexpected ai_diagnostics: ${JSON.stringify(diagnosticEntries)}`);
 	}
 	// Durable transcript jobs. The page drives the `ai` Port the way src/ai/job-client.ts does:
 	// `start-job` once, keepalive pings, and reconnect + `attach` (never a new start) on disconnect.
@@ -934,13 +1021,27 @@ try {
 	if (
 		JSON.stringify(storedJobIds('aiJob:')) !== JSON.stringify(expectedJobIds)
 		|| JSON.stringify(storedJobIds('aiJobInput:')) !== JSON.stringify(expectedJobIds)
-		|| Object.keys(sessionAfterJobs).length !== expectedJobIds.length * 2
+		|| Object.keys(sessionAfterJobs).filter(key => key !== 'ai_diagnostics').length !== expectedJobIds.length * 2
 		|| [[stopJob, stopSegments], [retryJob, retrySegments]].some(([job, segments]) => {
 			const record = sessionAfterJobs[`aiJob:${job.jobId}`];
 			return record?.status !== 'completed' || Object.keys(record.results).length !== segments.length;
 		})
 	) {
 		throw new Error(`Unexpected storage.session after the transcript jobs: ${JSON.stringify(Object.keys(sessionAfterJobs))}`);
+	}
+	// After the Test, transcript jobs use the detected mode, and each finished job was logged.
+	const translateRequests = providerRequests.filter(record => record.task === 'translate');
+	const jobDiagnostics = (sessionAfterJobs.ai_diagnostics?.entries ?? []).filter(entry => entry.task === 'translate');
+	if (
+		translateRequests.length === 0
+		|| translateRequests.some(record => record.body.response_format?.type !== 'json_schema')
+		|| !jobDiagnostics.some(entry => entry.outcome === 'ok' && entry.groups > 0)
+		|| !jobDiagnostics.some(entry => entry.outcome === 'ok' && entry.retries >= 1)
+	) {
+		throw new Error(`Transcript jobs did not use the tested mode or were not logged: ${JSON.stringify({
+			formats: [...new Set(translateRequests.map(record => record.body.response_format?.type))],
+			jobDiagnostics
+		})}`);
 	}
 	const errors = [...runtimeErrors, ...settingsErrors, ...fixtureErrors].filter(Boolean);
 	if (errors.length > 0) throw new Error(`Extension runtime errors:\n${errors.join('\n')}`);
@@ -953,6 +1054,8 @@ try {
 	console.log(`AI gateway streamed a mock provider response: ${gatewayRun.messages.join(' → ')}`);
 	console.log('v1 settings bootstrapped to v2 (key moved to local storage, interpreter_settings unchanged); '
 		+ 'the AI section added an OpenAI connection and routed translate without a model request.');
+	console.log(`Connection Test (trusted click only): 1 model listing + 1 json_schema probe; status ok, structuredOutput json_schema; `
+		+ `${diagnosticRows} Diagnostics row(s), ${jobDiagnostics.length} transcript job entr(ies).`);
 	console.log(`Stopped the worker (version ${runningVersion.versionId}) after ${firstGroup.length} of ${stopSegments.length} segments; `
 		+ `${stopRequests.filter(record => record.aborted).length} of ${inFlightBeforeStop - 1} in-flight group request(s) aborted, `
 		+ `${afterStop.length} resumed after reconnect + attach, `

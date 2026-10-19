@@ -242,6 +242,60 @@
 	"aiConnectionUnnamed": {
 		"message": "Unnamed connection"
 	},
+	"aiConnectionTest": {
+		"message": "Test"
+	},
+	"aiConnectionTestCostNote": {
+		"message": "Test may send a minimal request to the provider, which the provider may bill."
+	},
+	"aiConnectionTestCostNoteCli": {
+		"message": "Test runs the CLI once for each model, which may count against your CLI plan or be billed."
+	},
+	"aiTestStepListing": {
+		"message": "Checking the key by listing models…"
+	},
+	"aiTestStepStructured": {
+		"message": "Checking structured output…"
+	},
+	"aiTestStepProbe": {
+		"message": "Sending a minimal test request…"
+	},
+	"aiTestStepHealth": {
+		"message": "Checking the local CLI host…"
+	},
+	"aiTestStepExec": {
+		"message": "Running the CLI…"
+	},
+	"aiTestStepExecProfile": {
+		"message": "Running the CLI with $1…"
+	},
+	"aiTestResultOk": {
+		"message": "The connection works."
+	},
+	"aiTestResultModels": {
+		"message": "$1 of $2 models found in the provider’s list."
+	},
+	"aiTestResultNotListed": {
+		"message": "Not listed: $1. Check the model IDs."
+	},
+	"aiTestResultStructured": {
+		"message": "Structured output: $1"
+	},
+	"aiTestResultBillable": {
+		"message": "This Test sent a minimal request, which the provider may bill."
+	},
+	"aiTestResultOneShot": {
+		"message": "This browser reaches the CLI host one request at a time. Cancel stops waiting but cannot stop a CLI run that has started."
+	},
+	"aiStructuredOutputJsonSchema": {
+		"message": "JSON schema"
+	},
+	"aiStructuredOutputJsonObject": {
+		"message": "JSON object"
+	},
+	"aiStructuredOutputNone": {
+		"message": "Not supported (plain text)"
+	},
 	"aiCliCodex": {
 		"message": "Codex CLI"
 	},
@@ -340,6 +394,12 @@
 	},
 	"aiProfileOrphanGroup": {
 		"message": "Missing connection"
+	},
+	"aiProfileModelNotListed": {
+		"message": "Model not listed"
+	},
+	"aiProfileModelNotListedTitle": {
+		"message": "The last Test did not find this model in the provider’s list. Check the model ID."
 	},
 	"aiRouting": {
 		"message": "Task routing"
@@ -445,6 +505,33 @@
 	},
 	"aiSettingsBootstrapFailedBody": {
 		"message": "Your previous AI settings are unchanged. Reload Settings to try again."
+	},
+	"aiDiagnostics": {
+		"message": "Diagnostics"
+	},
+	"aiDiagnosticsDescription": {
+		"message": "The last 100 model runs and connection Tests in this browser, kept until the browser closes. Prompts, page content, and API keys are never recorded."
+	},
+	"aiDiagnosticsEmpty": {
+		"message": "No AI requests yet."
+	},
+	"aiDiagnosticsUnavailable": {
+		"message": "Diagnostics need session storage, which this browser does not provide."
+	},
+	"aiDiagnosticsClear": {
+		"message": "Clear"
+	},
+	"aiDiagnosticsCopy": {
+		"message": "Copy as JSON"
+	},
+	"aiDiagnosticsCancelled": {
+		"message": "Cancelled"
+	},
+	"aiDiagnosticsFallback": {
+		"message": "Retried without structured output"
+	},
+	"aiDiagnosticsGroups": {
+		"message": "$1 groups, $2 retries"
 	},
 	"allHighlights": {
 		"message": "All highlights"

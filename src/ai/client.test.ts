@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../utils/browser-polyfill', () => ({ default: { runtime: { connect: vi.fn() } } }));
 
-import { runAiTask, type AiClientPort } from './client';
+import { runAiTask, testConnection, type AiClientPort } from './client';
 import { isAiError } from './errors';
 
 class FakeClientPort implements AiClientPort {
@@ -129,5 +129,38 @@ describe('runAiTask', () => {
 		first.port.remoteDisconnect();
 		second.port.remoteDisconnect();
 		return Promise.allSettled([first.promise, second.promise]);
+	});
+});
+
+describe('testConnection', () => {
+	test('sends only the connection id, forwards steps, and resolves the result', async () => {
+		const port = new FakeClientPort();
+		const onStep = vi.fn();
+		const promise = testConnection('openai', { connect: () => port, onStep });
+		expect(port.posted[0]).toEqual({ type: 'test', jobId: port.jobId, connectionId: 'openai' });
+
+		port.receive({ type: 'test-step', jobId: port.jobId, step: 'listing' });
+		port.receive({ type: 'test-step', jobId: 'other', step: 'probe' });
+		port.receive({ type: 'test-step', jobId: port.jobId, step: 'exec', profileId: 'codex-high' });
+		const result = { connectionId: 'openai', state: 'ok', testedAt: 1, billable: false };
+		port.receive({ type: 'test-result', jobId: port.jobId, result });
+
+		await expect(promise).resolves.toEqual(result);
+		expect(onStep.mock.calls).toEqual([['listing', undefined], ['exec', 'codex-high']]);
+		expect(port.disconnected).toBe(true);
+	});
+
+	test('rejects with the gateway error and cancels on abort', async () => {
+		const failing = new FakeClientPort();
+		const failed = testConnection('gone', { connect: () => failing });
+		failing.receive({ type: 'error', jobId: failing.jobId, error: { code: 'not-configured', retryable: false, reason: 'connection-missing' } });
+		await expect(failed).rejects.toMatchObject({ code: 'not-configured', reason: 'connection-missing' });
+
+		const port = new FakeClientPort();
+		const controller = new AbortController();
+		const pending = testConnection('openai', { connect: () => port, signal: controller.signal });
+		controller.abort();
+		await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+		expect(port.posted[1]).toEqual({ type: 'cancel', jobId: port.jobId });
 	});
 });

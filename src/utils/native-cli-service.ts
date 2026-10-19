@@ -31,16 +31,8 @@ interface NativePortLike {
 	};
 }
 
-export const NATIVE_CLI_LAST_RUN_STORAGE_KEY = 'nativeCliLastRunStatus';
 const NATIVE_CLI_HEALTH_TIMEOUT_MS = 5000;
 const NATIVE_CLI_CANCEL_CLEANUP_MS = 3000;
-
-export interface NativeCliLastRunStatus {
-	mode: 'grok' | 'codex';
-	status: 'cancelled' | 'failed' | 'success';
-	errorCode?: NativeCliErrorCode;
-	finishedAt: number;
-}
 
 export class NativeCliUnavailableError extends Error {
 	constructor(message: string) {
@@ -68,17 +60,6 @@ function responseError(response: NativeCliHostResponse): Error {
 		response.error || response.stderr || 'The local CLI failed to execute.',
 		response.details
 	);
-}
-
-async function recordLastRun(status: NativeCliLastRunStatus): Promise<void> {
-	const storage = (browser as unknown as { storage?: {
-		session?: { set(values: Record<string, unknown>): Promise<void> };
-	} }).storage?.session;
-	try {
-		await storage?.set({ [NATIVE_CLI_LAST_RUN_STORAGE_KEY]: status });
-	} catch {
-		// Diagnostics must never change the request outcome.
-	}
 }
 
 function sendThroughNativePort(
@@ -230,26 +211,73 @@ export async function sendNativeCliRequest(
 			);
 			if (!response || response.ok !== true) throw responseError(response || { ok: false });
 		}
-		await recordLastRun({ mode: request.mode, status: 'success', finishedAt: Date.now() });
 		return response;
 	} catch (error) {
-		const cancelled = isRequestCancelled(error);
-		await recordLastRun({
-			mode: request.mode,
-			status: cancelled ? 'cancelled' : 'failed',
-			errorCode: error instanceof NativeCliExecutionError ? error.code : undefined,
-			finishedAt: Date.now()
-		});
-		if (cancelled || error instanceof NativeCliExecutionError || error instanceof NativeCliUnavailableError) {
+		if (isRequestCancelled(error) || error instanceof NativeCliExecutionError || error instanceof NativeCliUnavailableError) {
 			throw error;
 		}
 		throw new NativeCliUnavailableError(error instanceof Error ? error.message : String(error));
 	}
 }
 
-export async function checkNativeCliHealth(mode: 'grok' | 'codex'): Promise<NativeCliHealth> {
+export interface NativeCliHealthResult {
+	health: NativeCliHealth;
+	/** `message` when the browser offers only one-shot messages (Safari), which cannot be cancelled. */
+	transport: 'port' | 'message';
+}
+
+/**
+ * Asks the Host to check itself and the CLI's command, without running a prompt. Uses a port where
+ * the browser has one, else one one-shot message (Safari). An old Host that never answers fails
+ * as a protocol mismatch after a few seconds.
+ */
+export async function checkNativeCliHealth(mode: 'grok' | 'codex', signal?: AbortSignal): Promise<NativeCliHealthResult> {
 	const request = buildNativeCliHealthRequest(mode);
-	const response = await sendThroughNativePort(request, undefined, NATIVE_CLI_HEALTH_TIMEOUT_MS);
-	if (!response.ok || !response.health) throw responseError(response);
-	return response.health;
+	const runtime = browser.runtime as typeof browser.runtime & {
+		connectNative?: (application: string) => NativePortLike;
+	};
+	if (typeof runtime.connectNative === 'function') {
+		const response = await sendThroughNativePort(request, signal, NATIVE_CLI_HEALTH_TIMEOUT_MS);
+		if (!response.ok || !response.health) throw responseError(response);
+		return { health: response.health, transport: 'port' };
+	}
+	throwIfRequestAborted(signal);
+	if (typeof browser.runtime.sendNativeMessage !== 'function') {
+		throw new NativeCliUnavailableError('Native Messaging is not available in this browser.');
+	}
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<never>((_resolve, reject) => {
+		timer = setTimeout(() => reject(new NativeCliExecutionError(
+			'protocol-mismatch',
+			'The installed Native Messaging Host did not respond using the current protocol.',
+			{ protocolVersion: NATIVE_CLI_PROTOCOL_VERSION }
+		)), NATIVE_CLI_HEALTH_TIMEOUT_MS);
+	});
+	try {
+		let response: NativeCliHostResponse | undefined;
+		try {
+			response = await raceWithRequestCancellation(
+				Promise.race([
+					browser.runtime.sendNativeMessage(NATIVE_CLI_HOST_NAME, request) as Promise<NativeCliHostResponse>,
+					timeout
+				]),
+				signal
+			);
+		} catch (error) {
+			if (isRequestCancelled(error) || error instanceof NativeCliExecutionError) throw error;
+			throw new NativeCliUnavailableError(error instanceof Error ? error.message : String(error));
+		}
+		if (!response || typeof response !== 'object') throw responseError({ ok: false });
+		if (response.requestId == null && !response.health) {
+			throw new NativeCliExecutionError(
+				'protocol-mismatch',
+				'The installed Native Messaging Host uses an incompatible protocol.',
+				{ protocolVersion: NATIVE_CLI_PROTOCOL_VERSION }
+			);
+		}
+		if (!response.ok || !response.health) throw responseError(response);
+		return { health: response.health, transport: 'message' };
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
 }

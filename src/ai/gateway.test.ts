@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { Settings } from '../types/types';
-import { createMemoryStructuredOutputCache } from './capabilities';
+import { createAiDiagnostics } from './diagnostics';
 import { AiError } from './errors';
 import { createAiGateway, type AiGatewayDeps, type AiPortLike } from './gateway';
 import { hashSegments, transcriptJobId } from './job-identity';
@@ -13,8 +13,9 @@ import {
 } from './job-store';
 import { RESUME_WINDOW_MS } from './job-runner';
 import type { AiGatewayMessage } from './protocol';
+import { createConnectionStatusStore } from './settings';
 import { deriveAiSettings } from './settings-view';
-import type { NativeMessagingSupport } from './types';
+import type { AiSettingsView, NativeMessagingSupport } from './types';
 
 function v1Settings(overrides: Partial<Settings> = {}): Settings {
 	return {
@@ -73,6 +74,26 @@ function deferred<T>() {
 	});
 	return { promise, resolve, reject };
 }
+
+function memoryArea(initial: Record<string, unknown> = {}): StorageAreaLike & { values: Map<string, unknown> } {
+	const values = new Map(Object.entries(initial));
+	return {
+		values,
+		async get(keys) {
+			const wanted = keys === undefined || keys === null
+				? Array.from(values.keys())
+				: (Array.isArray(keys) ? keys : [keys]).filter(key => values.has(key));
+			return Object.fromEntries(wanted.map(key => [key, JSON.parse(JSON.stringify(values.get(key)))]));
+		},
+		async set(entries) {
+			Object.entries(entries).forEach(([key, value]) => values.set(key, JSON.parse(JSON.stringify(value))));
+		},
+		async remove(keys) {
+			(Array.isArray(keys) ? keys : [keys]).forEach(key => values.delete(key));
+		}
+	};
+}
+
 
 // The gateway reads the v2 view; in derived mode it is built from v1 exactly like this.
 function v1View(settings = v1Settings(), nativeMessaging: NativeMessagingSupport = 'port') {
@@ -199,15 +220,17 @@ describe('AI gateway', () => {
 		const executeApi = vi.fn()
 			.mockRejectedValueOnce(new AiError('provider-error', { status: 400, detail: "Unknown parameter 'response_format'" }))
 			.mockResolvedValue(envelope);
-		const structuredOutput = createMemoryStructuredOutputCache();
-		const { port } = setup({ executeApi, structuredOutput });
+		const local = memoryArea();
+		const { port } = setup({ executeApi, connectionStatus: createConnectionStatusStore(local) });
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
 		await flush();
 
 		expect(port.last()).toMatchObject({ type: 'result', output: { responses: { prompt_1: 'A summary' }, missing: [] } });
 		expect(executeApi.mock.calls[0][0].structured).toMatchObject({ mode: 'json_schema' });
 		expect(executeApi.mock.calls[1][0]).not.toHaveProperty('structured');
-		expect(await structuredOutput.get('provider-openai', 'https://api.openai.com/v1/chat/completions')).toBe('none');
+		// The downgrade is this device's connection status, not the Phase 3 cache.
+		expect(local.values.get('ai_connection_status')).toEqual({ 'provider-openai': { structuredOutput: 'none' } });
+		expect(local.values.has('ai_structured_output')).toBe(false);
 
 		port.send({ type: 'start', jobId: 'job-2', task: 'interpret', input });
 		await flush();
@@ -219,14 +242,14 @@ describe('AI gateway', () => {
 		const executeApi = vi.fn()
 			.mockRejectedValueOnce(new AiError('provider-error', { status: 400, detail: 'Invalid image format' }))
 			.mockRejectedValueOnce(new AiError('provider-error', { status: 400, detail: 'Invalid image format' }));
-		const structuredOutput = createMemoryStructuredOutputCache();
-		const { port } = setup({ executeApi, structuredOutput });
+		const local = memoryArea();
+		const { port } = setup({ executeApi, connectionStatus: createConnectionStatusStore(local) });
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
 		await flush();
 
 		expect(executeApi).toHaveBeenCalledTimes(2);
 		expect(port.last()).toMatchObject({ type: 'error', error: { status: 400 } });
-		expect(await structuredOutput.get('provider-openai', 'https://api.openai.com/v1/chat/completions')).toBeUndefined();
+		expect(local.values.has('ai_connection_status')).toBe(false);
 	});
 
 	test('does not retry other 400s', async () => {
@@ -284,9 +307,9 @@ describe('AI gateway', () => {
 				detail: "codex CLI failed: error: unexpected argument '--output-schema' found"
 			}))
 			.mockResolvedValue('{"prompt_1":"From CLI"}');
-		const structuredOutput = createMemoryStructuredOutputCache();
+		const connectionStatus = createConnectionStatusStore();
 		const { port } = setup(
-			{ executeCli: executeCli as unknown as AiGatewayDeps['executeCli'], structuredOutput },
+			{ executeCli: executeCli as unknown as AiGatewayDeps['executeCli'], connectionStatus },
 			v1Settings({ interpreterExecutionMode: 'codex' } as Partial<Settings>)
 		);
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
@@ -295,7 +318,56 @@ describe('AI gateway', () => {
 		expect(executeCli.mock.calls[0][0]).toHaveProperty('outputSchema');
 		expect(executeCli.mock.calls[1][0]).not.toHaveProperty('outputSchema');
 		expect(port.last()).toMatchObject({ type: 'result', output: { responses: { prompt_1: 'From CLI' }, missing: [] } });
-		expect(await structuredOutput.get('legacy-cli-codex', undefined)).toBe('none');
+		expect(await connectionStatus.get('legacy-cli-codex')).toEqual({ structuredOutput: 'none' });
+	});
+
+	test('uses the effective structured mode: status override, then the connection, then the default', async () => {
+		const deepseek = v1Settings({
+			providers: [{ id: 'provider-openai', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1/chat/completions', apiKey: 'sk', apiKeyRequired: true }]
+		} as Partial<Settings>);
+		const run = async (view: AiSettingsView, status?: Record<string, unknown>) => {
+			const executeApi = vi.fn(async () => envelope);
+			const local = memoryArea(status ? { ai_connection_status: status } : {});
+			const { port } = setup({ executeApi, loadAiSettings: async () => view, connectionStatus: createConnectionStatusStore(local) });
+			port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
+			await flush();
+			const call = (executeApi.mock.calls[0] as unknown[])[0] as { structured?: { mode: string } };
+			return call.structured?.mode ?? 'none';
+		};
+		const base = v1View(deepseek);
+		const detected = { ...base, connections: base.connections.map(connection => ({ ...connection, structuredOutput: 'json_schema' as const })) };
+
+		expect(await run(base)).toBe('json_object');
+		expect(await run(detected)).toBe('json_schema');
+		expect(await run(detected, { 'provider-openai': { structuredOutput: 'none' } })).toBe('none');
+		expect(await run(base, { 'provider-openai': { state: 'ok', testedAt: 1, structuredOutput: 'json_schema' } })).toBe('json_schema');
+	});
+
+	test('records one redacted diagnostics entry per single call', async () => {
+		const diagnostics = createAiDiagnostics();
+		const executeApi = vi.fn()
+			.mockRejectedValueOnce(new AiError('provider-error', { status: 400, detail: "Unknown parameter 'response_format'" }))
+			.mockResolvedValueOnce(envelope)
+			.mockRejectedValueOnce(new AiError('rate-limited', { status: 429, detail: 'slow down' }));
+		const { port } = setup({ executeApi, diagnostics });
+		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
+		await flush();
+		port.send({ type: 'start', jobId: 'job-2', task: 'edit', input: { instruction: 'Fix it.', content: 'secret draft' } });
+		await flush();
+
+		const entries = await diagnostics.list();
+		expect(entries).toEqual([
+			expect.objectContaining({
+				task: 'interpret',
+				kind: 'openai-compatible',
+				connectionId: 'provider-openai',
+				outcome: 'ok',
+				structuredMode: 'json_schema',
+				fallback: true
+			}),
+			expect.objectContaining({ task: 'edit', outcome: 'error', code: 'rate-limited', status: 429 })
+		]);
+		expect(JSON.stringify(entries)).not.toMatch(/secret draft|Page text|sk-test|job-1|job-2/);
 	});
 
 	test('sends Grok prompt rules only, without an output schema', async () => {
@@ -495,6 +567,173 @@ describe('AI gateway', () => {
 	});
 });
 
+describe('AI gateway connection Test', () => {
+	const listing = (ids: string[]) => vi.fn(async () => new Response(JSON.stringify({ data: ids.map(id => ({ id })) }), {
+		status: 200,
+		headers: { 'Content-Type': 'application/json' }
+	}));
+
+	test('posts test-steps then test-result, persists the status, and records diagnostics', async () => {
+		const local = memoryArea();
+		const diagnostics = createAiDiagnostics();
+		const fetchImpl = listing(['gpt-a']);
+		const { deps, port } = setup({
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			connectionStatus: createConnectionStatusStore(local),
+			diagnostics,
+			now: () => 1000
+		});
+		port.send({ type: 'test', jobId: 'test-1', connectionId: 'provider-openai' });
+		await flush();
+
+		expect(port.posted.map(message => message.type)).toEqual(['test-step', 'test-result']);
+		expect(port.posted[0]).toEqual({ type: 'test-step', jobId: 'test-1', step: 'listing' });
+		expect(port.last()).toEqual({
+			type: 'test-result',
+			jobId: 'test-1',
+			result: {
+				connectionId: 'provider-openai',
+				state: 'ok',
+				testedAt: 1000,
+				billable: false,
+				listedModels: ['gpt-a'],
+				models: [
+					{ profileId: 'model-a', model: 'gpt-a', listed: true },
+					{ profileId: 'model-b', model: 'gpt-b', listed: false }
+				]
+			}
+		});
+		// The key is resolved here from the view; it never travels in a message.
+		const [url, init] = (fetchImpl.mock.calls[0] as unknown) as [string, RequestInit];
+		expect(url).toBe('https://api.openai.com/v1/models');
+		expect(init.headers).toEqual({ Authorization: 'Bearer sk-test' });
+		expect(JSON.stringify(port.posted)).not.toContain('sk-test');
+		expect(deps.executeApi).not.toHaveBeenCalled();
+		expect(local.values.get('ai_connection_status')).toEqual({
+			'provider-openai': {
+				state: 'ok',
+				testedAt: 1000,
+				models: [
+					{ profileId: 'model-a', model: 'gpt-a', listed: true },
+					{ profileId: 'model-b', model: 'gpt-b', listed: false }
+				]
+			}
+		});
+		expect(await diagnostics.list()).toEqual([{
+			at: 1000,
+			task: 'test',
+			kind: 'openai-compatible',
+			connectionId: 'provider-openai',
+			durationMs: 0,
+			outcome: 'ok'
+		}]);
+	});
+
+	test('a failing Test persists the reason and a later Test overwrites the structured-output downgrade', async () => {
+		const local = memoryArea({ ai_connection_status: { 'provider-openai': { structuredOutput: 'none' } } });
+		const settings = v1Settings({
+			providers: [{ id: 'provider-openai', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1/chat/completions', apiKey: 'sk-test', apiKeyRequired: true }]
+		} as Partial<Settings>);
+		const executeApi = vi.fn(async () => '{"ok":true}');
+		const unauthorized = vi.fn(async () => new Response('{"error":"invalid key sk-test"}', { status: 401 }));
+		const first = setup({
+			executeApi,
+			fetchImpl: unauthorized as unknown as typeof fetch,
+			connectionStatus: createConnectionStatusStore(local),
+			now: () => 5
+		}, settings);
+		first.port.send({ type: 'test', jobId: 'test-1', connectionId: 'provider-openai' });
+		await flush();
+		expect(first.port.last()).toMatchObject({
+			type: 'test-result',
+			result: { state: 'failing', billable: false, error: { code: 'auth', status: 401, detail: '{"error":"invalid key [redacted]"}' } }
+		});
+		expect(executeApi).not.toHaveBeenCalled();
+		expect(local.values.get('ai_connection_status')).toEqual({
+			'provider-openai': { state: 'failing', testedAt: 5, code: 'auth', status: 401, detail: '{"error":"invalid key [redacted]"}', structuredOutput: 'none' }
+		});
+
+		const second = setup({
+			executeApi,
+			fetchImpl: listing(['gpt-a', 'gpt-b']) as unknown as typeof fetch,
+			connectionStatus: createConnectionStatusStore(local),
+			now: () => 6
+		}, settings);
+		second.port.send({ type: 'test', jobId: 'test-2', connectionId: 'provider-openai' });
+		await flush();
+		expect(second.port.posted.map(message => message.type === 'test-step' ? message.step : message.type))
+			.toEqual(['listing', 'structured', 'test-result']);
+		expect(second.port.last()).toMatchObject({ result: { state: 'ok', billable: true, structuredOutput: 'json_schema' } });
+		expect(local.values.get('ai_connection_status')).toMatchObject({
+			'provider-openai': { state: 'ok', testedAt: 6, structuredOutput: 'json_schema' }
+		});
+	});
+
+	test('is cancellable and then writes no status', async () => {
+		const local = memoryArea();
+		const diagnostics = createAiDiagnostics();
+		let release!: () => void;
+		const fetchImpl = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+			release = () => reject(new DOMException('Aborted', 'AbortError'));
+			init.signal?.addEventListener('abort', () => release());
+		}));
+		const { gateway, port } = setup({
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			connectionStatus: createConnectionStatusStore(local),
+			diagnostics
+		});
+		port.send({ type: 'test', jobId: 'test-1', connectionId: 'provider-openai' });
+		await flush();
+		expect(gateway.activeJobIds()).toEqual(['test-1']);
+
+		port.send({ type: 'cancel', jobId: 'test-1' });
+		await flush();
+		expect(port.last()).toMatchObject({ type: 'error', jobId: 'test-1', error: { code: 'cancelled' } });
+		expect(local.values.has('ai_connection_status')).toBe(false);
+		expect(gateway.activeJobIds()).toEqual([]);
+		expect(await diagnostics.list()).toEqual([expect.objectContaining({ task: 'test', outcome: 'cancelled', code: 'cancelled' })]);
+	});
+
+	test('a missing connection answers not-configured without a request', async () => {
+		const fetchImpl = vi.fn();
+		const { deps, port } = setup({ fetchImpl: fetchImpl as unknown as typeof fetch });
+		port.send({ type: 'test', jobId: 'test-1', connectionId: 'deleted' });
+		await flush();
+		expect(port.last()).toMatchObject({
+			type: 'error',
+			jobId: 'test-1',
+			error: { code: 'not-configured', reason: 'connection-missing', connectionId: 'deleted' }
+		});
+		expect(fetchImpl).not.toHaveBeenCalled();
+		expect(deps.executeApi).not.toHaveBeenCalled();
+	});
+
+	test('a CLI Test runs the health check and one exec per enabled profile', async () => {
+		const checkCliHealth = vi.fn(async () => 'port' as const);
+		const executeCli = vi.fn(async () => 'OK');
+		const { port } = setup(
+			{ checkCliHealth, executeCli: executeCli as unknown as AiGatewayDeps['executeCli'] },
+			v1Settings({ interpreterExecutionMode: 'codex', interpreterCodexModel: 'gpt-5-codex', interpreterCodexReasoningEffort: 'high' } as Partial<Settings>)
+		);
+		port.send({ type: 'test', jobId: 'test-1', connectionId: 'legacy-cli-codex' });
+		await flush();
+		expect(checkCliHealth).toHaveBeenCalledWith('cli-codex', expect.objectContaining({ connectionId: 'legacy-cli-codex' }));
+		expect(executeCli).toHaveBeenCalledWith(
+			expect.objectContaining({ kind: 'cli-codex', model: 'gpt-5-codex', effort: 'high' }),
+			expect.objectContaining({ connectionId: 'legacy-cli-codex' })
+		);
+		expect(port.last()).toMatchObject({ type: 'test-result', result: { state: 'ok', billable: true, transport: 'port' } });
+	});
+
+	test('init removes the Phase 3 structured-output cache', async () => {
+		const local = memoryArea({ ai_structured_output: { 'provider-openai': { baseUrl: '', mode: 'none' } }, other: 1 });
+		const { gateway } = setup({ connectionStatus: createConnectionStatusStore(local) });
+		await gateway.init();
+		expect(local.values.has('ai_structured_output')).toBe(false);
+		expect(local.values.get('other')).toBe(1);
+	});
+});
+
 describe('AI gateway durable jobs', () => {
 	const identity = { namespace: 'transcript-translation', scope: 'video-1' };
 	const texts = ['Hola', 'Adiós'];
@@ -518,25 +757,6 @@ describe('AI gateway durable jobs', () => {
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
 			...overrides
-		};
-	}
-
-	function memoryArea(initial: Record<string, unknown> = {}): StorageAreaLike & { values: Map<string, unknown> } {
-		const values = new Map(Object.entries(initial));
-		return {
-			values,
-			async get(keys) {
-				const wanted = keys === undefined || keys === null
-					? Array.from(values.keys())
-					: (Array.isArray(keys) ? keys : [keys]).filter(key => values.has(key));
-				return Object.fromEntries(wanted.map(key => [key, JSON.parse(JSON.stringify(values.get(key)))]));
-			},
-			async set(entries) {
-				Object.entries(entries).forEach(([key, value]) => values.set(key, JSON.parse(JSON.stringify(value))));
-			},
-			async remove(keys) {
-				(Array.isArray(keys) ? keys : [keys]).forEach(key => values.delete(key));
-			}
 		};
 	}
 

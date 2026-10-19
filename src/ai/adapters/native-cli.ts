@@ -1,9 +1,9 @@
 import type { CodexReasoningEffort } from '../../types/types';
 import type { NativeCliHeartbeat, NativeCliHostResponse, NativeCliRequest } from '../../utils/native-cli-contract';
 import { buildNativeCliPromptRequest } from '../../utils/native-cli-contract';
-import { sendNativeCliRequest } from '../../utils/native-cli-service';
+import { checkNativeCliHealth, sendNativeCliRequest, type NativeCliHealthResult } from '../../utils/native-cli-service';
 import { toAiError } from '../errors';
-import type { CliConnectionKind } from '../types';
+import type { AiTestTransport, CliConnectionKind } from '../types';
 
 export interface CliRenderedPromptCall {
 	kind: CliConnectionKind;
@@ -44,6 +44,25 @@ export async function runCliPrompt(call: CliRenderedPromptCall, options: CliCall
 			options.onHeartbeat ? heartbeat => options.onHeartbeat?.(heartbeat.elapsedMs) : undefined
 		);
 		return response.stdout || '';
+	} catch (error) {
+		throw toAiError(error, options.connectionId);
+	}
+}
+
+export interface CliHealthOptions {
+	connectionId?: string;
+	signal?: AbortSignal;
+	check?: (mode: 'grok' | 'codex', signal?: AbortSignal) => Promise<NativeCliHealthResult>;
+}
+
+/**
+ * The Host health check for a CLI connection's Test: the Host answers on the current protocol and
+ * finds the CLI's command. Resolves with the transport used; rejects with an AiError.
+ */
+export async function checkCliHealth(kind: CliConnectionKind, options: CliHealthOptions = {}): Promise<AiTestTransport> {
+	try {
+		const { transport } = await (options.check ?? checkNativeCliHealth)(kind === 'cli-codex' ? 'codex' : 'grok', options.signal);
+		return transport;
 	} catch (error) {
 		throw toAiError(error, options.connectionId);
 	}

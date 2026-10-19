@@ -112,7 +112,6 @@ const NATIVE_CODE_MAP: Record<string, AiErrorCode> = {
 
 const NATIVE_ERROR_NAMES = new Set([
 	'NativeCliExecutionError',
-	'NativeCliHealthError',
 	'LanguageLearningRequestError'
 ]);
 

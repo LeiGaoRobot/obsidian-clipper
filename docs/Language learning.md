@@ -14,6 +14,7 @@ The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clippe
 1. Open Web Clipper **Settings** and go to **AI**.
 2. Under **Connections**, add an API provider with **Add API provider**, or, on Chrome, a local CLI with **Add local CLI**. API keys are stored only on this device, in the browser's local extension storage as plain text, and do not sync to your other devices. For a local source build, select **Copy install command**, run the generated command once from any Terminal directory, and reload the extension. For details, see [[Interpret web pages#Local Grok and Codex CLI connections|Local Grok and Codex CLI connections]].
 3. Under **Models**, add and enable at least one model. A Codex CLI model has an optional model ID and **Reasoning effort**; leave either at its default to use the CLI default. Reasoning effort choices are `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`, and availability depends on the selected model. An unsupported model and effort combination is shown as a retryable CLI failure, with no fallback to another model. Higher effort can take longer and use more tokens.
+   Optionally select **Test** on the connection to check the key and models. A Test may send one minimal request that the provider may bill, or run a local CLI once per model; the connection shows a note when it does. See [[Interpret web pages#Test a connection|Test a connection]].
 4. Under **Task routing**, choose the **Default model**. Optionally choose a different model for **AI edit**, **Subtitle translation**, **Japanese readings**, or **Explanations**; each row shows the status of the connection its model uses.
 5. Under **Language**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`.
 6. Under **Interpreter**, turn on **Enable AI features**.
@@ -118,6 +119,7 @@ The following actions can create model-provider usage:
 - Translating a transcript. A long transcript can create multiple requests, up to three at the same time for a hosted API provider, plus automatic retries.
 - Generating Japanese readings for a transcript. For non-Japanese source subtitles, the preceding Japanese translation and the reading stage can each create multiple requests in the same way.
 - Explaining a new word, phrase, or sentence that is not already cached for the session.
+- Selecting **Test** on a connection in **Settings → AI**, when the connection shows the cost note: a structured-output probe or a 1-token request for an API provider, or one CLI run per Codex CLI model (one for Grok CLI).
 
 Applying, cancelling, undoing, hiding, or showing an existing result does not make another model request.
 
@@ -148,7 +150,7 @@ Rebuild and reload the Chromium extension, then rerun the Native Messaging insta
 
 ### The provider returns an error
 
-Check the connection's base URL and API key on this device, the routed model, quota, local-model server, or Native Messaging Host installation as appropriate. For general setup and provider help, see [[Interpret web pages#Models|Interpreter models]] and [[Troubleshoot Web Clipper]].
+Check the connection's base URL and API key on this device, the routed model, quota, local-model server, or Native Messaging Host installation as appropriate. Select **Test** on the connection in **Settings → AI** to check it, and see **Settings → AI → Diagnostics** for recent requests with their outcome and HTTP status. For general setup and provider help, see [[Interpret web pages#Models|Interpreter models]] and [[Troubleshoot Web Clipper]].
 
 ## Current limitations
 

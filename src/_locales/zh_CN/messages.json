@@ -242,6 +242,60 @@
 	"aiConnectionUnnamed": {
 		"message": "未命名连接"
 	},
+	"aiConnectionTest": {
+		"message": "测试"
+	},
+	"aiConnectionTestCostNote": {
+		"message": "测试可能向提供商发送一次最小请求，提供商可能会对此计费。"
+	},
+	"aiConnectionTestCostNoteCli": {
+		"message": "测试会为每个模型运行一次 CLI，可能计入你的 CLI 套餐用量或产生费用。"
+	},
+	"aiTestStepListing": {
+		"message": "正在通过列出模型检查密钥…"
+	},
+	"aiTestStepStructured": {
+		"message": "正在检查结构化输出…"
+	},
+	"aiTestStepProbe": {
+		"message": "正在发送最小测试请求…"
+	},
+	"aiTestStepHealth": {
+		"message": "正在检查本地 CLI 主机…"
+	},
+	"aiTestStepExec": {
+		"message": "正在运行 CLI…"
+	},
+	"aiTestStepExecProfile": {
+		"message": "正在使用 $1 运行 CLI…"
+	},
+	"aiTestResultOk": {
+		"message": "连接正常。"
+	},
+	"aiTestResultModels": {
+		"message": "在提供商的列表中找到 $2 个模型中的 $1 个。"
+	},
+	"aiTestResultNotListed": {
+		"message": "未列出：$1。请检查模型 ID。"
+	},
+	"aiTestResultStructured": {
+		"message": "结构化输出：$1"
+	},
+	"aiTestResultBillable": {
+		"message": "本次测试发送了一次最小请求，提供商可能会对此计费。"
+	},
+	"aiTestResultOneShot": {
+		"message": "此浏览器每次只能向 CLI 主机发送一个请求。取消会停止等待，但无法停止已开始的 CLI 运行。"
+	},
+	"aiStructuredOutputJsonSchema": {
+		"message": "JSON schema"
+	},
+	"aiStructuredOutputJsonObject": {
+		"message": "JSON 对象"
+	},
+	"aiStructuredOutputNone": {
+		"message": "不支持（纯文本）"
+	},
 	"aiCliCodex": {
 		"message": "Codex CLI"
 	},
@@ -340,6 +394,12 @@
 	},
 	"aiProfileOrphanGroup": {
 		"message": "连接已缺失"
+	},
+	"aiProfileModelNotListed": {
+		"message": "模型未列出"
+	},
+	"aiProfileModelNotListedTitle": {
+		"message": "上次测试未在提供商的列表中找到此模型。请检查模型 ID。"
 	},
 	"aiRouting": {
 		"message": "任务路由"
@@ -445,6 +505,33 @@
 	},
 	"aiSettingsBootstrapFailedBody": {
 		"message": "您之前的 AI 设置没有变化。请重新加载设置以重试。"
+	},
+	"aiDiagnostics": {
+		"message": "诊断"
+	},
+	"aiDiagnosticsDescription": {
+		"message": "此浏览器中最近 100 次模型运行和连接测试，保留到浏览器关闭。从不记录提示词、页面内容和 API 密钥。"
+	},
+	"aiDiagnosticsEmpty": {
+		"message": "尚无 AI 请求。"
+	},
+	"aiDiagnosticsUnavailable": {
+		"message": "诊断需要会话存储，但此浏览器不提供。"
+	},
+	"aiDiagnosticsClear": {
+		"message": "清除"
+	},
+	"aiDiagnosticsCopy": {
+		"message": "复制为 JSON"
+	},
+	"aiDiagnosticsCancelled": {
+		"message": "已取消"
+	},
+	"aiDiagnosticsFallback": {
+		"message": "已在无结构化输出的情况下重试"
+	},
+	"aiDiagnosticsGroups": {
+		"message": "$1 组，$2 次重试"
 	},
 	"allHighlights": {
 		"message": "所有高亮"

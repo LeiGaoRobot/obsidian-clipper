@@ -33,6 +33,8 @@ export const AI_CREDENTIALS_KEY = 'ai_credentials';
 export const AI_MIGRATION_KEY = 'ai_migration';
 export const AI_CONNECTION_STATUS_KEY = 'ai_connection_status';
 export const AI_DIAGNOSTICS_KEY = 'ai_diagnostics';
+/** The Phase 3 structured-output cache in `storage.local`; folded into the status, removed on gateway init. */
+export const LEGACY_STRUCTURED_OUTPUT_KEY = 'ai_structured_output';
 /** v1 items read for derived mode and the bootstrap. Never written by this module. */
 export const V1_INTERPRETER_SETTINGS_KEY = 'interpreter_settings';
 export const V1_READER_SETTINGS_KEY = 'reader_settings';
@@ -895,6 +897,64 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 			};
 			onChanged.addListener(handler);
 			return () => onChanged.removeListener(handler);
+		}
+	};
+}
+
+// --- Connection status (gateway side) -------------------------------------------------------------
+
+/**
+ * The gateway's access to `ai_connection_status` in `storage.local`. Only the gateway creates
+ * entries (a Test result, a structured-output downgrade); the Settings store only deletes them.
+ */
+export interface ConnectionStatusStore {
+	get(connectionId: string): Promise<ConnectionStatus | undefined>;
+	/**
+	 * Read-modify-write of one entry, serialized in this context; `undefined` removes it. Rejects
+	 * when the write fails.
+	 */
+	update(
+		connectionId: string,
+		update: (current: ConnectionStatus | undefined) => ConnectionStatus | undefined
+	): Promise<void>;
+	/** Removes the Phase 3 `ai_structured_output` cache. */
+	removeLegacyCache(): Promise<void>;
+}
+
+/** A status store over `local`; without an area it keeps the entries in memory. */
+export function createConnectionStatusStore(local?: StorageAreaLike): ConnectionStatusStore {
+	let memory: Record<string, ConnectionStatus> = {};
+	let queue: Promise<unknown> = Promise.resolve();
+	const read = async (): Promise<Record<string, ConnectionStatus>> => {
+		if (!local) return { ...memory };
+		return decodeConnectionStatus((await local.get(AI_CONNECTION_STATUS_KEY))[AI_CONNECTION_STATUS_KEY]);
+	};
+	return {
+		async get(connectionId) {
+			try {
+				return (await read())[connectionId];
+			} catch {
+				return undefined;
+			}
+		},
+		update(connectionId, update) {
+			const run = async () => {
+				if (!isId(connectionId) || !isSafeMapKey(connectionId)) return;
+				const current = await read();
+				const next = update(current[connectionId]);
+				const entries = { ...current };
+				if (next) entries[connectionId] = next;
+				else if (connectionId in entries) delete entries[connectionId];
+				else return;
+				if (local) await local.set({ [AI_CONNECTION_STATUS_KEY]: entries });
+				else memory = entries;
+			};
+			const result = queue.then(run);
+			queue = result.catch(() => undefined);
+			return result;
+		},
+		async removeLegacyCache() {
+			await local?.remove(LEGACY_STRUCTURED_OUTPUT_KEY);
 		}
 	};
 }

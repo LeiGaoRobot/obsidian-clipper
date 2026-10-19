@@ -43,8 +43,7 @@ describe('toAiError', () => {
 		['NativeCliExecutionError', 'cli-failed', 'provider-error'],
 		['NativeCliExecutionError', 'invalid', 'provider-error'],
 		['LanguageLearningRequestError', 'failed', 'provider-error'],
-		['LanguageLearningRequestError', 'timeout', 'timeout'],
-		['NativeCliHealthError', 'protocol-mismatch', 'host-outdated']
+		['LanguageLearningRequestError', 'timeout', 'timeout']
 	])('maps %s(%s) to %s', (name, code, expected) => {
 		const error = toAiError(nativeError(name, code, 'CLI said no'));
 		expect(error.code).toBe(expected);

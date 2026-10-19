@@ -1,6 +1,7 @@
+import { defaultStructuredOutputMode, type StructuredOutputMode } from './capabilities';
 import { isCliKind } from './connection-kind';
 import { AiError } from './errors';
-import type { AiSettingsView, AiTask, Connection, ModelProfile } from './types';
+import type { AiSettingsView, AiTask, Connection, ConnectionStatus, ModelProfile } from './types';
 
 export type ResolvedProfile =
 	| { ok: true; profile: ModelProfile; connection: Connection; credential?: string }
@@ -55,4 +56,18 @@ export function resolveProfile(
 
 export function resolveResponseLanguage(view: AiSettingsView, browserLanguage?: string): string {
 	return view.routing.responseLanguage?.trim() || browserLanguage?.trim() || 'English';
+}
+
+/**
+ * The structured-output mode a run uses: this device's override (a Test result or a provider's
+ * rejection, in `ai_connection_status`), then the mode a Test stored on the synced connection, then
+ * the kind's default.
+ */
+export function effectiveStructuredOutput(
+	connection: Pick<Connection, 'kind' | 'baseUrl' | 'structuredOutput'>,
+	status?: Pick<ConnectionStatus, 'structuredOutput'>
+): StructuredOutputMode {
+	if (status?.structuredOutput) return status.structuredOutput;
+	if (connection.structuredOutput && connection.structuredOutput !== 'unknown') return connection.structuredOutput;
+	return defaultStructuredOutputMode(connection.kind, connection.baseUrl);
 }

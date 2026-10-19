@@ -1,4 +1,4 @@
-import { AI_CONNECTIONS_KEY, AI_PROFILES_KEY, type AiStorageKey } from '../../ai/settings';
+import { AI_CONNECTIONS_KEY, AI_CONNECTION_STATUS_KEY, AI_PROFILES_KEY, type AiStorageKey } from '../../ai/settings';
 import type { Connection, ModelProfile } from '../../ai/types';
 import type { CodexReasoningEffort } from '../../types/types';
 import { MAX_CODEX_MODEL_CHARS } from '../../utils/codex-model';
@@ -38,11 +38,21 @@ export function profileDetails(profile: ModelProfile, connection?: Connection): 
 	return parts.join(' · ');
 }
 
-/** Datalist suggestions for a connection's model field. */
-export function modelSuggestions(connection: Connection): { id: string; name: string }[] {
+/**
+ * Datalist suggestions for a connection's model field: the ids the last Test in this page listed,
+ * else the catalog's popular models.
+ */
+export function modelSuggestions(connection: Connection, listed?: readonly string[]): { id: string; name: string }[] {
 	if (connection.kind === 'cli-codex') return CODEX_MODEL_SUGGESTIONS.map(id => ({ id, name: id }));
 	if (connection.kind === 'cli-grok') return [];
+	if (listed && listed.length > 0) return listed.map(id => ({ id, name: id }));
 	return (catalogEntryFor(connection)?.popularModels ?? []).map(model => ({ id: model.id, name: model.name }));
+}
+
+/** Whether the connection's last Test did not find this profile's current model in its listing. */
+export function isModelNotListed(state: AiSettingsState, profile: ModelProfile): boolean {
+	const checks = state.connectionStatus[profile.connectionId]?.models ?? [];
+	return checks.some(check => check.profileId === profile.id && !check.listed && check.model === profile.model);
 }
 
 interface ProfileGroup {
@@ -68,7 +78,8 @@ export function profilesPanelState(state: AiSettingsState): unknown {
 	return groupProfiles(state).map(group => ({
 		connection: group.connection ?? null,
 		name: group.connection ? connectionDisplayName(group.connection) : '',
-		profiles: group.profiles
+		profiles: group.profiles,
+		notListed: group.profiles.filter(profile => isModelNotListed(state, profile)).map(profile => profile.id)
 	}));
 }
 
@@ -155,7 +166,7 @@ export function createProfilesPanel(options: ProfilesPanelOptions): ProfilesPane
 		modelInput.required = !connection.kind.startsWith('cli-');
 		if (modelItem) modelItem.hidden = connection.kind === 'cli-grok';
 		if (modelOptions) {
-			modelOptions.replaceChildren(...modelSuggestions(connection).map(model => {
+			modelOptions.replaceChildren(...modelSuggestions(connection, controller.listedModels(connection.id)).map(model => {
 				const option = createElement(doc, 'option', undefined, model.name === model.id ? undefined : model.name);
 				option.value = model.id;
 				return option;
@@ -225,7 +236,7 @@ export function createProfilesPanel(options: ProfilesPanelOptions): ProfilesPane
 		target = undefined;
 	});
 
-	function createRow(profile: ModelProfile, connection: Connection | undefined): HTMLElement {
+	function createRow(profile: ModelProfile, connection: Connection | undefined, state: AiSettingsState): HTMLElement {
 		const row = createElement(doc, 'div', 'ai-profile-row');
 		row.dataset.profileId = profile.id;
 		row.classList.toggle('is-disabled', !profile.enabled);
@@ -234,6 +245,12 @@ export function createProfilesPanel(options: ProfilesPanelOptions): ProfilesPane
 		info.appendChild(createElement(doc, 'div', 'ai-profile-name', name));
 		const details = profileDetails(profile, connection);
 		if (details) info.appendChild(createElement(doc, 'div', 'ai-profile-details', details));
+		if (isModelNotListed(state, profile)) {
+			// The key worked, so this does not fail the connection; the model id may be mistyped.
+			const badge = createElement(doc, 'span', 'ai-status-badge is-key-missing ai-profile-model-not-listed', getMessage('aiProfileModelNotListed'));
+			badge.title = getMessage('aiProfileModelNotListedTitle');
+			row.append(info, badge);
+		}
 
 		const actions = createElement(doc, 'div', 'ai-profile-actions');
 		if (connection) {
@@ -261,11 +278,12 @@ export function createProfilesPanel(options: ProfilesPanelOptions): ProfilesPane
 			});
 			actions.appendChild(toggle);
 		}
-		row.append(info, actions);
+		if (!row.contains(info)) row.append(info);
+		row.appendChild(actions);
 		return row;
 	}
 
-	function createGroup(group: ProfileGroup): HTMLElement {
+	function createGroup(group: ProfileGroup, state: AiSettingsState): HTMLElement {
 		const element = createElement(doc, 'div', 'ai-profile-group');
 		element.dataset.connectionId = group.connectionId;
 		const header = createElement(doc, 'div', 'ai-profile-group-header');
@@ -278,7 +296,7 @@ export function createProfilesPanel(options: ProfilesPanelOptions): ProfilesPane
 		));
 		element.appendChild(header);
 		const list = createElement(doc, 'div', 'ai-profile-list');
-		for (const profile of group.profiles) list.appendChild(createRow(profile, group.connection));
+		for (const profile of group.profiles) list.appendChild(createRow(profile, group.connection, state));
 		element.appendChild(list);
 		if (group.connection) {
 			const connection = group.connection;
@@ -300,12 +318,12 @@ export function createProfilesPanel(options: ProfilesPanelOptions): ProfilesPane
 			container.appendChild(createElement(doc, 'div', 'setting-item-description ai-empty-state', getMessage('aiProfilesEmpty')));
 			return;
 		}
-		for (const group of groups) container.appendChild(createGroup(group));
+		for (const group of groups) container.appendChild(createGroup(group, state));
 		finishRender(container);
 	}
 
 	return {
-		keys: [AI_CONNECTIONS_KEY, AI_PROFILES_KEY] as readonly AiStorageKey[],
+		keys: [AI_CONNECTIONS_KEY, AI_PROFILES_KEY, AI_CONNECTION_STATUS_KEY] as readonly AiStorageKey[],
 		stateOf: profilesPanelState,
 		render,
 		openProfileDialog

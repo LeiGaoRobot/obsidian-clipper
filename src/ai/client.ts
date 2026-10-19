@@ -8,7 +8,7 @@ import {
 	type AiProgressPhase
 } from './protocol';
 import type { AiTaskInput, AiTaskOutput } from './contracts';
-import type { AiTask, ConnectionKind } from './types';
+import type { AiTask, AiTestResult, AiTestStep, ConnectionKind } from './types';
 
 export interface AiClientPort {
 	postMessage(message: unknown): void;
@@ -43,6 +43,7 @@ export interface RunAiTaskOptions {
 	keepaliveMs?: number;
 }
 
+
 let jobSequence = 0;
 
 function createJobId(task: AiTask): string {
@@ -54,14 +55,25 @@ function connectToGateway(name: string): AiClientPort {
 	return browser.runtime.connect({ name }) as unknown as AiClientPort;
 }
 
-/** Runs one AI task through the background gateway. Rejects with an AiError. */
-export function runAiTask<T extends AiTask>(
-	task: T,
-	input: AiTaskInput<T>,
-	options: RunAiTaskOptions = {}
-): Promise<AiTaskResult<T>> {
+interface GatewayRequestOptions {
+	signal?: AbortSignal;
+	connect?: (name: string) => AiClientPort;
+	keepaliveMs?: number;
+}
+
+type Settlement<R> = { value: R } | { error: AiError };
+
+/**
+ * Opens a Port, sends `start`, and settles on the message `handle` maps to a value or an error.
+ * Pings keep the service worker alive; an abort sends `cancel`; a disconnect rejects.
+ */
+function gatewayRequest<R>(
+	jobId: string,
+	start: Record<string, unknown>,
+	options: GatewayRequestOptions,
+	handle: (message: AiGatewayMessage) => Settlement<R> | undefined
+): Promise<R> {
 	if (options.signal?.aborted) return Promise.reject(new AiError('cancelled'));
-	const jobId = createJobId(task);
 	let port: AiClientPort;
 	try {
 		port = (options.connect ?? connectToGateway)(AI_PORT_NAME);
@@ -71,7 +83,7 @@ export function runAiTask<T extends AiTask>(
 		}));
 	}
 
-	return new Promise<AiTaskResult<T>>((resolve, reject) => {
+	return new Promise<R>((resolve, reject) => {
 		let settled = false;
 		const keepalive = setInterval(() => {
 			try {
@@ -101,18 +113,10 @@ export function runAiTask<T extends AiTask>(
 		const onMessage = (value: unknown) => {
 			const message = value as AiGatewayMessage;
 			if (!message || message.jobId !== jobId) return;
-			if (message.type === 'progress') {
-				options.onProgress?.({
-					phase: message.phase,
-					elapsedMs: message.elapsedMs,
-					...(message.receivedChars !== undefined ? { receivedChars: message.receivedChars } : {})
-				});
-			} else if (message.type === 'result') {
-				// The gateway validated the output against the task contract.
-				settle(() => resolve({ output: message.output as AiTaskOutput<T>, connectionKind: message.connectionKind }));
-			} else if (message.type === 'error') {
-				settle(() => reject(deserializeAiError(message.error)));
-			}
+			const outcome = handle(message);
+			if (!outcome) return;
+			if ('error' in outcome) settle(() => reject(outcome.error));
+			else settle(() => resolve(outcome.value));
 		};
 		const onDisconnect = () => {
 			settle(() => reject(new AiError('network', {
@@ -134,18 +138,64 @@ export function runAiTask<T extends AiTask>(
 		port.onDisconnect.addListener(onDisconnect);
 		options.signal?.addEventListener('abort', onAbort, { once: true });
 		try {
-			port.postMessage({
-				type: 'start',
-				jobId,
-				task,
-				...(options.profileId ? { profileId: options.profileId } : {}),
-				input
-			});
+			port.postMessage(start);
 		} catch (error) {
 			settle(() => reject(new AiError('network', {
 				retryable: true,
 				detail: error instanceof Error ? error.message : String(error)
 			})));
 		}
+	});
+}
+
+/** Runs one AI task through the background gateway. Rejects with an AiError. */
+export function runAiTask<T extends AiTask>(
+	task: T,
+	input: AiTaskInput<T>,
+	options: RunAiTaskOptions = {}
+): Promise<AiTaskResult<T>> {
+	const jobId = createJobId(task);
+	return gatewayRequest<AiTaskResult<T>>(jobId, {
+		type: 'start',
+		jobId,
+		task,
+		...(options.profileId ? { profileId: options.profileId } : {}),
+		input
+	}, options, message => {
+		if (message.type === 'progress') {
+			options.onProgress?.({
+				phase: message.phase,
+				elapsedMs: message.elapsedMs,
+				...(message.receivedChars !== undefined ? { receivedChars: message.receivedChars } : {})
+			});
+			return undefined;
+		}
+		// The gateway validated the output against the task contract.
+		if (message.type === 'result') return { value: { output: message.output as AiTaskOutput<T>, connectionKind: message.connectionKind } };
+		if (message.type === 'error') return { error: deserializeAiError(message.error) };
+		return undefined;
+	});
+}
+
+export interface TestConnectionOptions extends GatewayRequestOptions {
+	onStep?: (step: AiTestStep, profileId?: string) => void;
+}
+
+/**
+ * Tests a connection through the background gateway, which reads its key from device storage:
+ * the message carries only the connection id. Call it only from an explicit user action; it may
+ * send a minimal billable request. Rejects with an AiError (`cancelled` on abort).
+ */
+export function testConnection(connectionId: string, options: TestConnectionOptions = {}): Promise<AiTestResult> {
+	jobSequence += 1;
+	const jobId = `ai-test-${Date.now()}-${jobSequence}-${Math.random().toString(36).slice(2, 8)}`;
+	return gatewayRequest<AiTestResult>(jobId, { type: 'test', jobId, connectionId }, options, message => {
+		if (message.type === 'test-step') {
+			options.onStep?.(message.step, message.profileId);
+			return undefined;
+		}
+		if (message.type === 'test-result') return { value: message.result };
+		if (message.type === 'error') return { error: deserializeAiError(message.error) };
+		return undefined;
 	});
 }

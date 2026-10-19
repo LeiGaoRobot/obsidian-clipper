@@ -7,7 +7,7 @@ vi.mock('../../utils/native-cli-service', async importOriginal => ({
 
 import { RequestCancelledError } from '../../utils/request-cancellation';
 import { NativeCliExecutionError, NativeCliUnavailableError } from '../../utils/native-cli-service';
-import { runCliPrompt } from './native-cli';
+import { checkCliHealth, runCliPrompt } from './native-cli';
 
 describe('runCliPrompt errors', () => {
 	test.each([
@@ -69,5 +69,18 @@ describe('runCliPrompt', () => {
 		const send = vi.fn().mockRejectedValue(error);
 		await expect(runCliPrompt({ kind: 'cli-codex', prompt: 'Rendered', outputSchema }, { send, connectionId: 'cli' }))
 			.rejects.toMatchObject({ code, connectionId: 'cli' });
+	});
+});
+
+describe('checkCliHealth', () => {
+	test('checks the CLI kind and returns the transport', async () => {
+		const check = vi.fn().mockResolvedValue({ health: { protocolVersion: 5, mode: 'grok', command: 'grok' }, transport: 'message' });
+		await expect(checkCliHealth('cli-grok', { check })).resolves.toBe('message');
+		expect(check).toHaveBeenCalledWith('grok', undefined);
+	});
+
+	test('maps a missing Host to host-missing', async () => {
+		const check = vi.fn().mockRejectedValue(new NativeCliUnavailableError('Specified native messaging host not found.'));
+		await expect(checkCliHealth('cli-codex', { check, connectionId: 'cli' })).rejects.toMatchObject({ code: 'host-missing', connectionId: 'cli' });
 	});
 });
