@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
 import { describe, expect, test, vi } from 'vitest';
+import { describeAiError } from '../ai/error-messages';
+import { AiError } from '../ai/errors';
 import { resolveProfile } from '../ai/resolve';
 import { deriveAiSettings } from '../ai/settings-view';
 import type { NativeMessagingSupport } from '../ai/types';
@@ -162,5 +164,26 @@ describe('Language learning popup', () => {
 		fixture.cancelRequestButton.click();
 		await vi.waitFor(() => expect(fixture.status.textContent).toBe('aiRequestCancelled'));
 		expect(fixture.cancelRequestButton.hidden).toBe(true);
+	});
+
+	test('shows the localized body of a model error and a cancelled code as cancelled', async () => {
+		const fixture = createPopupFixture();
+		const auth = new AiError('auth', { status: 401, detail: 'invalid key', task: 'edit' });
+		const transformContent = vi.fn()
+			.mockRejectedValueOnce(auth)
+			.mockRejectedValueOnce(new AiError('cancelled', { task: 'edit' }));
+		initializeLanguageLearningPopup({
+			enabled: true,
+			transformContent,
+			getMessage: key => key
+		});
+
+		fixture.previewButton.click();
+		await vi.waitFor(() => expect(fixture.status.textContent).toBe(describeAiError(auth).body));
+		expect(fixture.status.classList.contains('is-error')).toBe(true);
+
+		fixture.previewButton.click();
+		await vi.waitFor(() => expect(fixture.status.textContent).toBe('aiRequestCancelled'));
+		expect(fixture.status.classList.contains('is-error')).toBe(false);
 	});
 });

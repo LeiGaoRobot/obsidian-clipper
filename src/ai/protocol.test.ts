@@ -33,6 +33,33 @@ describe('AI port protocol', () => {
 		expect(deserializeAiError({ code: 'rate-limited', retryAfterMs: '7' })).not.toHaveProperty('retryAfterMs');
 	});
 
+	test('round-trips the failed task, its profile, and the recovery hint, all optional', () => {
+		const error = new AiError('timeout', {
+			nativeCode: 'timeout',
+			task: 'reading',
+			profileId: 'codex-default',
+			recovery: 'continue-remaining'
+		});
+		expect(serializeAiError(error)).toMatchObject({ task: 'reading', profileId: 'codex-default', recovery: 'continue-remaining' });
+		expect(deserializeAiError(serializeAiError(error))).toMatchObject({
+			code: 'timeout',
+			task: 'reading',
+			profileId: 'codex-default',
+			recovery: 'continue-remaining'
+		});
+		const plain = serializeAiError(new AiError('timeout'));
+		expect(plain).not.toHaveProperty('task');
+		expect(plain).not.toHaveProperty('profileId');
+		expect(plain).not.toHaveProperty('recovery');
+		// An older background sends none of them; malformed values are dropped.
+		const restored = deserializeAiError({ code: 'auth', task: 'summarize', profileId: '', recovery: 'later' });
+		expect(restored).toMatchObject({ code: 'auth' });
+		expect(restored).not.toHaveProperty('task');
+		expect(restored).not.toHaveProperty('profileId');
+		expect(restored).not.toHaveProperty('recovery');
+		expect(deserializeAiError({ code: 'auth', profileId: 42 })).not.toHaveProperty('profileId');
+	});
+
 	test('maps unknown error payloads to provider errors', () => {
 		expect(deserializeAiError({ code: 'mystery', detail: 'x' })).toMatchObject({ code: 'provider-error', detail: 'x' });
 		expect(deserializeAiError(null)).toMatchObject({ code: 'provider-error' });

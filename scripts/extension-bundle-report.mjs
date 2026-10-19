@@ -21,7 +21,10 @@ const entryBudgets = {
 const chunkBudgets = {
 	'popup-language-learning.js': 30_000,
 	'reader-content-extraction.js': 380_000,
-	'reader-language-learning.js': 160_000,
+	// Phase 6 brings the shared AI error mapping into the Reader (about 160 KB measured after AiError
+	// end to end) before the shared controller and card arrive and Phase 7 moves the job limits out
+	// of the runner; re-measured and set to measured size plus about 10% at the end of Phase 7.
+	'reader-language-learning.js': 175_000,
 	'reader-markdown.js': 10_000,
 	'reader-syntax-highlighting.js': 250_000,
 	// The AI settings section: about 103 KB in Phase 5b; 124 KB measured in Phase 5c after the

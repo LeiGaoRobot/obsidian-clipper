@@ -1,4 +1,4 @@
-import type { ConnectionKind } from './types';
+import type { AiTask, ConnectionKind } from './types';
 
 export const AI_ERROR_CODES = [
 	'not-configured',
@@ -50,6 +50,9 @@ const RETRYABLE_BY_DEFAULT: Record<AiErrorCode, boolean> = {
 	'provider-error': false
 };
 
+/** How the UI recovers: `continue-remaining` is a transcript job that failed after splitting its groups. */
+export type AiErrorRecovery = 'continue-remaining';
+
 export interface AiErrorOptions {
 	retryable?: boolean;
 	connectionId?: string;
@@ -62,6 +65,11 @@ export interface AiErrorOptions {
 	timeoutSeconds?: number;
 	/** The provider's `Retry-After`, as milliseconds from when the response arrived. */
 	retryAfterMs?: number;
+	/** The task that failed; the gateway sets it, so the UI can re-route that task. */
+	task?: AiTask;
+	/** The profile the task resolved to, when it resolved. */
+	profileId?: string;
+	recovery?: AiErrorRecovery;
 }
 
 export class AiError extends Error {
@@ -74,6 +82,9 @@ export class AiError extends Error {
 	readonly nativeCode?: string;
 	readonly timeoutSeconds?: number;
 	readonly retryAfterMs?: number;
+	readonly task?: AiTask;
+	readonly profileId?: string;
+	readonly recovery?: AiErrorRecovery;
 
 	constructor(code: AiErrorCode, options: AiErrorOptions = {}) {
 		super(options.detail || code);
@@ -87,7 +98,44 @@ export class AiError extends Error {
 		if (options.nativeCode) this.nativeCode = options.nativeCode;
 		if (options.timeoutSeconds !== undefined) this.timeoutSeconds = options.timeoutSeconds;
 		if (options.retryAfterMs !== undefined) this.retryAfterMs = options.retryAfterMs;
+		if (options.task) this.task = options.task;
+		if (options.profileId) this.profileId = options.profileId;
+		if (options.recovery) this.recovery = options.recovery;
 	}
+}
+
+/** The options that rebuild `error`. */
+export function aiErrorOptions(error: AiError): AiErrorOptions {
+	return {
+		retryable: error.retryable,
+		...(error.connectionId ? { connectionId: error.connectionId } : {}),
+		...(error.status !== undefined ? { status: error.status } : {}),
+		...(error.reason ? { reason: error.reason } : {}),
+		...(error.detail ? { detail: error.detail } : {}),
+		...(error.nativeCode ? { nativeCode: error.nativeCode } : {}),
+		...(error.timeoutSeconds !== undefined ? { timeoutSeconds: error.timeoutSeconds } : {}),
+		...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}),
+		...(error.task ? { task: error.task } : {}),
+		...(error.profileId ? { profileId: error.profileId } : {}),
+		...(error.recovery ? { recovery: error.recovery } : {})
+	};
+}
+
+/**
+ * `error` with the task and profile it failed on, filling only what it does not carry yet. A copy,
+ * since AiError is immutable and the same instance may be rethrown for another task.
+ */
+export function withAiErrorContext(error: AiError, context: { task?: AiTask; profileId?: string }): AiError {
+	const task = error.task ?? context.task;
+	const profileId = error.profileId ?? context.profileId;
+	if (task === error.task && profileId === error.profileId) return error;
+	const copy = new AiError(error.code, {
+		...aiErrorOptions(error),
+		...(task ? { task } : {}),
+		...(profileId ? { profileId } : {})
+	});
+	if (error.stack) copy.stack = error.stack;
+	return copy;
 }
 
 const MAX_DETAIL_CHARS = 2000;

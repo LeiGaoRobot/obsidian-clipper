@@ -1,7 +1,8 @@
+import { describeAiError } from '../ai/error-messages';
+import { isAiError } from '../ai/errors';
 import { resolveProfile } from '../ai/resolve';
 import type { AiSettingsView } from '../ai/types';
 import { replaceTextSelection } from './language-learning';
-import { isRequestCancelled } from './request-cancellation';
 
 interface LanguageLearningPopupOptions {
 	doc?: Document;
@@ -118,12 +119,14 @@ export function initializeLanguageLearningPopup({
 			preview.style.display = 'block';
 			showStatus('');
 		} catch (error) {
-			showStatus(
-				isRequestCancelled(error) || requestController.signal.aborted
-					? getMessage('aiRequestCancelled')
-					: error instanceof Error ? error.message : getMessage('error'),
-				!isRequestCancelled(error) && !requestController.signal.aborted
-			);
+			// Model work rejects with AiError, whose description carries the localized copy.
+			const cancelled = requestController.signal.aborted || (isAiError(error) && error.code === 'cancelled');
+			const message = cancelled
+				? getMessage('aiRequestCancelled')
+				: isAiError(error)
+					? describeAiError(error).body
+					: error instanceof Error ? error.message : getMessage('error');
+			showStatus(message, !cancelled);
 		} finally {
 			if (activeRequest === requestController) activeRequest = null;
 			previewButton.disabled = false;

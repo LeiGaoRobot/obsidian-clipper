@@ -38,6 +38,19 @@ describe('describeAiError', () => {
 		expect(describeAiError(new AiError('provider-error')).action).toBe('none');
 	});
 
+	test('a continue-remaining recovery selects the batch-failed body and keeps the code\'s title', () => {
+		const en = locale('en');
+		const description = describeAiError(new AiError('timeout', { nativeCode: 'timeout', recovery: 'continue-remaining', detail: 'codex CLI timed out' }));
+		expect(description).toEqual({
+			title: en.aiErrorTimeoutTitle.message,
+			body: en.readerTranscriptTranslationBatchFailed.message,
+			action: 'retry',
+			detail: 'codex CLI timed out'
+		});
+		expect(locale('zh_CN').readerTranscriptTranslationBatchFailed?.message?.trim()).toBeTruthy();
+		expect(describeAiError(new AiError('timeout')).body).toBe(en.aiErrorTimeoutBody.message);
+	});
+
 	test('omits a detail that only repeats the code', () => {
 		expect(describeAiError(new AiError('timeout')).detail).toBeUndefined();
 	});

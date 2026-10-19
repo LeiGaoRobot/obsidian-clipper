@@ -1,6 +1,5 @@
 import { runAiTask } from '../ai/client';
-import { describeAiError } from '../ai/error-messages';
-import { AiError, toAiError, type AiErrorCode } from '../ai/errors';
+import { AiError, aiErrorOptions, toAiError, withAiErrorContext } from '../ai/errors';
 import {
 	clearTranscriptCheckpoint,
 	loadTranscriptCheckpoint,
@@ -25,11 +24,8 @@ import {
 	transcriptTranslationJobIdentity
 } from './language-learning';
 import { getMessage } from './i18n';
-import type { NativeCliErrorCode } from './native-cli-contract';
-import { RequestCancelledError, throwIfRequestAborted } from './request-cancellation';
 import { loadAiSettings } from './ai-settings';
 import {
-	executionModeOfKind,
 	findProfileConnection,
 	listEnabledProfileGroups,
 	profileDisplayLabel,
@@ -52,71 +48,28 @@ import {
 } from './japanese-reading-dictionary-storage';
 import { resolveResponseLanguage } from '../ai/resolve';
 import type { AiSettingsView, AiTask, Connection, ModelProfile } from '../ai/types';
-import type { InterpreterExecutionMode } from '../types/types';
 
 // The scope of the fixed Japanese translation that feeds readings of a non-Japanese transcript.
 const JAPANESE_TRANSLATION_CHECKPOINT_SCOPE = 'japanese-readings:Japanese';
-
-export class LanguageLearningRequestError extends Error {
-	code: NativeCliErrorCode | 'failed';
-	details?: Record<string, unknown>;
-
-	constructor(
-		code: NativeCliErrorCode | 'failed',
-		message: string,
-		details?: Record<string, unknown>
-	) {
-		super(message);
-		this.name = 'LanguageLearningRequestError';
-		this.code = code;
-		this.details = details;
-	}
-}
 
 function cloneTranscriptReadings(readings: TranscriptReadingSegments): TranscriptReadingSegments {
 	return readings.map(tokens => tokens.map(token => ({ ...token })));
 }
 
-// Gateway errors keep the legacy codes the Reader card already localizes until the Reader moves to AiError.
-const LEGACY_ERROR_CODES: Partial<Record<AiErrorCode, NativeCliErrorCode>> = {
-	'host-missing': 'unavailable',
-	'host-outdated': 'protocol-mismatch',
-	'cli-missing': 'launch-failed'
-};
-
-const NATIVE_HOST_ERROR_CODES: ReadonlySet<string> = new Set<NativeCliErrorCode>([
-	'cli-failed',
-	'config',
-	'invalid',
-	'launch-failed',
-	'protocol-mismatch',
-	'response-too-large',
-	'timeout',
-	'unavailable'
-]);
-
-/** What a failed request ran on: the v1 mode keeps the CLI error copy, `task` names the routing entry. */
+/** What a failed request ran on: `task` names the routing entry, `profileId` the profile it routes to. */
 interface RequestContext {
-	mode: InterpreterExecutionMode;
 	task: AiTask;
 	profileId?: string;
 }
 
-function toLanguageLearningError(error: unknown, context: RequestContext): Error {
+/**
+ * Model work rejects with AiError. The gateway names the task and profile of every error it sends;
+ * an error it did not tag (a transport failure, or a gateway from before the fields existed) gets
+ * the task and routed profile of the request here.
+ */
+function toRequestError(error: unknown, context: RequestContext): AiError {
 	const aiError = toAiError(error);
-	if (aiError.code === 'cancelled') return new RequestCancelledError();
-	// Host codes keep their mode-specific Reader copy.
-	const code = aiError.nativeCode && NATIVE_HOST_ERROR_CODES.has(aiError.nativeCode)
-		? aiError.nativeCode as NativeCliErrorCode
-		: LEGACY_ERROR_CODES[aiError.code] ?? 'failed';
-	const description = describeAiError(aiError);
-	return new LanguageLearningRequestError(code, description.body, {
-		...context,
-		aiCode: aiError.code,
-		retryable: aiError.retryable,
-		...(aiError.timeoutSeconds !== undefined ? { timeoutSeconds: aiError.timeoutSeconds } : {}),
-		...(description.detail ? { technicalDetail: description.detail } : {})
-	});
+	return aiError.task ? aiError : withAiErrorContext(aiError, context);
 }
 
 /**
@@ -124,21 +77,20 @@ function toLanguageLearningError(error: unknown, context: RequestContext): Error
  * means even the smaller groups did not finish: the Reader offers Continue remaining instead of
  * the single-request timeout card.
  */
-function toTranscriptJobError(error: unknown, context: RequestContext): Error {
-	const aiError = toAiError(error);
-	const converted = toLanguageLearningError(aiError, context);
+function toTranscriptJobError(error: unknown, context: RequestContext): AiError {
+	const aiError = toRequestError(error, context);
 	if (
 		aiError.code === 'timeout'
 		&& aiError.nativeCode === 'timeout'
-		&& (transcriptJobAttempts(aiError)?.splits ?? 0) > 0
+		&& (transcriptJobAttempts(error)?.splits ?? 0) > 0
 	) {
-		return new LanguageLearningRequestError('failed', getMessage('readerTranscriptTranslationBatchFailed'), {
-			...(converted instanceof LanguageLearningRequestError ? converted.details : {}),
-			...context,
-			automaticBatchRetry: true
-		});
+		return new AiError('timeout', { ...aiErrorOptions(aiError), retryable: true, recovery: 'continue-remaining' });
 	}
-	return converted;
+	return aiError;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined, task: AiTask): void {
+	if (signal?.aborted) throw new AiError('cancelled', { task });
 }
 
 function responseLanguageOf(view: AiSettingsView): string {
@@ -170,7 +122,6 @@ function routedProfile(view: AiSettingsView, task: AiTask): { profile: ModelProf
 function requestContext(view: AiSettingsView, task: AiTask): RequestContext {
 	const routed = routedProfile(view, task);
 	return {
-		mode: executionModeOfKind(routed?.connection.kind),
 		task,
 		...(routed ? { profileId: routed.profile.id } : {})
 	};
@@ -182,28 +133,23 @@ async function loadConfiguredAssistant() {
 	// disabled or unrouted task fails here without a round trip. Availability (credentials, Native
 	// Messaging) is left to the background, which this content script cannot see.
 	const requireProfile = (task: AiTask): RequestContext => {
-		const context = requestContext(view, task);
-		if (!view.enabled) {
-			throw toLanguageLearningError(new AiError('not-configured', { reason: 'disabled' }), context);
-		}
-		if (!routedProfileId(view, task)) {
-			throw toLanguageLearningError(new AiError('not-configured', { reason: 'no-profile' }), context);
-		}
-		return context;
+		if (!view.enabled) throw new AiError('not-configured', { reason: 'disabled', task });
+		if (!routedProfileId(view, task)) throw new AiError('not-configured', { reason: 'no-profile', task });
+		return requestContext(view, task);
 	};
 
 	const responseLanguage = responseLanguageOf(view);
 	const assistant = createLanguageLearningAssistant(async (task, input, signal) => {
-		throwIfRequestAborted(signal);
+		throwIfAborted(signal, task);
 		const context = requireProfile(task);
 		try {
 			return (await runAiTask(task, input, { signal })).output;
 		} catch (error) {
-			throw toLanguageLearningError(error, context);
+			throw toRequestError(error, context);
 		}
 	}, {
 		runJob: async (task, input, options) => {
-			throwIfRequestAborted(options.signal);
+			throwIfAborted(options.signal, task);
 			const context = requireProfile(task);
 			try {
 				return await runTranscriptJob(task, input, options);

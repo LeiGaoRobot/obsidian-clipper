@@ -7,7 +7,7 @@ import {
 	type AiTaskOutput,
 	type TranscriptSegment
 } from './contracts';
-import { AI_ERROR_CODES, AiError, type AiErrorCode, type AiNotConfiguredReason } from './errors';
+import { AI_ERROR_CODES, AiError, type AiErrorCode, type AiErrorRecovery, type AiNotConfiguredReason } from './errors';
 import { hasIndexIds, type TranscriptJobIdentity, type TranscriptJobTask } from './job-identity';
 import type { AiJobAttempts, AiJobStatus } from './job-store';
 import { AI_TASKS, type AiTask, type AiTestResult, type AiTestStep, type ConnectionKind } from './types';
@@ -163,6 +163,10 @@ export interface SerializedAiError {
 	nativeCode?: string;
 	timeoutSeconds?: number;
 	retryAfterMs?: number;
+	/** Optional on the wire: an older background sends errors without them. */
+	task?: AiTask;
+	profileId?: string;
+	recovery?: AiErrorRecovery;
 }
 
 export type AiGatewayMessage =
@@ -209,7 +213,10 @@ export function serializeAiError(error: AiError): SerializedAiError {
 		...(error.detail ? { detail: error.detail } : {}),
 		...(error.nativeCode ? { nativeCode: error.nativeCode } : {}),
 		...(error.timeoutSeconds !== undefined ? { timeoutSeconds: error.timeoutSeconds } : {}),
-		...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {})
+		...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}),
+		...(error.task ? { task: error.task } : {}),
+		...(error.profileId ? { profileId: error.profileId } : {}),
+		...(error.recovery ? { recovery: error.recovery } : {})
 	};
 }
 
@@ -226,7 +233,10 @@ export function deserializeAiError(value: unknown): AiError {
 		...(typeof error.detail === 'string' ? { detail: error.detail } : {}),
 		...(typeof error.nativeCode === 'string' ? { nativeCode: error.nativeCode } : {}),
 		...(typeof error.timeoutSeconds === 'number' ? { timeoutSeconds: error.timeoutSeconds } : {}),
-		...(typeof error.retryAfterMs === 'number' ? { retryAfterMs: error.retryAfterMs } : {})
+		...(typeof error.retryAfterMs === 'number' ? { retryAfterMs: error.retryAfterMs } : {}),
+		...((AI_TASKS as readonly unknown[]).includes(error.task) ? { task: error.task as AiTask } : {}),
+		...(isJobId(error.profileId) ? { profileId: error.profileId } : {}),
+		...(error.recovery === 'continue-remaining' ? { recovery: error.recovery } : {})
 	});
 }
 

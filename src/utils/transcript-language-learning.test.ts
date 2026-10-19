@@ -17,6 +17,7 @@ import {
 	wireTranscriptLanguageLearning
 } from './transcript-language-learning';
 import { RequestCancelledError } from './request-cancellation';
+import { AiError } from '../ai/errors';
 
 function createTranscript(texts = ['Hello world.']) {
 	document.body.innerHTML = `
@@ -1261,6 +1262,70 @@ describe('Transcript language learning controls', () => {
 		expect(translateTranscript).toHaveBeenCalledTimes(2);
 		expect(transcript.classList.contains('show-bilingual-transcript')).toBe(true);
 		expect((document.querySelector('.language-learning-card') as HTMLElement).style.display).toBe('none');
+	});
+
+	test('an AiError shows its described body and detail and preselects the profile it names', async () => {
+		const { controls, transcript, segments } = createTranscript(['First.', 'Second.']);
+		const failure = new AiError('timeout', {
+			nativeCode: 'timeout',
+			detail: 'codex CLI timed out after 300 seconds.',
+			recovery: 'continue-remaining',
+			task: 'translate',
+			profileId: 'legacy-cli-codex-default'
+		});
+		const translateTranscript = vi.fn(async (
+			_texts: string[],
+			onProgress?: (progress: { completed: number; total: number; translations: string[] }) => void
+		) => {
+			onProgress?.({ completed: 1, total: 2, translations: ['第一段', ''] });
+			throw failure;
+		});
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript,
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn(),
+				listProfiles: vi.fn().mockResolvedValue(PROFILES),
+				setTaskProfile: vi.fn().mockResolvedValue(undefined)
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.toggleBilingual();
+		await flushPromises();
+
+		expect(document.querySelector('.language-learning-card-body')?.textContent).toBe('readerTranscriptTranslationBatchFailed');
+		expect(document.querySelector('.language-learning-card-error-detail')?.textContent).toBe('codex CLI timed out after 300 seconds.');
+		expect(document.querySelector('.language-learning-card-retry')?.textContent).toBe('readerContinueRemaining:1,2');
+		expect((document.querySelector('.language-learning-card-engine-select') as HTMLSelectElement).value)
+			.toBe('legacy-cli-codex-default');
+	});
+
+	test('an AiError cancellation closes quietly without an error card', async () => {
+		const { controls, transcript, segments } = createTranscript(['First.']);
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript: vi.fn().mockRejectedValue(new AiError('cancelled', { task: 'translate' })),
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn()
+			},
+			cancelPendingSeek: vi.fn()
+		});
+
+		await controller.toggleBilingual();
+		await flushPromises();
+
+		const card = document.querySelector('.language-learning-card') as HTMLElement;
+		expect(card.classList.contains('is-error')).toBe(false);
+		expect(card.style.display).toBe('none');
 	});
 
 	test('a readings run that fails in its translate step re-routes translate, not reading', async () => {

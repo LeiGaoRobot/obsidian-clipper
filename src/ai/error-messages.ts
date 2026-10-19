@@ -57,7 +57,8 @@ export function describeAiError(error: AiError): AiErrorDescription {
 		: ACTIONS[error.code];
 	return {
 		title: getMessage(keys.title),
-		body: getMessage(keys.body),
+		// A transcript job that timed out after splitting its groups: the remaining batches can continue.
+		body: getMessage(error.recovery === 'continue-remaining' ? 'readerTranscriptTranslationBatchFailed' : keys.body),
 		action,
 		...(error.detail && error.detail !== error.code ? { detail: error.detail } : {})
 	};

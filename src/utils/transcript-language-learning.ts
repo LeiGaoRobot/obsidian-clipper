@@ -17,8 +17,14 @@ import {
 } from './request-cancellation';
 import { renderLanguageLearningCenter } from './language-learning-center';
 import { trapFocus } from './focus-trap';
+import { describeAiError } from '../ai/error-messages';
+import { isAiError } from '../ai/errors';
 import type { TranscriptJobTask } from '../ai/job-identity';
 import type { AiTask, ConnectionKind } from '../ai/types';
+
+function isCancelled(error: unknown): boolean {
+	return isRequestCancelled(error) || (isAiError(error) && error.code === 'cancelled');
+}
 
 export interface TranscriptLanguageLearning {
 	translateTranscript: (
@@ -614,6 +620,9 @@ export function wireTranscriptLanguageLearning({
 		const structuredError = error && typeof error === 'object'
 			? error as { code?: string; details?: Record<string, unknown>; message?: string }
 			: null;
+		// Model work rejects with AiError, which names the task and profile that failed.
+		const aiError = isAiError(error) ? error : undefined;
+		const description = aiError ? describeAiError(aiError) : undefined;
 		const errorMode = String(structuredError?.details?.mode || executionModeOfKind(currentExecutionInfo.kind));
 		const localizedErrorKeys: Record<string, string> = {
 			unavailable: 'readerCliUnavailable',
@@ -624,7 +633,9 @@ export function wireTranscriptLanguageLearning({
 			'response-too-large': 'readerCliResponseTooLarge',
 			invalid: 'readerCliInvalid'
 		};
-		if (structuredError?.code === 'timeout') {
+		if (description) {
+			cardBody.textContent = description.body;
+		} else if (structuredError?.code === 'timeout') {
 			const timeoutSeconds = String(structuredError.details?.timeoutSeconds || '');
 			cardBody.textContent = getMessage('readerCliTimeout', [errorMode, timeoutSeconds]);
 		} else if (structuredError?.code && localizedErrorKeys[structuredError.code]) {
@@ -632,11 +643,13 @@ export function wireTranscriptLanguageLearning({
 		} else {
 			cardBody.textContent = error instanceof Error ? error.message : getMessage('error');
 		}
-		const technicalMessage = typeof structuredError?.details?.technicalDetail === 'string'
-			? structuredError.details.technicalDetail
-			: error instanceof Error
-				? error.message
-				: structuredError?.message;
+		const technicalMessage = description
+			? description.detail
+			: typeof structuredError?.details?.technicalDetail === 'string'
+				? structuredError.details.technicalDetail
+				: error instanceof Error
+					? error.message
+					: structuredError?.message;
 		if (technicalMessage && structuredError?.code) {
 			const summary = doc.createElement('summary');
 			summary.textContent = getMessage('readerTechnicalDetails');
@@ -648,7 +661,7 @@ export function wireTranscriptLanguageLearning({
 		}
 		// The runtime names the task that failed (a readings run can fail in its translate step);
 		// the flow's own task is the fallback.
-		const detailTask = structuredError?.details?.task;
+		const detailTask = aiError ? aiError.task : structuredError?.details?.task;
 		const failedTask = isReaderAiTask(detailTask) ? detailTask : task;
 		const canSwitchEngine = Boolean(
 			structuredError?.code
@@ -659,7 +672,7 @@ export function wireTranscriptLanguageLearning({
 		);
 		resetEngineRecovery();
 		if (canSwitchEngine && failedTask) {
-			const detailProfileId = structuredError?.details?.profileId;
+			const detailProfileId = aiError ? aiError.profileId : structuredError?.details?.profileId;
 			const failedProfileId = typeof detailProfileId === 'string'
 				? detailProfileId
 				: failedTask === 'explain' ? undefined : currentExecutionInfo.profileId;
@@ -742,7 +755,7 @@ export function wireTranscriptLanguageLearning({
 			await showExplanationActions(selection, resolvedExplanation);
 		} catch (error) {
 			if (request !== explanationRequest) return;
-			if (isRequestCancelled(error) || requestController.signal.aborted) {
+			if (isCancelled(error) || requestController.signal.aborted) {
 				if (activeRequest !== requestController) return;
 				setProgressStatus(getMessage('readerAiCancelled'));
 				hideCard();
@@ -1175,7 +1188,7 @@ export function wireTranscriptLanguageLearning({
 			if (complete) cacheTranslations(originalTexts, resolvedResponseLanguage, merged);
 			onPreferenceChange?.('bilingualSubtitles', true);
 		} catch (error) {
-			if (isRequestCancelled(error) || requestController.signal.aborted) {
+			if (isCancelled(error) || requestController.signal.aborted) {
 				if (activeRequest !== requestController) return;
 				setProgressStatus(getMessage('readerAiCancelled'));
 				return;
@@ -1409,7 +1422,7 @@ export function wireTranscriptLanguageLearning({
 			if (readingsComplete) cacheJapaneseReadings(getAllReadingSourceTexts(), japaneseReadings);
 			renderReadings(true);
 		} catch (error) {
-			if (isRequestCancelled(error) || requestController.signal.aborted) {
+			if (isCancelled(error) || requestController.signal.aborted) {
 				if (activeRequest !== requestController) return;
 				setProgressStatus(getMessage('readerAiCancelled'));
 				return;

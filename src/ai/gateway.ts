@@ -12,7 +12,7 @@ import {
 	type ReadingToken
 } from './contracts';
 import { createAiDiagnostics, type AiDiagnostics } from './diagnostics';
-import { AiError, toAiError } from './errors';
+import { AiError, toAiError, withAiErrorContext } from './errors';
 import { hashSegments, parseJobId, transcriptJobId, type TranscriptJobTask } from './job-identity';
 import {
 	createJobRunner,
@@ -33,7 +33,8 @@ import {
 	type AiCheckpointMessage,
 	type AiClientMessage,
 	type AiGatewayMessage,
-	type AiProgressPhase
+	type AiProgressPhase,
+	type SerializedAiError
 } from './protocol';
 import { effectiveStructuredOutput, resolveProfile } from './resolve';
 import { createConnectionStatusStore, type ConnectionStatusStore } from './settings';
@@ -113,9 +114,11 @@ interface Job {
 	outcome?: Outcome;
 }
 
-/** What a single call used, filled in as it runs, for its Diagnostics entry. */
+/** What a call used, filled in as it runs, for its Diagnostics entry and its error's context. */
 interface ExecuteInfo {
 	connection?: Connection;
+	/** The profile the task resolved to. */
+	profileId?: string;
 	structuredMode?: StructuredOutputMode;
 	fallback?: true;
 }
@@ -250,6 +253,12 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		};
 	};
 
+	/** `error` tagged with the task and, once it resolved, the profile of the call that failed. */
+	const withErrorContext = (error: AiError, task: AiTask, info: ExecuteInfo) => withAiErrorContext(error, {
+		task,
+		...(info.profileId ? { profileId: info.profileId } : {})
+	});
+
 	/** One model request for a task: resolve, render, run with structured output where supported, parse. */
 	const executeTask = async (
 		task: AiTask,
@@ -259,6 +268,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 	): Promise<{ output: unknown; connectionKind: ConnectionKind }> => {
 		const { profile, connection, credential } = resolveTask(await deps.loadAiSettings(), task, options.profileId);
 		info.connection = connection;
+		info.profileId = profile.id;
 		const { signal, onProgress } = options;
 		if (signal.aborted) throw new AiError('cancelled', { connectionId: connection.id });
 		const spec = outputSpec(task, input);
@@ -336,16 +346,29 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		return { output: parse(text), connectionKind: connection.kind };
 	};
 
+	// Every error a job records names its task, and its profile once that resolved, so the Reader
+	// can offer Switch and retry for the step that failed.
 	const runner = createJobRunner({
 		store,
-		resolveConnection,
+		resolveConnection: async (task, profileId) => {
+			try {
+				return await resolveConnection(task, profileId);
+			} catch (error) {
+				throw withAiErrorContext(toAiError(error), { task });
+			}
+		},
 		execute: async <T extends TranscriptJobTask>(
 			task: T,
 			input: AiTaskInput<T>,
 			options: { profileId?: string; signal: AbortSignal }
 		) => {
-			const result = await executeTask(task, input, options);
-			return { output: result.output as AiTaskOutput<T>, connectionKind: result.connectionKind };
+			const info: ExecuteInfo = {};
+			try {
+				const result = await executeTask(task, input, options, info);
+				return { output: result.output as AiTaskOutput<T>, connectionKind: result.connectionKind };
+			} catch (error) {
+				throw withErrorContext(toAiError(error), task, info);
+			}
 		},
 		now,
 		recordDiagnostics: entry => {
@@ -393,7 +416,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 			post(port, {
 				type: 'error',
 				jobId,
-				error: serializeAiError(new AiError('provider-error', { detail: 'A job with this ID already exists.' }))
+				error: serializeAiError(new AiError('provider-error', { detail: 'A job with this ID already exists.', task }))
 			});
 			return;
 		}
@@ -418,7 +441,11 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 				recordCall(task, job.startedAt, info);
 			},
 			error => {
-				const aiError = job.controller.signal.aborted ? new AiError('cancelled') : toAiError(error);
+				const aiError = withErrorContext(
+					job.controller.signal.aborted ? new AiError('cancelled') : toAiError(error),
+					task,
+					info
+				);
 				finish(job, { type: 'error', jobId, error: serializeAiError(aiError) });
 				recordCall(task, job.startedAt, info, aiError);
 			}
@@ -548,11 +575,20 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 	};
 
 	const durableListener = (port: AiPortLike, state: PortState, jobId: string): JobListener => event => {
-		post(port, event);
+		post(port, event.type === 'job-state' && event.error ? { ...event, error: withJobTask(jobId, event.error) } : event);
 		if (event.type === 'job-state' && event.status !== 'running') {
 			state.durable.delete(jobId);
 			updateKeepAlive();
 		}
+	};
+
+	/**
+	 * A job's own errors (`incomplete`, `cancelled`, a record stored before errors were tagged) name
+	 * the task from the job id; errors of its requests already carry it and their profile.
+	 */
+	const withJobTask = (jobId: string, error: SerializedAiError): SerializedAiError => {
+		const task = parseJobId(jobId)?.task;
+		return error.task || !task ? error : { ...error, task };
 	};
 
 	// Replaces an earlier listener of the same port and job, so a repeated attach is not doubled.
@@ -587,7 +623,11 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 			releaseDurable(state, jobId);
 			const stop = await runner.start(jobId, task, input, profileId, durableListener(port, state, jobId));
 			registerDurable(state, jobId, stop);
-		}).catch(error => post(port, { type: 'error', jobId, error: serializeAiError(toAiError(error)) }));
+		}).catch(error => post(port, {
+			type: 'error',
+			jobId,
+			error: serializeAiError(withAiErrorContext(toAiError(error), { task }))
+		}));
 	};
 
 	const attachDurable = async (port: AiPortLike, state: PortState, jobId: string) => {
@@ -596,7 +636,7 @@ export function createAiGateway(deps: AiGatewayDeps): AiGateway {
 		try {
 			stop = await runner.attach(jobId, durableListener(port, state, jobId));
 		} catch (error) {
-			post(port, { type: 'error', jobId, error: serializeAiError(toAiError(error)) });
+			post(port, { type: 'error', jobId, error: withJobTask(jobId, serializeAiError(toAiError(error))) });
 			return;
 		}
 		if (stop) {

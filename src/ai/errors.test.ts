@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { AI_ERROR_CODES, AiError, classifyHttpStatus, isAiError, toAiError } from './errors';
+import { AI_ERROR_CODES, AiError, aiErrorOptions, classifyHttpStatus, isAiError, toAiError, withAiErrorContext } from './errors';
 
 function nativeError(name: string, code?: string, message = 'native failure') {
 	return Object.assign(new Error(message), { name, ...(code ? { code } : {}) });
@@ -20,6 +20,58 @@ describe('AiError', () => {
 
 	test('lists every code once', () => {
 		expect(new Set(AI_ERROR_CODES).size).toBe(AI_ERROR_CODES.length);
+	});
+
+	test('carries the optional task, profile, and recovery only when given', () => {
+		const error = new AiError('timeout', { task: 'translate', profileId: 'codex-default', recovery: 'continue-remaining' });
+		expect(error).toMatchObject({ task: 'translate', profileId: 'codex-default', recovery: 'continue-remaining' });
+		const plain = new AiError('timeout');
+		expect(plain).not.toHaveProperty('task');
+		expect(plain).not.toHaveProperty('profileId');
+		expect(plain).not.toHaveProperty('recovery');
+	});
+
+	test('aiErrorOptions rebuilds an equal error', () => {
+		const error = new AiError('rate-limited', {
+			connectionId: 'c1',
+			status: 429,
+			detail: 'slow down',
+			retryAfterMs: 5000,
+			task: 'explain',
+			profileId: 'gpt'
+		});
+		expect({ ...new AiError(error.code, aiErrorOptions(error)) }).toEqual({ ...error });
+	});
+});
+
+describe('withAiErrorContext', () => {
+	test('fills a missing task and profile on a copy, keeping every other field', () => {
+		const error = new AiError('auth', { status: 401, connectionId: 'openai', detail: 'invalid key' });
+		const tagged = withAiErrorContext(error, { task: 'explain', profileId: 'gpt' });
+		expect(tagged).not.toBe(error);
+		expect(tagged).toBeInstanceOf(AiError);
+		expect(tagged).toMatchObject({
+			code: 'auth',
+			status: 401,
+			connectionId: 'openai',
+			detail: 'invalid key',
+			retryable: false,
+			task: 'explain',
+			profileId: 'gpt'
+		});
+		expect(error).not.toHaveProperty('task');
+	});
+
+	test('never overwrites what the error already names', () => {
+		const error = new AiError('quota', { task: 'translate', profileId: 'codex' });
+		expect(withAiErrorContext(error, { task: 'reading', profileId: 'gpt' })).toBe(error);
+		const taskOnly = new AiError('not-configured', { task: 'translate' });
+		expect(withAiErrorContext(taskOnly, { task: 'reading', profileId: 'gpt' })).toMatchObject({ task: 'translate', profileId: 'gpt' });
+	});
+
+	test('returns the same error when there is nothing to add', () => {
+		const error = new AiError('network');
+		expect(withAiErrorContext(error, {})).toBe(error);
 	});
 });
 

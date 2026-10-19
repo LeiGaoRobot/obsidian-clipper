@@ -161,15 +161,29 @@ describe('AI gateway', () => {
 		expect(deps.executeApi).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-b' }), expect.anything());
 	});
 
-	test('reports configuration problems as typed errors', async () => {
+	test('reports configuration problems as typed errors that name the task only', async () => {
 		const { deps, port } = setup({}, v1Settings({ interpreterEnabled: false }));
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
 		await flush();
-		expect(port.last()).toMatchObject({ type: 'error', jobId: 'job-1', error: { code: 'not-configured', reason: 'disabled' } });
+		expect(port.last()).toMatchObject({
+			type: 'error',
+			jobId: 'job-1',
+			error: { code: 'not-configured', reason: 'disabled', task: 'interpret' }
+		});
+		expect((port.last() as { error: object }).error).not.toHaveProperty('profileId');
 		expect(deps.executeApi).not.toHaveBeenCalled();
 	});
 
-	test('serializes adapter errors', async () => {
+	test('an explicit profile that does not resolve names the task only', async () => {
+		const { port } = setup();
+		port.send({ type: 'start', jobId: 'job-1', task: 'explain', profileId: 'missing', input: textInput });
+		await flush();
+		const error = (port.last() as { error: object }).error;
+		expect(error).toMatchObject({ code: 'not-configured', task: 'explain' });
+		expect(error).not.toHaveProperty('profileId');
+	});
+
+	test('serializes adapter errors with the resolved task and profile', async () => {
 		const { port } = setup({
 			executeApi: vi.fn(async () => {
 				throw new AiError('rate-limited', { status: 429, connectionId: 'provider-openai', detail: 'slow down' });
@@ -180,8 +194,29 @@ describe('AI gateway', () => {
 		expect(port.last()).toEqual({
 			type: 'error',
 			jobId: 'job-1',
-			error: { code: 'rate-limited', retryable: true, status: 429, connectionId: 'provider-openai', detail: 'slow down' }
+			error: {
+				code: 'rate-limited',
+				retryable: true,
+				status: 429,
+				connectionId: 'provider-openai',
+				detail: 'slow down',
+				task: 'interpret',
+				profileId: 'model-a'
+			}
 		});
+	});
+
+	test('a cancelled single call names its task and profile', async () => {
+		const { port } = setup({
+			executeApi: vi.fn((_request: unknown, options: { signal?: AbortSignal }) => new Promise<string>((_resolve, reject) => {
+				options.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+			})) as unknown as AiGatewayDeps['executeApi']
+		});
+		port.send({ type: 'start', jobId: 'job-1', task: 'explain', profileId: 'model-b', input: textInput });
+		await flush();
+		port.send({ type: 'cancel', jobId: 'job-1' });
+		await flush();
+		expect(port.last()).toMatchObject({ type: 'error', error: { code: 'cancelled', task: 'explain', profileId: 'model-b' } });
 	});
 
 	test('rejects a reply that breaks the contract', async () => {
@@ -1019,6 +1054,55 @@ describe('AI gateway durable jobs', () => {
 		expect(port.last()).toMatchObject({ type: 'job-state', status: 'cancelled', error: { code: 'cancelled' } });
 		expect(await store.get(jobId)).toMatchObject({ status: 'cancelled' });
 		expect(gateway.activeJobIds()).toEqual([]);
+	});
+
+	test('a failed job\'s error names the task and the profile its requests resolved to', async () => {
+		const { port, store } = jobSetup({
+			executeApi: vi.fn(async () => {
+				throw new AiError('auth', { status: 401, connectionId: 'provider-openai', detail: 'invalid key' });
+			})
+		});
+		port.send({ ...startJob, profileId: 'model-b' });
+		await settle();
+
+		expect(port.last()).toMatchObject({
+			type: 'job-state',
+			status: 'failed',
+			error: { code: 'auth', status: 401, detail: 'invalid key', task: 'translate', profileId: 'model-b' }
+		});
+		// The tagged error is what the record keeps, so an attach after a restart replays it.
+		expect(await store.get(jobId)).toMatchObject({ error: { code: 'auth', task: 'translate', profileId: 'model-b' } });
+	});
+
+	test('a job whose profile does not resolve fails with the task only', async () => {
+		const store = createAiJobStore(memoryArea());
+		const { deps, port } = setup(
+			{ jobStore: store, executeApi: vi.fn(async () => allTranslations) },
+			v1Settings({ interpreterEnabled: false })
+		);
+		port.send(startJob);
+		await settle();
+
+		const last = port.last() as { type: string; status: string; error: object };
+		expect(last).toMatchObject({ type: 'job-state', status: 'failed', error: { code: 'not-configured', reason: 'disabled', task: 'translate' } });
+		expect(last.error).not.toHaveProperty('profileId');
+		expect(deps.executeApi).not.toHaveBeenCalled();
+	});
+
+	test('a cancelled job and a stored untagged error name the task from the job id', async () => {
+		const api = pendingApi();
+		const { port } = jobSetup({ executeApi: api.executeApi });
+		port.send(startJob);
+		await settle();
+		port.send({ type: 'cancel', jobId });
+		await settle();
+		expect(port.last()).toMatchObject({ type: 'job-state', status: 'cancelled', error: { code: 'cancelled', task: 'translate' } });
+
+		const replay = jobSetup();
+		await seed(replay.store, storedRecord({ status: 'failed', error: { code: 'quota', retryable: false } }));
+		replay.port.send({ type: 'attach', jobId });
+		await settle();
+		expect(replay.port.last()).toMatchObject({ type: 'job-state', status: 'failed', error: { code: 'quota', task: 'translate' } });
 	});
 
 	test('a cancel sent right after start-job cancels the job it started', async () => {

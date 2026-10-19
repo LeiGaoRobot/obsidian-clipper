@@ -3,7 +3,6 @@ import { Settings } from '../types/types';
 import { AiError } from '../ai/errors';
 import { transcriptJobId, type TranscriptJobIdentity, type TranscriptJobTask } from '../ai/job-identity';
 import type { TranscriptSegment } from '../ai/contracts';
-import { RequestCancelledError } from './request-cancellation';
 
 const mocks = vi.hoisted(() => ({
 	loadSettings: vi.fn(),
@@ -396,15 +395,23 @@ describe('Configured language learning runtime', () => {
 		mocks.executeJob.mockRejectedValue(withJobAttempts(cliTimeout('codex', 300), { requests: 1, retries: 0, splits: 0 }));
 		mocks.runAiTask.mockRejectedValue(new AiError('auth', { status: 401 }));
 
-		await expect(configuredLanguageLearning.translateTranscript(['Hello.'])).rejects.toMatchObject({
-			code: 'timeout',
-			details: expect.objectContaining({ mode: 'codex', task: 'translate', profileId: 'codex-default' })
-		});
+		const translation = await configuredLanguageLearning.translateTranscript(['Hello.']).catch(caught => caught);
+		expect(translation).toBeInstanceOf(AiError);
+		expect(translation).toMatchObject({ code: 'timeout', nativeCode: 'timeout', task: 'translate', profileId: 'codex-default' });
 		await expect(configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' }))
-			.rejects.toMatchObject({
-				code: 'failed',
-				details: expect.objectContaining({ mode: 'api', task: 'explain', profileId: 'gpt' })
-			});
+			.rejects.toMatchObject({ code: 'auth', status: 401, task: 'explain', profileId: 'gpt' });
+		// The readings flow of a non-Japanese transcript fails in its translate step, and says so.
+		await expect(configuredLanguageLearning.translateTranscriptToJapanese(['Hello.']))
+			.rejects.toMatchObject({ code: 'timeout', task: 'translate', profileId: 'codex-default' });
+	});
+
+	test('keeps the task and profile the gateway already set', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView());
+		const error = new AiError('quota', { task: 'explain', profileId: 'codex-default', detail: 'out of credit' });
+		mocks.runAiTask.mockRejectedValue(error);
+
+		await expect(configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' }))
+			.rejects.toBe(error);
 	});
 
 	test('the response language comes from the stored view', async () => {
@@ -432,8 +439,11 @@ describe('Configured language learning runtime', () => {
 		));
 
 		await expect(configuredLanguageLearning.translateTranscript(['Hello.'])).resolves.toEqual(['T0']);
-		await expect(configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' }))
-			.rejects.toMatchObject({ message: 'aiErrorNotConfiguredBody', details: { aiCode: 'not-configured', task: 'explain' } });
+		const error = await configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' })
+			.catch(caught => caught);
+		expect(error).toBeInstanceOf(AiError);
+		expect(error).toMatchObject({ code: 'not-configured', reason: 'no-profile', task: 'explain' });
+		expect(error).not.toHaveProperty('profileId');
 		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
@@ -441,8 +451,11 @@ describe('Configured language learning runtime', () => {
 		mocks.loadAiSettings.mockResolvedValue({ ...storedView(), enabled: false });
 
 		await expect(configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' }))
-			.rejects.toMatchObject({ message: 'aiErrorNotConfiguredBody', details: { aiCode: 'not-configured' } });
+			.rejects.toMatchObject({ code: 'not-configured', reason: 'disabled', task: 'explain' });
+		await expect(configuredLanguageLearning.translateTranscript(['Hello.']))
+			.rejects.toMatchObject({ code: 'not-configured', reason: 'disabled', task: 'translate' });
 		expect(mocks.runAiTask).not.toHaveBeenCalled();
+		expect(mocks.runTranscriptJob).not.toHaveBeenCalled();
 	});
 
 	test('persists learner translation corrections for the next Reader session', async () => {
@@ -802,33 +815,30 @@ describe('Configured language learning runtime', () => {
 		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterExecutionMode: 'codex' });
 		mocks.executeJob.mockRejectedValue(withJobAttempts(cliTimeout('codex', 300), { requests: 4, retries: 0, splits: 3 }));
 
-		await expect(configuredLanguageLearning.translateTranscript(['always fails']))
-			.rejects.toMatchObject({
-				code: 'failed',
-				message: 'readerTranscriptTranslationBatchFailed',
-				details: expect.objectContaining({ mode: 'codex', automaticBatchRetry: true, aiCode: 'timeout' })
-			});
+		const translation = await configuredLanguageLearning.translateTranscript(['always fails']).catch(caught => caught);
+		expect(translation).toBeInstanceOf(AiError);
+		expect(translation).toMatchObject({
+			code: 'timeout',
+			retryable: true,
+			recovery: 'continue-remaining',
+			nativeCode: 'timeout',
+			timeoutSeconds: 300,
+			detail: 'codex CLI timed out after 300 seconds.',
+			task: 'translate'
+		});
 		await expect(configuredLanguageLearning.annotateJapaneseTranscript(['漢字']))
-			.rejects.toMatchObject({
-				code: 'failed',
-				message: 'readerTranscriptTranslationBatchFailed',
-				details: expect.objectContaining({ automaticBatchRetry: true })
-			});
+			.rejects.toMatchObject({ code: 'timeout', recovery: 'continue-remaining', task: 'reading' });
 	});
 
-	test('a CLI timeout without splits keeps the localized CLI timeout card', async () => {
+	test('a CLI timeout without splits stays a plain timeout', async () => {
 		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterExecutionMode: 'grok' });
 		mocks.executeJob.mockRejectedValue(withJobAttempts(cliTimeout('grok', 120), { requests: 1, retries: 0, splits: 0 }));
 
 		const error = await configuredLanguageLearning.annotateJapaneseTranscript(['漢字']).catch(caught => caught);
 
-		expect(error).toMatchObject({
-			name: 'LanguageLearningRequestError',
-			code: 'timeout',
-			details: expect.objectContaining({ mode: 'grok', timeoutSeconds: 120 })
-		});
-		expect(error.details.automaticBatchRetry).toBeUndefined();
-		expect(error.message).not.toContain('readerJapaneseReadingsTimeoutRetry');
+		expect(error).toBeInstanceOf(AiError);
+		expect(error).toMatchObject({ code: 'timeout', nativeCode: 'timeout', timeoutSeconds: 120, task: 'reading' });
+		expect(error).not.toHaveProperty('recovery');
 	});
 
 	test('an API timeout of a transcript job is not mapped to a batch failure', async () => {
@@ -837,14 +847,15 @@ describe('Configured language learning runtime', () => {
 			{ requests: 1, retries: 0, splits: 0 }
 		));
 
-		await expect(configuredLanguageLearning.translateTranscript(['A']))
-			.rejects.toMatchObject({ code: 'failed', message: 'aiErrorTimeoutBody' });
+		const error = await configuredLanguageLearning.translateTranscript(['A']).catch(caught => caught);
+		expect(error).toMatchObject({ code: 'timeout', detail: 'provider timed out', task: 'translate' });
+		expect(error).not.toHaveProperty('recovery');
 	});
 
-	test('a cancelled transcript job surfaces as RequestCancelledError', async () => {
+	test('a cancelled transcript job rejects with cancelled', async () => {
 		mocks.executeJob.mockRejectedValue(new AiError('cancelled'));
 
-		await expect(configuredLanguageLearning.translateTranscript(['A'])).rejects.toBeInstanceOf(RequestCancelledError);
+		await expect(configuredLanguageLearning.translateTranscript(['A'])).rejects.toMatchObject({ code: 'cancelled', task: 'translate' });
 	});
 
 	test('passes the abort signal to the AI gateway and surfaces cancellation', async () => {
@@ -869,20 +880,20 @@ describe('Configured language learning runtime', () => {
 		));
 		abortController.abort();
 
-		await expect(request).rejects.toBeInstanceOf(RequestCancelledError);
+		await expect(request).rejects.toMatchObject({ code: 'cancelled', task: 'explain' });
 	});
 
-	test('surfaces a gateway cancellation as RequestCancelledError', async () => {
+	test('surfaces a gateway cancellation as cancelled', async () => {
 		mocks.runAiTask.mockRejectedValue(new AiError('cancelled'));
 
 		await expect(configuredLanguageLearning.explainSelection({
 			kind: 'word',
 			text: 'encountered',
 			context: 'I encountered an unfamiliar word.'
-		})).rejects.toBeInstanceOf(RequestCancelledError);
+		})).rejects.toMatchObject({ code: 'cancelled' });
 	});
 
-	test('maps non-timeout gateway errors to a failed request with localized text', async () => {
+	test('passes gateway errors through as AiError with their detail, tagged with the request', async () => {
 		mocks.runAiTask.mockRejectedValue(new AiError('auth', { status: 401, detail: 'invalid key' }));
 
 		const error = await configuredLanguageLearning.explainSelection({
@@ -891,15 +902,17 @@ describe('Configured language learning runtime', () => {
 			context: 'I encountered an unfamiliar word.'
 		}).catch(caught => caught);
 
+		expect(error).toBeInstanceOf(AiError);
 		expect(error).toMatchObject({
-			name: 'LanguageLearningRequestError',
-			code: 'failed',
-			message: 'aiErrorAuthBody',
-			details: expect.objectContaining({ aiCode: 'auth', technicalDetail: 'invalid key' })
+			code: 'auth',
+			status: 401,
+			retryable: false,
+			detail: 'invalid key',
+			task: 'explain'
 		});
 	});
 
-	test('preserves structured CLI errors for localized Reader recovery', async () => {
+	test('preserves structured CLI errors for the Reader card', async () => {
 		mocks.loadSettings.mockResolvedValue({
 			...settings,
 			interpreterExecutionMode: 'grok'
@@ -911,9 +924,11 @@ describe('Configured language learning runtime', () => {
 			text: '日本語',
 			context: '日本語を勉強します。'
 		})).rejects.toMatchObject({
-			name: 'LanguageLearningRequestError',
+			name: 'AiError',
 			code: 'timeout',
-			details: expect.objectContaining({ mode: 'grok', timeoutSeconds: 120 })
+			nativeCode: 'timeout',
+			timeoutSeconds: 120,
+			task: 'explain'
 		});
 	});
 
@@ -923,7 +938,7 @@ describe('Configured language learning runtime', () => {
 		['response-too-large', 'bad-response'],
 		['invalid', 'provider-error'],
 		['protocol-mismatch', 'host-outdated']
-	])('keeps the Host %s code for the Reader card', async (nativeCode, aiCode) => {
+	])('keeps the Host %s code on the AiError', async (nativeCode, aiCode) => {
 		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterExecutionMode: 'codex' });
 		mocks.runAiTask.mockRejectedValue(new AiError(aiCode as never, { nativeCode, detail: 'Host said no' }));
 
@@ -932,13 +947,15 @@ describe('Configured language learning runtime', () => {
 			text: '日本語',
 			context: '日本語を勉強します。'
 		})).rejects.toMatchObject({
-			name: 'LanguageLearningRequestError',
-			code: nativeCode,
-			details: expect.objectContaining({ mode: 'codex', aiCode, technicalDetail: 'Host said no' })
+			name: 'AiError',
+			code: aiCode,
+			nativeCode,
+			detail: 'Host said no',
+			task: 'explain'
 		});
 	});
 
-	test('reports API timeouts with gateway copy instead of the CLI timeout card', async () => {
+	test('reports API timeouts as timeout errors with their limit', async () => {
 		mocks.runAiTask.mockRejectedValue(new AiError('timeout', {
 			detail: 'No response from the provider for 60 seconds.',
 			timeoutSeconds: 60
@@ -949,9 +966,10 @@ describe('Configured language learning runtime', () => {
 			text: '日本語',
 			context: '日本語を勉強します。'
 		})).rejects.toMatchObject({
-			code: 'failed',
-			message: 'aiErrorTimeoutBody',
-			details: expect.objectContaining({ mode: 'api', aiCode: 'timeout', timeoutSeconds: 60 })
+			code: 'timeout',
+			timeoutSeconds: 60,
+			detail: 'No response from the provider for 60 seconds.',
+			task: 'explain'
 		});
 	});
 });
