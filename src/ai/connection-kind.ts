@@ -1,3 +1,4 @@
+import { PRESET_KINDS } from './preset-kinds';
 import type { CliConnectionKind, ConnectionKind } from './types';
 
 export interface ConnectionKindSource {
@@ -6,21 +7,6 @@ export interface ConnectionKindSource {
 	baseUrl?: string;
 	presetId?: string;
 }
-
-// Bundled catalog presets whose wire protocol is not OpenAI-compatible.
-const PRESET_KINDS: Record<string, ConnectionKind> = {
-	anthropic: 'anthropic',
-	'azure-openai': 'azure-openai',
-	huggingface: 'huggingface',
-	ollama: 'ollama',
-	perplexity: 'perplexity',
-	deepseek: 'openai-compatible',
-	'google-gemini': 'openai-compatible',
-	meta: 'openai-compatible',
-	openai: 'openai-compatible',
-	openrouter: 'openai-compatible',
-	xai: 'openai-compatible'
-};
 
 function kindFromUrl(baseUrl = ''): ConnectionKind | undefined {
 	let url: URL;

@@ -8,7 +8,8 @@ const outputDirectories = ['dist', 'dist_firefox', 'dist_safari'];
 const verify = process.argv.includes('--verify');
 
 const entryBudgets = {
-	'background.js': 900_000,
+	// Raised for the AI gateway's job runner (Phase 4) and the bundled catalog and settings migration (Phase 5).
+	'background.js': 980_000,
 	'content.js': 1_425_000,
 	'highlights.js': 1_450_000,
 	'popup.js': 1_350_000,
