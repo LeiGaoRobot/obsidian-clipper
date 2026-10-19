@@ -2,9 +2,14 @@ import {
 	isCompleteTranscriptReadingSegment,
 	isCompleteTranscriptReadings,
 	type AiTaskInput,
-	type AiTaskOutput,
-	type TranscriptSegment
+	type AiTaskOutput
 } from '../ai/contracts';
+import {
+	buildTranscriptPromptGroups,
+	readingMaxTokens,
+	translationMaxTokens,
+	TRANSCRIPT_GROUP_BUDGETS
+} from '../ai/job-runner';
 import type { AiTask } from '../ai/types';
 import { throwIfRequestAborted } from './request-cancellation';
 
@@ -94,44 +99,10 @@ export interface LanguageLearningAssistant {
 	): Promise<TranscriptReadingSegments>;
 }
 
-const MAX_TRANSCRIPT_PROMPT_CHARS = 6000;
-// Reading tokens cost several output tokens per source character, so reading groups stay smaller.
-const MAX_JAPANESE_READING_PROMPT_CHARS = 2500;
-
-interface TranscriptPromptGroup {
-	segments: TranscriptSegment[];
-	sourceChars: number;
-}
-
-// Groups segments under a prompt-size budget. Each segment keeps its source index as a stable
-// id and stays atomic, so one oversized segment may exceed the budget on its own.
-function buildTranscriptPromptGroups(
-	segments: string[],
-	instruction: string,
-	maxPromptChars = MAX_TRANSCRIPT_PROMPT_CHARS,
-	includeSegment: (index: number) => boolean = () => true
-): TranscriptPromptGroup[] {
-	const promptGroups: TranscriptPromptGroup[] = [];
-	let current: TranscriptSegment[] = [];
-	let currentSourceChars = 0;
-	let currentLength = instruction.length;
-	segments.forEach((text, id) => {
-		if (!includeSegment(id)) return;
-		const segment = { id, text };
-		const length = JSON.stringify(segment).length + 1;
-		if (current.length > 0 && currentLength + length > maxPromptChars) {
-			promptGroups.push({ segments: current, sourceChars: currentSourceChars });
-			current = [];
-			currentSourceChars = 0;
-			currentLength = instruction.length;
-		}
-		current.push(segment);
-		currentSourceChars += text.length;
-		currentLength += length;
-	});
-	if (current.length > 0) promptGroups.push({ segments: current, sourceChars: currentSourceChars });
-	return promptGroups;
-}
+// Group budgets, grouping, and output budgets are the job runner's policy; reused here until
+// transcript tasks run as background jobs.
+const MAX_TRANSCRIPT_PROMPT_CHARS = TRANSCRIPT_GROUP_BUDGETS.api.translate;
+const MAX_JAPANESE_READING_PROMPT_CHARS = TRANSCRIPT_GROUP_BUDGETS.api.reading;
 
 function cloneTranscriptReadings(readings: TranscriptReadingSegments): TranscriptReadingSegments {
 	return readings.map(tokens => tokens.map(token => ({ ...token })));
@@ -227,8 +198,7 @@ export function createLanguageLearningAssistant(
 				const generated = await sendRequest('reading', {
 					instruction,
 					segments: group.segments,
-					// Token objects cost more output than the source text they annotate.
-					maxTokens: Math.min(16000, Math.max(2000, Math.ceil(group.sourceChars * 5)))
+					maxTokens: readingMaxTokens(group)
 				}, signal);
 				throwIfRequestAborted(signal);
 				// Accept only requested ids, and only readings that reproduce their source.
@@ -273,8 +243,7 @@ export function createLanguageLearningAssistant(
 				const translated = await sendRequest('translate', {
 					instruction,
 					segments: group.segments,
-					// Each item adds a small JSON wrapper around its translation.
-					maxTokens: Math.min(8000, Math.max(1600, Math.ceil(group.sourceChars * 1.2 + group.segments.length * 15)))
+					maxTokens: translationMaxTokens(group)
 				}, signal);
 				throwIfRequestAborted(signal);
 				const requested = new Set(group.segments.map(segment => segment.id));

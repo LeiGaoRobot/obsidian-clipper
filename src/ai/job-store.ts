@@ -7,6 +7,8 @@ import type { SerializedAiError } from './protocol';
 // lasts only as long as the service worker.
 
 export const AI_JOB_KEY_PREFIX = 'aiJob:';
+/** A job's source input, written once when it starts so a resumed job can rebuild its groups. */
+export const AI_JOB_INPUT_KEY_PREFIX = 'aiJobInput:';
 /** Phase 3 Reader checkpoints; removed once on gateway init, never migrated. */
 export const LEGACY_CHECKPOINT_KEY_PREFIX = 'languageLearningTranscriptCheckpointV1:';
 export const MAX_JOB_RECORDS = 20;
@@ -38,6 +40,12 @@ export interface AiJobRecord {
 	updatedAt: number;
 }
 
+/** What a job needs to rebuild its requests; segment ids are the array indexes. */
+export interface AiJobStoredInput {
+	instruction: string;
+	segments: string[];
+}
+
 export interface StorageAreaLike {
 	get(keys?: string | string[] | null): Promise<Record<string, unknown>>;
 	set(values: Record<string, unknown>): Promise<void>;
@@ -49,7 +57,12 @@ export interface AiJobStore {
 	get(jobId: string): Promise<AiJobRecord | undefined>;
 	/** Queues a whole-record write after this job's earlier writes; prunes old records. */
 	put(record: AiJobRecord): Promise<void>;
+	/** Removes the record and its stored input. */
 	remove(jobId: string): Promise<void>;
+	/** Queues the job's input write; it lives as long as the record and is evicted with it. */
+	putInput(jobId: string, input: AiJobStoredInput): Promise<void>;
+	/** Waits for this job's queued writes, then reads its input. Malformed inputs read as undefined. */
+	getInput(jobId: string): Promise<AiJobStoredInput | undefined>;
 	list(): Promise<AiJobRecord[]>;
 	removeLegacyCheckpoints(): Promise<void>;
 }
@@ -59,6 +72,17 @@ const STATUSES: ReadonlySet<string> = new Set<AiJobStatus>(['running', 'complete
 
 export function aiJobStorageKey(jobId: string): string {
 	return `${AI_JOB_KEY_PREFIX}${jobId}`;
+}
+
+export function aiJobInputStorageKey(jobId: string): string {
+	return `${AI_JOB_INPUT_KEY_PREFIX}${jobId}`;
+}
+
+function isStoredInput(value: unknown): value is AiJobStoredInput {
+	return isRecord(value)
+		&& typeof value.instruction === 'string'
+		&& Array.isArray(value.segments)
+		&& value.segments.every(segment => typeof segment === 'string');
 }
 
 function isCount(value: unknown): value is number {
@@ -149,18 +173,24 @@ export function createAiJobStore(area: StorageAreaLike = createMemoryArea()): Ai
 		if (excess <= 0) return;
 		const evicted = evictionOrder(records, keepId).slice(0, excess).map(record => record.id);
 		evicted.forEach(id => written.delete(id));
-		if (evicted.length > 0) await area.remove(evicted.map(aiJobStorageKey));
+		if (evicted.length > 0) await removeKeys(evicted);
 	};
 
-	const write = async (record: AiJobRecord) => {
-		const values = { [aiJobStorageKey(record.id)]: record };
+	// Inputs first, so a record never outlives the input a resume would need.
+	const removeKeys = async (jobIds: string[]) => {
+		await area.remove(jobIds.map(aiJobInputStorageKey));
+		await area.remove(jobIds.map(aiJobStorageKey));
+	};
+
+	const write = async (jobId: string, values: Record<string, unknown>) => {
 		try {
 			await area.set(values);
 		} catch (error) {
 			if (!isQuotaError(error)) throw error;
-			const oldest = evictionOrder(await list(), record.id).find(candidate => candidate.status !== 'running');
+			const oldest = evictionOrder(await list(), jobId).find(candidate => candidate.status !== 'running');
 			if (!oldest) throw error;
 			written.delete(oldest.id);
+			await area.remove(aiJobInputStorageKey(oldest.id));
 			await area.remove(aiJobStorageKey(oldest.id));
 			await area.set(values);
 		}
@@ -174,7 +204,7 @@ export function createAiJobStore(area: StorageAreaLike = createMemoryArea()): Ai
 		},
 		put(record) {
 			return enqueue(record.id, async () => {
-				await write(record);
+				await write(record.id, { [aiJobStorageKey(record.id)]: record });
 				if (written.has(record.id)) return;
 				written.add(record.id);
 				// Best effort: the record itself is stored, and the next new job prunes again.
@@ -184,8 +214,17 @@ export function createAiJobStore(area: StorageAreaLike = createMemoryArea()): Ai
 		remove(jobId) {
 			return enqueue(jobId, async () => {
 				written.delete(jobId);
-				await area.remove(aiJobStorageKey(jobId));
+				await removeKeys([jobId]);
 			});
+		},
+		putInput(jobId, input) {
+			const copy: AiJobStoredInput = { instruction: input.instruction, segments: [...input.segments] };
+			return enqueue(jobId, () => write(jobId, { [aiJobInputStorageKey(jobId)]: copy }));
+		},
+		async getInput(jobId) {
+			await queues.get(jobId);
+			const value = (await area.get(aiJobInputStorageKey(jobId)))[aiJobInputStorageKey(jobId)];
+			return isStoredInput(value) ? value : undefined;
 		},
 		list,
 		async removeLegacyCheckpoints() {

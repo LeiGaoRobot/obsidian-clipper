@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+	aiJobInputStorageKey,
 	aiJobStorageKey,
 	createAiJobStore,
 	LEGACY_CHECKPOINT_KEY_PREFIX,
@@ -225,6 +226,33 @@ describe('createAiJobStore', () => {
 		await store.remove('a');
 		expect(area.values.has(aiJobStorageKey('a'))).toBe(false);
 		expect(area.calls[area.calls.length - 1]).toBe('remove:aiJob:a');
+	});
+
+	test('stores a job input beside its record and removes both together', async () => {
+		const area = fakeArea();
+		const store = createAiJobStore(area);
+		const input = { instruction: 'Translate.', segments: ['a', 'b'] };
+		void store.putInput('a', input);
+		input.segments.push('mutated');
+		expect(await store.getInput('a')).toEqual({ instruction: 'Translate.', segments: ['a', 'b'] });
+		await store.put(record('a'));
+		// Inputs are not records.
+		expect((await store.list()).map(entry => entry.id)).toEqual(['a']);
+		await store.remove('a');
+		expect(area.values.has(aiJobInputStorageKey('a'))).toBe(false);
+		expect(await store.getInput('a')).toBeUndefined();
+		area.values.set(aiJobInputStorageKey('broken'), { instruction: 'x', segments: [1] });
+		expect(await store.getInput('broken')).toBeUndefined();
+	});
+
+	test('evicts an input with its record when pruning', async () => {
+		const area = fakeArea();
+		const store = createAiJobStore(area);
+		await seed(area, Array.from({ length: MAX_JOB_RECORDS }, (_, index) => record(`old-${index}`, { updatedAt: index })));
+		area.values.set(aiJobInputStorageKey('old-0'), { instruction: 'x', segments: [] });
+		await store.put(record('new', { updatedAt: 100 }));
+		expect(area.values.has(aiJobStorageKey('old-0'))).toBe(false);
+		expect(area.values.has(aiJobInputStorageKey('old-0'))).toBe(false);
 	});
 
 	test('removeLegacyCheckpoints removes only the old checkpoint prefix', async () => {
