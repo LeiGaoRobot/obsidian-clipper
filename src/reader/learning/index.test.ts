@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-vi.mock('./i18n', () => ({
+vi.mock('../../utils/i18n', () => ({
 	getMessage: (key: string, substitutions?: string | string[]) => substitutions
 		? `${key}:${Array.isArray(substitutions) ? substitutions.join(',') : substitutions}`
 		: key
@@ -11,40 +11,11 @@ vi.mock('./i18n', () => ({
 import {
 	cleanupTranscriptLanguageLearning,
 	clearTranscriptLanguageLearningCache,
-	getTranscriptLearningSelection,
-	isJapaneseTranscript,
-	shouldOfferJapaneseReadings,
 	wireTranscriptLanguageLearning
-} from './transcript-language-learning';
-import { RequestCancelledError } from './request-cancellation';
-import { AiError } from '../ai/errors';
-
-function createTranscript(texts = ['Hello world.']) {
-	document.body.innerHTML = `
-		<div class="player-toggle-group"></div>
-		<div class="youtube transcript">
-			${texts.map((text, index) => `
-				<div class="transcript-segment">
-					<strong class="timestamp" data-timestamp="${index * 200}">${index}:00</strong>
-					<div class="transcript-segment-text">${text}</div>
-				</div>
-			`).join('')}
-		</div>
-	`;
-	return {
-		controls: document.querySelector('.player-toggle-group') as HTMLElement,
-		transcript: document.querySelector('.youtube.transcript') as HTMLElement,
-		segments: Array.from(document.querySelectorAll('.transcript-segment')) as HTMLElement[]
-	};
-}
-
-function selectText(startNode: Node, start: number, endNode: Node, end: number) {
-	const range = document.createRange();
-	range.setStart(startNode, start);
-	range.setEnd(endNode, end);
-	window.getSelection()?.removeAllRanges();
-	window.getSelection()?.addRange(range);
-}
+} from './index';
+import { RequestCancelledError } from '../../utils/request-cancellation';
+import { AiError } from '../../ai/errors';
+import { createTranscript, selectText } from './test-support';
 
 describe('Transcript language learning controls', () => {
 	beforeEach(() => {
@@ -52,25 +23,6 @@ describe('Transcript language learning controls', () => {
 		clearTranscriptLanguageLearningCache();
 		document.body.textContent = '';
 		window.getSelection()?.removeAllRanges();
-	});
-
-	test.each([
-		{ language: 'ja', texts: ['東京です。'], expected: true },
-		{ language: 'ja-JP', texts: ['東京です。'], expected: true },
-		{ language: 'ai-ja', texts: ['東京です。'], expected: true },
-		{ language: 'ai-zh', texts: ['これは日本語です。'], expected: false },
-		{ language: undefined, texts: ['これは日本語です。'], expected: true },
-		{ language: undefined, texts: ['Hello world.'], expected: false },
-		{ language: undefined, texts: ['東京'], expected: false }
-	])('classifies transcript language from metadata before text fallback', ({ language, texts, expected }) => {
-		expect(isJapaneseTranscript(texts, language)).toBe(expected);
-	});
-
-	test('offers Japanese readings for non-Japanese text and Japanese text with kanji', () => {
-		expect(shouldOfferJapaneseReadings(['Hello world.'])).toBe(true);
-		expect(shouldOfferJapaneseReadings(['日本語です。'])).toBe(true);
-		expect(shouldOfferJapaneseReadings(['こんにちは。'])).toBe(false);
-		expect(shouldOfferJapaneseReadings(['   '])).toBe(false);
 	});
 
 	test('adds aligned translations only after an explicit bilingual action', async () => {
@@ -1924,48 +1876,6 @@ describe('Transcript language learning controls', () => {
 		expect(segments[0].querySelector('.transcript-segment-translation')?.textContent)
 			.toBe('你好，世界。');
 		expect(translateTranscript).toHaveBeenCalledTimes(2);
-	});
-
-	test('builds contextual word and multi-segment sentence selections', () => {
-		const texts = ['Hello world.', 'How are you?'];
-		const { transcript, segments } = createTranscript(texts);
-		const firstText = segments[0].querySelector('.transcript-segment-text')?.firstChild;
-		const secondText = segments[1].querySelector('.transcript-segment-text')?.firstChild;
-		if (!firstText || !secondText) throw new Error('Missing transcript text');
-
-		selectText(firstText, 0, firstText, 5);
-		expect(getTranscriptLearningSelection(document, transcript, segments, texts)).toEqual({
-			kind: 'word',
-			text: 'Hello',
-			context: 'Hello world.'
-		});
-
-		selectText(firstText, 0, secondText, secondText.textContent?.length || 0);
-		const sentence = getTranscriptLearningSelection(document, transcript, segments, texts);
-		expect(sentence?.kind).toBe('sentence');
-		expect(sentence?.context).toBe('Hello world. How are you?');
-
-		const japaneseTexts = ['日本語を勉強します'];
-		const japaneseTranscript = createTranscript(japaneseTexts);
-		const japaneseText = japaneseTranscript.segments[0]
-			.querySelector('.transcript-segment-text')?.firstChild;
-		if (!japaneseText) throw new Error('Missing Japanese transcript text');
-
-		selectText(japaneseText, 0, japaneseText, 3);
-		expect(getTranscriptLearningSelection(
-			document,
-			japaneseTranscript.transcript,
-			japaneseTranscript.segments,
-			japaneseTexts
-		)?.kind).toBe('word');
-
-		selectText(japaneseText, 0, japaneseText, japaneseText.textContent?.length || 0);
-		expect(getTranscriptLearningSelection(
-			document,
-			japaneseTranscript.transcript,
-			japaneseTranscript.segments,
-			japaneseTexts
-		)?.kind).toBe('sentence');
 	});
 
 	test('caches repeated explanations for the same selection and context', async () => {

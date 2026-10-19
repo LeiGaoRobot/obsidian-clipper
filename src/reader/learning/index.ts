@@ -1,102 +1,70 @@
-import { getMessage } from './i18n';
+import { getMessage } from '../../utils/i18n';
 import {
 	LearningSelection,
-	LearningVocabularyEntry,
 	TranscriptReadingProgress,
 	TranscriptReadingSegments,
-	TranscriptReadingToken,
 	TranscriptBatchProgress,
 	TranscriptTranslationProgress,
 	isCompleteTranscriptReadings,
 	isCompleteTranscriptTranslationSegment,
 	isCompleteTranscriptTranslations
-} from './language-learning';
+} from '../../utils/language-learning';
 import {
 	isRequestCancelled,
 	throwIfRequestAborted
-} from './request-cancellation';
-import { renderLanguageLearningCenter } from './language-learning-center';
-import { trapFocus } from './focus-trap';
-import { describeAiError } from '../ai/error-messages';
-import { isAiError } from '../ai/errors';
-import type { TranscriptJobTask } from '../ai/job-identity';
-import type { AiTask, ConnectionKind } from '../ai/types';
+} from '../../utils/request-cancellation';
+import { renderLanguageLearningCenter } from '../../utils/language-learning-center';
+import { trapFocus } from '../../utils/focus-trap';
+import { describeAiError } from '../../ai/error-messages';
+import { isAiError } from '../../ai/errors';
+import type { TranscriptJobTask } from '../../ai/job-identity';
+import type { ConnectionKind } from '../../ai/types';
+import type {
+	ReaderAiTask,
+	TranscriptExecutionInfo,
+	TranscriptLanguageLearningController,
+	TranscriptLanguageLearningOptions,
+	TranscriptProfileOption,
+	TranscriptTaskRange
+} from './types';
+import {
+	cacheExplanation,
+	cacheJapaneseReadings,
+	cacheJapaneseTranslations,
+	cacheTranslations,
+	cloneTranscriptReadings,
+	getCachedExplanation,
+	getCachedJapaneseReadings,
+	getCachedJapaneseTranslations,
+	getCachedTranslations,
+	removeCachedJapaneseReadings,
+	removeCachedTranslations
+} from './cache';
+import { isJapaneseTranscript, shouldOfferJapaneseReadings } from './japanese';
+import { getOriginalSegmentText, getTranscriptLearningSelection } from './selection';
+import { renderJapaneseTranslationReadings, renderTranscriptReadings } from './readings-render';
+
+export type {
+	ReaderAiTask,
+	TranscriptExecutionInfo,
+	TranscriptLanguageLearning,
+	TranscriptLanguageLearningController,
+	TranscriptLanguageLearningOptions,
+	TranscriptProfileOption,
+	TranscriptTaskRange
+} from './types';
+export { clearTranscriptLanguageLearningCache } from './cache';
+export { isJapaneseTranscript, shouldOfferJapaneseReadings } from './japanese';
+export { getTranscriptLearningSelection } from './selection';
 
 function isCancelled(error: unknown): boolean {
 	return isRequestCancelled(error) || (isAiError(error) && error.code === 'cancelled');
 }
 
-export interface TranscriptLanguageLearning {
-	translateTranscript: (
-		segments: string[],
-		onProgress?: (progress: TranscriptTranslationProgress) => void,
-		signal?: AbortSignal
-	) => Promise<string[]>;
-	translateTranscriptToJapanese?: (
-		segments: string[],
-		onProgress?: (progress: TranscriptTranslationProgress) => void,
-		signal?: AbortSignal
-	) => Promise<string[]>;
-	annotateJapaneseTranscript: (
-		segments: string[],
-		onProgress?: (progress: TranscriptReadingProgress) => void,
-		signal?: AbortSignal
-	) => Promise<TranscriptReadingSegments>;
-	explainSelection: (selection: LearningSelection, signal?: AbortSignal) => Promise<string>;
-	getExecutionInfo?: (task: TranscriptJobTask) => Promise<TranscriptExecutionInfo>;
-	/** Every enabled profile, for the error card's engine switch. */
-	listProfiles?: () => Promise<TranscriptProfileOption[]>;
-	loadTranscriptTranslations?: (segments: string[]) => Promise<string[] | undefined>;
-	loadJapaneseTranscriptTranslations?: (segments: string[]) => Promise<string[] | undefined>;
-	loadJapaneseReadings?: (segments: string[]) => Promise<TranscriptReadingSegments | undefined>;
-	saveTranscriptTranslations?: (segments: string[], translations: string[]) => Promise<void>;
-	saveJapaneseReadings?: (segments: string[], readings: TranscriptReadingSegments) => Promise<void>;
-	clearJapaneseReadings?: (segments: string[]) => Promise<void>;
-	isVocabularyFavorite?: (selection: LearningSelection) => Promise<boolean>;
-	toggleVocabularyFavorite?: (selection: LearningSelection, explanation: string) => Promise<boolean>;
-	copyLearningText?: (text: string) => Promise<boolean>;
-	saveVocabularyToObsidian?: (selection: LearningSelection, explanation: string) => Promise<void>;
-	listVocabulary?: () => Promise<LearningVocabularyEntry[]>;
-	removeVocabulary?: (id: string) => Promise<void>;
-	removeVocabularyMany?: (ids: string[]) => Promise<void>;
-	clearVocabulary?: () => Promise<void>;
-	exportVocabulary?: () => Promise<string>;
-	importVocabulary?: (json: string) => Promise<number>;
-	saveJapaneseReadingOverride?: (surface: string, reading: string) => Promise<void>;
-	listJapaneseReadingDictionary?: () => Promise<Array<{ surface: string; reading: string; updatedAt: number }>>;
-	removeJapaneseReadingOverride?: (surface: string) => Promise<void>;
-	clearJapaneseReadingDictionary?: () => Promise<void>;
-	exportJapaneseReadingDictionary?: () => Promise<string>;
-	importJapaneseReadingDictionary?: (json: string) => Promise<number>;
-	/** Routes the failed task to a profile before Switch and retry. */
-	setTaskProfile?: (task: ReaderAiTask, profileId: string) => Promise<void>;
-}
-
-/** The Reader tasks whose failure the error card can recover by switching the task's profile. */
-export type ReaderAiTask = Extract<AiTask, 'translate' | 'reading' | 'explain'>;
-
 const READER_AI_TASKS: readonly ReaderAiTask[] = ['translate', 'reading', 'explain'];
 
 function isReaderAiTask(value: unknown): value is ReaderAiTask {
 	return READER_AI_TASKS.includes(value as ReaderAiTask);
-}
-
-export interface TranscriptProfileOption {
-	id: string;
-	/** `connection · model`. */
-	label: string;
-	kind: ConnectionKind;
-}
-
-export type TranscriptTaskRange = 'current' | 'next-five-minutes' | 'all';
-
-/** The profile routing names for a transcript task; absent when the task has none. */
-export interface TranscriptExecutionInfo {
-	profileId?: string;
-	kind?: ConnectionKind;
-	label: string;
-	/** `TRANSCRIPT_GROUP_BUDGETS[kind][task]`, which drives the batch estimate. */
-	promptCharLimit: number;
 }
 
 // The v1 mode name the CLI error copy substitutes when an error does not carry one.
@@ -106,130 +74,8 @@ function executionModeOfKind(kind: ConnectionKind | undefined): 'api' | 'grok' |
 	return 'api';
 }
 
-export interface TranscriptLanguageLearningController {
-	ready: Promise<void>;
-	toggleBilingual: () => Promise<void>;
-	toggleJapaneseReadings: () => Promise<void>;
-	regenerateJapaneseReadings: () => Promise<void>;
-	cancelActiveRequest: () => void;
-	explain: (selection: LearningSelection, returnFocus?: HTMLElement) => Promise<void>;
-	setTaskRange: (range: TranscriptTaskRange) => void;
-	showVocabulary: () => Promise<void>;
-}
-
-interface TranscriptLanguageLearningOptions {
-	doc: Document;
-	transcript: HTMLElement;
-	segments: HTMLElement[];
-	controls: HTMLElement;
-	tools: TranscriptLanguageLearning;
-	responseLanguage?: string;
-	restoreBilingualSubtitles?: boolean;
-	restoreJapaneseReadings?: boolean;
-	onPreferenceChange?: (
-		key: 'bilingualSubtitles' | 'japaneseReadings',
-		value: boolean
-	) => void;
-	cancelPendingSeek: () => void;
-}
-
 const selectionControllers = new WeakMap<Document, AbortController>();
 const activeLearningRequests = new WeakMap<Document, AbortController>();
-const MAX_SESSION_CACHE_ENTRIES = 20;
-const japaneseReadingCache = new Map<string, TranscriptReadingSegments>();
-const transcriptTranslationCache = new Map<string, string[]>();
-const japaneseTranslationCache = new Map<string, string[]>();
-const explanationCache = new Map<string, string>();
-
-function getJapaneseReadingCacheKey(segments: string[]): string {
-	return JSON.stringify(segments);
-}
-
-function getTranscriptTranslationCacheKey(segments: string[], responseLanguage: string): string {
-	return JSON.stringify([responseLanguage, segments]);
-}
-
-function cloneTranscriptReadings(readings: TranscriptReadingSegments): TranscriptReadingSegments {
-	return readings.map(tokens => tokens.map(token => ({ ...token })));
-}
-
-function getCachedJapaneseReadings(segments: string[]): TranscriptReadingSegments | null {
-	const cached = japaneseReadingCache.get(getJapaneseReadingCacheKey(segments));
-	return cached ? cloneTranscriptReadings(cached) : null;
-}
-
-function cacheJapaneseReadings(segments: string[], readings: TranscriptReadingSegments): void {
-	const key = getJapaneseReadingCacheKey(segments);
-	if (japaneseReadingCache.has(key)) japaneseReadingCache.delete(key);
-	japaneseReadingCache.set(key, cloneTranscriptReadings(readings));
-	while (japaneseReadingCache.size > MAX_SESSION_CACHE_ENTRIES) {
-		const oldestKey = japaneseReadingCache.keys().next().value;
-		if (oldestKey === undefined) break;
-		japaneseReadingCache.delete(oldestKey);
-	}
-}
-
-function getCachedTranslations(segments: string[], responseLanguage: string): string[] | null {
-	const cached = transcriptTranslationCache.get(getTranscriptTranslationCacheKey(segments, responseLanguage));
-	return cached ? [...cached] : null;
-}
-
-function cacheTranslations(segments: string[], responseLanguage: string, translations: string[]): void {
-	const key = getTranscriptTranslationCacheKey(segments, responseLanguage);
-	if (transcriptTranslationCache.has(key)) transcriptTranslationCache.delete(key);
-	transcriptTranslationCache.set(key, [...translations]);
-	while (transcriptTranslationCache.size > MAX_SESSION_CACHE_ENTRIES) {
-		const oldestKey = transcriptTranslationCache.keys().next().value;
-		if (oldestKey === undefined) break;
-		transcriptTranslationCache.delete(oldestKey);
-	}
-}
-
-function getCachedJapaneseTranslations(segments: string[]): string[] | null {
-	const cached = japaneseTranslationCache.get(JSON.stringify(segments));
-	return cached ? [...cached] : null;
-}
-
-function cacheJapaneseTranslations(segments: string[], translations: string[]): void {
-	const key = JSON.stringify(segments);
-	if (japaneseTranslationCache.has(key)) japaneseTranslationCache.delete(key);
-	japaneseTranslationCache.set(key, [...translations]);
-	while (japaneseTranslationCache.size > MAX_SESSION_CACHE_ENTRIES) {
-		const oldestKey = japaneseTranslationCache.keys().next().value;
-		if (oldestKey === undefined) break;
-		japaneseTranslationCache.delete(oldestKey);
-	}
-}
-
-function getExplanationCacheKey(selection: LearningSelection, responseLanguage: string): string {
-	return `${responseLanguage}\n${selection.kind}\n${selection.text}\n${selection.context}`;
-}
-
-function getCachedExplanation(selection: LearningSelection, responseLanguage: string): string | null {
-	return explanationCache.get(getExplanationCacheKey(selection, responseLanguage)) || null;
-}
-
-function cacheExplanation(selection: LearningSelection, responseLanguage: string, explanation: string): void {
-	const key = getExplanationCacheKey(selection, responseLanguage);
-	if (explanationCache.has(key)) explanationCache.delete(key);
-	explanationCache.set(key, explanation);
-	while (explanationCache.size > MAX_SESSION_CACHE_ENTRIES) {
-		const oldestKey = explanationCache.keys().next().value;
-		if (oldestKey === undefined) break;
-		explanationCache.delete(oldestKey);
-	}
-}
-
-function removeCachedJapaneseReadings(segments: string[]): void {
-	japaneseReadingCache.delete(getJapaneseReadingCacheKey(segments));
-}
-
-export function clearTranscriptLanguageLearningCache(): void {
-	japaneseReadingCache.clear();
-	transcriptTranslationCache.clear();
-	japaneseTranslationCache.clear();
-	explanationCache.clear();
-}
 
 export function cleanupTranscriptLanguageLearning(doc: Document): void {
 	selectionControllers.get(doc)?.abort();
@@ -239,184 +85,6 @@ export function cleanupTranscriptLanguageLearning(doc: Document): void {
 	doc.querySelector('.language-learning-selection-action')?.remove();
 	doc.querySelectorAll('.player-learning-bilingual, .player-learning-translations-edit, .player-learning-vocabulary, .player-learning-range, .player-learning-task, .player-learning-readings, .player-learning-readings-edit, .player-learning-readings-regenerate').forEach(element => element.remove());
 	doc.querySelector('.language-learning-card')?.remove();
-}
-
-function getOriginalSegmentText(segment: HTMLElement): string {
-	const textElement = segment.querySelector('.transcript-segment-text');
-	const originalElement = textElement?.querySelector('.transcript-segment-original');
-	const storedOriginalText = originalElement?.getAttribute('data-original-text');
-	if (storedOriginalText != null) return storedOriginalText;
-	if (originalElement) return originalElement.textContent?.trim() || '';
-	return (textElement?.firstChild?.textContent || textElement?.textContent || '').trim();
-}
-
-const JAPANESE_KANJI = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF々]/;
-const JAPANESE_KANA = /[\u3040-\u30FF]/;
-const JAPANESE_LANGUAGE_TOKEN = /(^|[-_])(?:ja|jpn)(?=$|[-_])/i;
-
-export function isJapaneseTranscript(texts: string[], language?: string): boolean {
-	const normalizedLanguage = language?.trim();
-	if (normalizedLanguage) return JAPANESE_LANGUAGE_TOKEN.test(normalizedLanguage);
-	return texts.some(text => JAPANESE_KANA.test(text));
-}
-
-export function shouldOfferJapaneseReadings(texts: string[], language?: string): boolean {
-	if (!texts.some(text => text.trim())) return false;
-	return !isJapaneseTranscript(texts, language)
-		|| texts.some(text => JAPANESE_KANJI.test(text));
-}
-
-export function containsJapaneseKanji(texts: string[]): boolean {
-	return texts.some(text => JAPANESE_KANA.test(text))
-		&& texts.some(text => JAPANESE_KANJI.test(text));
-}
-
-function populateTranscriptReadings(
-	doc: Document,
-	target: HTMLElement,
-	tokens: TranscriptReadingToken[],
-	editable: boolean,
-	onReadingInput?: (tokenIndex: number, reading: string) => void
-): void {
-	target.replaceChildren();
-	tokens.forEach((token, tokenIndex) => {
-		if (!token.reading && !JAPANESE_KANJI.test(token.text)) {
-			target.appendChild(doc.createTextNode(token.text));
-			return;
-		}
-		const ruby = doc.createElement('ruby');
-		const base = doc.createElement('span');
-		const reading = doc.createElement('rt');
-		base.textContent = token.text;
-		reading.textContent = token.reading;
-		reading.setAttribute('contenteditable', editable ? 'true' : 'false');
-		if (editable) {
-			reading.setAttribute('role', 'textbox');
-			reading.setAttribute('aria-label', getMessage('readerReadingEditLabel', token.text));
-			reading.setAttribute('aria-multiline', 'false');
-			reading.setAttribute('tabindex', '0');
-			reading.setAttribute('spellcheck', 'false');
-			reading.addEventListener('input', () => {
-				onReadingInput?.(tokenIndex, reading.textContent?.trim() || '');
-			});
-		}
-		ruby.append(base, reading);
-		if (!editable) {
-			ruby.className = 'transcript-reading-token';
-			ruby.setAttribute('role', 'button');
-			ruby.setAttribute('tabindex', '0');
-			ruby.setAttribute('aria-pressed', 'false');
-			ruby.setAttribute('aria-label', getMessage('readerToggleReading', token.text));
-			const toggleReading = () => {
-				const hidden = ruby.classList.toggle('is-reading-hidden');
-				ruby.setAttribute('aria-pressed', String(hidden));
-			};
-			ruby.addEventListener('click', event => {
-				event.preventDefault();
-				event.stopPropagation();
-				toggleReading();
-			});
-			ruby.addEventListener('keydown', event => {
-				if (event.key !== 'Enter' && event.key !== ' ') return;
-				event.preventDefault();
-				event.stopPropagation();
-				toggleReading();
-			});
-		}
-		target.appendChild(ruby);
-	});
-}
-
-function renderTranscriptReadings(
-	doc: Document,
-	textElement: Element,
-	tokens: TranscriptReadingToken[],
-	showReadings: boolean,
-	editable: boolean,
-	onReadingInput?: (tokenIndex: number, reading: string) => void
-): void {
-	const originalElement = doc.createElement('span');
-	originalElement.className = 'transcript-segment-original';
-	originalElement.setAttribute('data-original-text', tokens.map(token => token.text).join(''));
-	if (showReadings) {
-		populateTranscriptReadings(doc, originalElement, tokens, editable, onReadingInput);
-	} else {
-		originalElement.textContent = tokens.map(token => token.text).join('');
-	}
-
-	const translationElement = textElement.querySelector('.transcript-segment-translation');
-	Array.from(textElement.childNodes).forEach(node => {
-		if (node !== translationElement) node.remove();
-	});
-	if (translationElement) {
-		textElement.insertBefore(originalElement, translationElement);
-	} else {
-		textElement.appendChild(originalElement);
-	}
-}
-
-function renderJapaneseTranslationReadings(
-	doc: Document,
-	textElement: Element,
-	tokens: TranscriptReadingToken[],
-	showReadings: boolean,
-	editable: boolean,
-	onReadingInput?: (tokenIndex: number, reading: string) => void
-): void {
-	let japaneseElement = textElement.querySelector<HTMLElement>('.transcript-segment-japanese');
-	if (!japaneseElement) {
-		japaneseElement = doc.createElement('div');
-		japaneseElement.className = 'transcript-segment-japanese';
-		textElement.appendChild(japaneseElement);
-	}
-	if (showReadings) {
-		populateTranscriptReadings(doc, japaneseElement, tokens, editable, onReadingInput);
-	}
-	japaneseElement.hidden = !showReadings;
-}
-
-function isSingleWord(text: string): boolean {
-	const normalized = text.trim();
-	if (!normalized || normalized.length > 80 || /\s/.test(normalized)) return false;
-	if (/[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF々]/.test(normalized)) {
-		return Array.from(normalized).length <= 8
-			&& !/[。！？、，,.!?]|(?:です|ます|でした|ません|でしょう|だった)$/.test(normalized);
-	}
-	return true;
-}
-
-export function getTranscriptLearningSelection(
-	doc: Document,
-	transcript: HTMLElement,
-	segments: HTMLElement[],
-	originalTexts: string[]
-): LearningSelection | null {
-	const selection = doc.getSelection();
-	if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
-	const text = selection.toString().trim();
-	if (!text) return null;
-	const range = selection.getRangeAt(0);
-	const findSegment = (node: Node): HTMLElement | null => {
-		const element = node.nodeType === Node.ELEMENT_NODE
-			? node as Element
-			: node.parentElement;
-		const textElement = element?.closest('.transcript-segment-text');
-		const segment = textElement?.closest('.transcript-segment') as HTMLElement | null;
-		return segment && transcript.contains(segment) ? segment : null;
-	};
-	const startSegment = findSegment(range.startContainer);
-	const endSegment = findSegment(range.endContainer);
-	if (!startSegment || !endSegment) return null;
-	const startIndex = segments.indexOf(startSegment);
-	const endIndex = segments.indexOf(endSegment);
-	if (startIndex < 0 || endIndex < 0) return null;
-	const firstIndex = Math.min(startIndex, endIndex);
-	const lastIndex = Math.max(startIndex, endIndex);
-	return {
-		kind: isSingleWord(text) ? 'word' : 'sentence',
-		text,
-		context: originalTexts.slice(firstIndex, lastIndex + 1).join(' ').trim() || text
-	};
 }
 
 export function wireTranscriptLanguageLearning({
@@ -1155,7 +823,7 @@ export function wireTranscriptLanguageLearning({
 				onPreferenceChange?.('bilingualSubtitles', true);
 				return;
 			} catch {
-				transcriptTranslationCache.delete(getTranscriptTranslationCacheKey(originalTexts, resolvedResponseLanguage));
+				removeCachedTranslations(originalTexts, resolvedResponseLanguage);
 			}
 		}
 

@@ -37,7 +37,7 @@ import type {
 	ReaderAiTask,
 	TranscriptExecutionInfo,
 	TranscriptProfileOption
-} from './transcript-language-learning';
+} from '../reader/learning/types';
 import {
 	applyJapaneseReadingDictionary,
 	resolveJapaneseReadingsFromDictionary

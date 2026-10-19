@@ -3,7 +3,7 @@ import {
 	TranscriptLanguageLearning,
 	cleanupTranscriptLanguageLearning,
 	wireTranscriptLanguageLearning
-} from './transcript-language-learning';
+} from '../reader/learning';
 import type { TranscriptLayoutMode } from '../types/types';
 import {
 	clearTranscriptLayoutMode,
