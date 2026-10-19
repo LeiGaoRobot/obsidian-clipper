@@ -14,25 +14,28 @@ Keep changes surgical. Match the existing TypeScript, SCSS, localization, and Ob
 
 | Module | Responsibility | Constraint |
 | --- | --- | --- |
-| `src/utils/language-learning.ts` | Pure prompt construction, text replacement, transcript batching, and response alignment | No DOM, storage, or browser runtime dependencies |
-| `src/utils/language-learning-runtime.ts` | Configured language-learning interface used by Popup and Reader callers | Loads settings and sends model work to the background through `runAiTask` |
+| `src/utils/language-learning.ts` | Pure prompt construction, text replacement, and response alignment; transcript tasks delegate grouping to an injected `runJob` | No DOM, storage, or browser runtime dependencies |
+| `src/utils/language-learning-runtime.ts` | Configured language-learning interface used by Popup and Reader callers | Loads settings and sends model work to the background through `runAiTask`, and whole transcripts through `runTranscriptJob`; Reader restore and manual saves use the job client's checkpoint helpers |
 | `src/utils/language-learning-popup.ts` | Popup and side-panel AI-edit UI | Preview against a source snapshot before applying |
 | `src/utils/transcript-language-learning.ts` | YouTube Reader bilingual and explanation UI | Remote calls must follow trusted user actions |
-| `src/ai/` | AI domain core: connection kinds, derived v2 settings view, `resolveProfile`, `AiError`, output contracts (`contracts.ts`), structured-output capabilities, Port protocol | No DOM, storage, or browser runtime dependencies, except `error-messages.ts` (UI-side i18n), `client.ts`, `gateway.ts`, and `adapters/native-cli.ts`. See `docs/superpowers/specs/2026-10-19-ai-subsystem-redesign-design.md` |
+| `src/ai/` | AI domain core: connection kinds, derived v2 settings view, `resolveProfile`, `AiError`, output contracts (`contracts.ts`), structured-output capabilities, Port protocol, transcript job identity (`job-identity.ts`) | No DOM, storage, or browser runtime dependencies, except `error-messages.ts` (UI-side i18n), `client.ts`, `job-client.ts`, `gateway.ts`, and `adapters/native-cli.ts`. See `docs/superpowers/specs/2026-10-19-ai-subsystem-redesign-design.md` |
 | `src/ai/adapters/http.ts` | Provider request construction, streaming (SSE, NDJSON, JSON fallback), idle and hard timeouts | Must remain DOM-free and safe in an MV3 service worker |
-| `src/ai/gateway.ts` | Background `ai` Port handler: resolves the profile from stored settings, renders the task contract, runs the adapter with structured output where supported, validates the reply, streams progress, cancels, replays outcomes on `attach` | The only place model work executes |
+| `src/ai/gateway.ts` | Background `ai` Port handler: resolves the profile from stored settings, renders the task contract, runs the adapter with structured output where supported, validates the reply, streams progress, cancels, replays outcomes on `attach`; hosts durable transcript jobs (`start-job`, `checkpoint-get`/`put`/`clear`) and resumes recent `running` jobs on init | The only place model work executes |
+| `src/ai/job-runner.ts` | Durable transcript jobs: group budgets, bounded concurrent pool, serialized checkpoints, 429/5xx retries, CLI timeout splits, resume | Pure with injected store, execute, clock, and timers; statically imported into the background |
+| `src/ai/job-store.ts` | `aiJob:` records and `aiJobInput:` inputs in `storage.session` (in-memory fallback), per-job serialized writes, 20-record pruning, quota eviction | Storage area is injected; no browser runtime imports |
 | `src/ai/client.ts` | `runAiTask(task, input, options)` for Popup, Settings, and Reader callers | Sends keepalive pings while a job is pending; rejects with `AiError` |
+| `src/ai/job-client.ts` | `runTranscriptJob` and the `loadTranscriptCheckpoint`/`saveTranscriptCheckpoint`/`clearTranscriptCheckpoint` round trips | Reconnects and re-`attach`es after a disconnect; a restore never starts or resumes a job |
 
-All model work goes through `runAiTask` and the background gateway. Do not call providers or the Native Messaging Host from UI modules, and do not duplicate provider logic outside `src/ai/adapters/`.
+All model work goes through `runAiTask` or `runTranscriptJob` and the background gateway. Do not call providers or the Native Messaging Host from UI modules, and do not duplicate provider logic outside `src/ai/adapters/`.
 
 ## Language-learning invariants
 
-- Never run a paid or remote language-learning request automatically on page load, transcript load, or selection change. A user must explicitly request an edit, translation, or explanation.
+- Never run a paid or remote language-learning request automatically on page load, transcript load, or selection change. A user must explicitly request an edit, translation, or explanation. A transcript job the user started may resume automatically after a service-worker restart only while its record is still `running` and was updated within `RESUME_WINDOW_MS`; a Reader restore (`checkpoint-get`) never starts or resumes a job.
 - Page-DOM controls that can create model costs must reject synthetic events with `event.isTrusted`. Programmatic controller methods may exist for isolated tests, but must not be exposed to host-page scripts.
 - Execute provider requests in the extension background. Do not fetch model providers directly from Reader or page content scripts.
 - Keep the background network path synchronous in the bundle. Do not dynamically import `interpreter.ts` or create a runtime chunk for Chrome MV3 service workers.
 - Never pass provider credentials through page DOM or language-learning messages. Resolve the provider, API key, and enabled model from stored Interpreter settings in the background.
-- Preserve transcript alignment. Every source segment has a stable numeric ID, long transcripts use sequential requests that target bounded prompt groups, and the UI must reject incomplete translations instead of displaying a partial result as complete. Keep each source segment atomic; one oversized segment may exceed the group target.
+- Preserve transcript alignment. Every source segment has a stable numeric ID equal to its source index, long transcripts run as one background job in bounded concurrent groups with stable ids and serialized checkpoint writes, and the UI must reject incomplete translations instead of displaying a partial result as complete. Keep each source segment atomic; one oversized segment may exceed the group target.
 - Resolve the response language from `readerSettings.learningResponseLanguage`, then fall back to the browser language.
 - AI edits operate on the selected portion of the clipping, or the full clipping when there is no selection. Applying a preview must fail if the source content changed after the preview was generated.
 - Clean up Reader controls and listeners during SPA navigation. Explanation caching is session-local and keyed by selection kind, selected text, and context.
