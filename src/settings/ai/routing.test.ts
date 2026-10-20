@@ -82,6 +82,20 @@ describe('Task routing', () => {
 		expect(select('explain').value).toBe('llama');
 	});
 
+	test('a task set to the default model counts as changed and keeps that model when the default changes', async () => {
+		const { sync } = await section({ ...SETTINGS, routing: { defaultProfileId: 'gpt', taskProfiles: {} } });
+		choose('edit', 'gpt');
+		await settle();
+		expect(select('edit').value).toBe('gpt');
+		expect(customize().querySelector('.ai-routing-customize-count')?.textContent).toBe('(1 changed)');
+
+		choose('default', 'llama');
+		await settle();
+		expect(sync.data.ai_routing).toMatchObject({ defaultProfileId: 'llama', taskProfiles: { edit: 'gpt' } });
+		expect(select('edit').value).toBe('gpt');
+		expect(customize().querySelector('.ai-routing-customize-count')?.textContent).toBe('(1 changed)');
+	});
+
 	test('writes the default and task entries, and Use default clears the entry', async () => {
 		const { sync } = await section(SETTINGS);
 
@@ -96,9 +110,8 @@ describe('Task routing', () => {
 		expect(select('translate').value).toBe('mini');
 	});
 
-	test('the summary counts tasks routed away from the default, and the disclosure stays open across renders', async () => {
-		await section({ ...SETTINGS, routing: { defaultProfileId: 'gpt', taskProfiles: { explain: 'llama', edit: 'gpt' } } });
-		// A task routed to the default model itself is not a change.
+	test('the summary counts tasks set to a model, and the disclosure stays open across renders', async () => {
+		await section({ ...SETTINGS, routing: { defaultProfileId: 'gpt', taskProfiles: { explain: 'llama' } } });
 		expect(customize().querySelector('summary')?.textContent).toBe('Customize per task(1 changed)');
 		customize().open = true;
 

@@ -48,9 +48,9 @@ function storageBody(error: AiSettingsStorageError): string {
 /** The section name of a v2 sync item, for the bootstrap message; other keys are shown as is. */
 function itemName(key: string | undefined): string {
 	switch (key) {
-		case 'ai_connections': return getMessage('aiConnections');
-		case 'ai_profiles': return getMessage('aiProfiles');
-		case 'ai_routing': return getMessage('aiRouting');
+		case 'ai_connections':
+		case 'ai_profiles': return getMessage('aiProviders');
+		case 'ai_routing': return getMessage('aiTasks');
 		case 'ai_prompt_context': return getMessage('defaultInterpreterContext');
 		case 'ai_interpreter': return getMessage('aiSettings');
 		default: return key ?? getMessage('aiSettings');

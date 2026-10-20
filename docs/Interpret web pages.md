@@ -37,7 +37,7 @@ Interpreter works with almost any language model provider, including options tha
 4. Optionally select **Test** on the connection to check the key and the model. See [[Interpret web pages#Test a connection|Test a connection]].
 5. In the status card at the top of the **AI** section, turn on the switch (**Enable AI features**). The card also lists what is set up and what is missing: a connected provider, the default model, and the last Test. Adding a model does not turn it on: if it is off when you add your first model, a note next to the switch says so.
 6. Add [[Variables|prompt variables]] to your [[Obsidian Web Clipper/Templates|templates]].
-7. If your template includes prompt variables, the Interpreter section will be visible when you [[Clip web pages|clip a page]]. Click **interpret** to process the prompt variables.
+7. If your template includes prompt variables, the AI bar appears at the bottom of the extension window when you [[Clip web pages|clip a page]]. Select **Run** to process the prompt variables.
 
 > [!info] API keys stay on this device
 > API keys are stored only on the device where you enter them, in the browser's local extension storage, as plain text. They are not encrypted and do not sync to your other devices, which also keeps them out of the browser's sync storage limits. Connections, models, and task choices do sync. On another device a synced connection that needs a key shows **Key missing on this device** until you enter the key there.

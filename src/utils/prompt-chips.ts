@@ -8,7 +8,7 @@ import { createPromptVariableRegex } from './prompt-variables';
 export type PromptChipState = 'idle' | 'running' | 'failed';
 
 export interface PromptChipOptions {
-	getMessage: (key: string) => string;
+	getMessage: (key: string, substitutions?: string | string[]) => string;
 	state?: PromptChipState;
 }
 
@@ -66,7 +66,12 @@ function syncPromptChip(input: HTMLInputElement, options: PromptChipOptions): vo
 	const state = options.state ?? 'idle';
 	chip.dataset.state = state;
 	const label = chip.querySelector('.ai-prompt-chip-label');
-	if (label) label.textContent = chipLabel(state, options.getMessage);
+	const text = chipLabel(state, options.getMessage);
+	if (label) label.textContent = text;
+	// The row's label names the hidden input, so the chip carries the property name itself.
+	const name = container.parentElement?.querySelector('.metadata-property-key label')?.textContent?.trim();
+	if (name) chip.setAttribute('aria-label', options.getMessage('aiPromptChipName', [name, text]));
+	else chip.removeAttribute('aria-label');
 	chip.title = prompts.join('\n');
 	input.hidden = true;
 }

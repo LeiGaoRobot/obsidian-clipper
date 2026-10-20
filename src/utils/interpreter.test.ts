@@ -34,6 +34,7 @@ import {
 	populatePopupModelSelect,
 	popupInterpretProfileId,
 	prepareInterpreterForClip,
+	resetInterpreterBar,
 	saveInterpretProfile,
 	showInterpreterIdle,
 	waitForInterpreter
@@ -481,6 +482,58 @@ describe('Interpreter', () => {
 
 		await expect(prepareInterpreterForClip(interpretButton())).resolves.toBeUndefined();
 		expect(mocks.runAiTask).toHaveBeenCalledOnce();
+	});
+
+	test('rebuilt fields after a done run return the bar to idle, and a Clip runs the Interpreter again', async () => {
+		showInterpreterIdle(2);
+		await handleInterpreterUI(template, {}, 1, 'https://example.com');
+		expect(interpretButton().classList.contains('done')).toBe(true);
+
+		resetInterpreterBar({ cancelRunning: false });
+		expect(interpretButton().classList.contains('done')).toBe(false);
+		expect(document.getElementById('interpreter')?.classList.contains('done')).toBe(false);
+		expect(interpretButton().disabled).toBe(false);
+		expect(modelSelect().disabled).toBe(false);
+		expect(summary()).toBe('interpreterPromptCountPlural');
+
+		// The popup's Run listener starts the run a Clip asks for.
+		interpretButton().addEventListener('click', () => { void handleInterpreterUI(template, {}, 1, 'https://example.com'); });
+		await expect(prepareInterpreterForClip(interpretButton())).resolves.toBeUndefined();
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(2);
+	});
+
+	test('rebuilt fields after an error drop the card and its Retry', async () => {
+		mocks.runAiTask.mockRejectedValueOnce(new AiError('provider-error', { status: 500 }));
+		await handleInterpreterUI(template, {}, 1, 'https://example.com');
+		expect(interpretButton().classList.contains('error')).toBe(true);
+
+		resetInterpreterBar({ cancelRunning: false });
+		const message = document.getElementById('interpreter-error') as HTMLDivElement;
+		expect(message.childElementCount).toBe(0);
+		expect(message.style.display).toBe('none');
+		expect(interpretButton().classList.contains('error')).toBe(false);
+		expect(interpretButton().disabled).toBe(false);
+	});
+
+	test('a highlight refresh keeps a running request; a template switch cancels it and its settlement leaves the bar idle', async () => {
+		let signal: AbortSignal | undefined;
+		mocks.runAiTask.mockImplementation((_task: string, _input: unknown, options: { signal?: AbortSignal }) => {
+			signal = options.signal;
+			return new Promise(() => undefined);
+		});
+		const run = handleInterpreterUI(template, {}, 1, 'https://example.com');
+
+		resetInterpreterBar({ cancelRunning: false });
+		expect(interpretButton().classList.contains('processing')).toBe(true);
+		expect(signal?.aborted).toBe(false);
+
+		resetInterpreterBar({ cancelRunning: true });
+		expect(signal?.aborted).toBe(true);
+		await run;
+		expect(interpretButton().classList.contains('cancelled')).toBe(false);
+		expect(interpretButton().classList.contains('processing')).toBe(false);
+		expect(cancelButton().hidden).toBe(true);
+		expect((document.getElementById('clip-btn') as HTMLButtonElement).disabled).toBe(false);
 	});
 
 	test('shows Cancel while running; cancelling aborts the request and returns the button to idle', async () => {

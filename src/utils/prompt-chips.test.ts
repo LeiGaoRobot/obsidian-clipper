@@ -3,11 +3,13 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import { refreshPromptChips, unfilledPrompts } from './prompt-chips';
 
-const getMessage = (key: string) => key;
+const getMessage = (key: string, substitutions?: string | string[]) =>
+	substitutions ? `${key}(${([] as string[]).concat(substitutions).join(', ')})` : key;
 
 // The popup's property markup; values are set as properties, as the popup fills them.
 function property(name: string, type = 'text'): string {
-	return `<div class="metadata-property"><div class="metadata-property-value"><input id="${name}" type="${type}"></div></div>`;
+	return `<div class="metadata-property"><div class="metadata-property-key"><label for="${name}">${name}</label></div>`
+		+ `<div class="metadata-property-value"><input id="${name}" type="${type}"></div></div>`;
 }
 
 function setUp(properties: Array<[string, string, string?]>): void {
@@ -54,6 +56,15 @@ describe('prompt chips', () => {
 		// A plain value keeps its input.
 		expect(chipFor('source')).toBeNull();
 		expect((document.getElementById('source') as HTMLInputElement).hidden).toBe(false);
+	});
+
+	test('the chip is named by its property and its state', () => {
+		setUp([['summary', '{{"Summarize"}}']]);
+		refreshPromptChips(document, { getMessage });
+		expect(chipFor('summary')?.getAttribute('aria-label')).toBe('aiPromptChipName(summary, aiPromptChip)');
+
+		refreshPromptChips(document, { getMessage, state: 'running' });
+		expect(chipFor('summary')?.getAttribute('aria-label')).toBe('aiPromptChipName(summary, aiPromptChipRunning)');
 	});
 
 	test('what a Clip saves is the same with chips shown', () => {

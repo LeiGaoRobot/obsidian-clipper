@@ -25,7 +25,10 @@ describe('describeSettingsError', () => {
 		expect(description.detail).toBe('ai_prompt_context: 9000 B');
 		expect(describeSettingsError(new AiSettingsBootstrapFailedError(
 			new AiSettingsStorageError('item-too-large', { key: 'ai_profiles' })
-		)).body).toContain('“Models”');
+		)).body).toContain('“Providers and models”');
+		expect(describeSettingsError(new AiSettingsBootstrapFailedError(
+			new AiSettingsStorageError('item-too-large', { key: 'ai_routing' })
+		)).body).toContain('“Tasks”');
 		// A normal save still says how to make the item smaller.
 		expect(describeSettingsError(new AiSettingsStorageError('item-too-large', { key: 'ai_prompt_context' })).body).toContain('Shorten');
 	});

@@ -173,9 +173,6 @@
 	"aiSettings": {
 		"message": "AI"
 	},
-	"aiConnections": {
-		"message": "Connections"
-	},
 	"aiConnectionsEmpty": {
 		"message": "No connections yet. Add an API provider or a local CLI to get started."
 	},
@@ -356,9 +353,6 @@
 	"aiStatusNeedsSetup": {
 		"message": "Needs setup"
 	},
-	"aiProfiles": {
-		"message": "Models"
-	},
 	"aiAddProfile": {
 		"message": "+ Add model"
 	},
@@ -421,9 +415,6 @@
 	},
 	"aiProfileModelNotListedTitle": {
 		"message": "The last Test did not find this model in the provider’s list. Check the model ID."
-	},
-	"aiRouting": {
-		"message": "Task routing"
 	},
 	"aiRoutingDefault": {
 		"message": "Default model"
@@ -553,6 +544,9 @@
 	},
 	"aiPromptChip": {
 		"message": "AI fills this"
+	},
+	"aiPromptChipName": {
+		"message": "$1: $2"
 	},
 	"aiPromptChipRunning": {
 		"message": "AI is filling this…"

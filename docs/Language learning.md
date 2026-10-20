@@ -20,7 +20,7 @@ The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clippe
 6. In the status card at the top of the **AI** section, turn on the switch (**Enable AI features**). Adding a model does not turn it on: if it is off when you add your first model, a note next to the switch says so.
 7. In **Reader** → **Transcripts**, optionally set the default compact-player, bilingual-subtitle, and Japanese-reading visibility, and choose the Obsidian vault and folder used for learning notes.
 
-If the response-language field is empty, Web Clipper uses your browser language. The setting controls transcript translations, word and sentence explanations, and presets that use a response language. It moved from the Reader settings to **Settings → AI → Language**; a language you set there before is carried over once.
+If the response-language field is empty, Web Clipper uses your browser language. The setting controls transcript translations, word and sentence explanations, and presets that use a response language. It moved from the Reader settings to **AI response language** under **Tasks** in **Settings → AI**; a language you set in the Reader settings before is carried over once.
 
 Word and sentence explanations instruct the model to use this language for all explanation text, labels, and translations.
 

@@ -118,6 +118,47 @@ export function showInterpreterIdle(count: number, doc: Document = document): vo
 	if (summary && !showingRun) summary.textContent = interpreterPromptCountText(count);
 }
 
+// Bumped when the bar is reset, so a run's late settlement leaves the reset bar alone.
+let barGeneration = 0;
+
+/**
+ * Returns the AI bar to idle for fields that were just rebuilt or recompiled with their prompts. A
+ * shown outcome (done, partial, error, or cancelled) no longer describes those fields, so a Clip
+ * runs the Interpreter again instead of saving the placeholders. A running request is kept unless
+ * `cancelRunning` (a template switch): a highlight refresh of the same template still wants it.
+ */
+export function resetInterpreterBar(options: { cancelRunning: boolean }, doc: Document = document): void {
+	const button = doc.getElementById('interpret-btn') as HTMLButtonElement | null;
+	if (!button) return;
+	const running = button.classList.contains('processing');
+	if (running && !options.cancelRunning) return;
+	if (!running && !['done', 'partial', 'error', 'cancelled'].some(state => button.classList.contains(state))) return;
+
+	barGeneration++;
+	if (running) interpreterAction?.cancel();
+	retryFailedRun = undefined;
+	const container = doc.getElementById('interpreter');
+	container?.classList.remove('running', 'done', 'partial', 'error', 'cancelled');
+	button.classList.remove('processing', 'done', 'partial', 'error', 'cancelled');
+	button.textContent = getMessage('interpreterRun');
+	button.disabled = false;
+	const cancelBtn = doc.getElementById('interpreter-cancel-btn') as HTMLButtonElement | null;
+	if (cancelBtn) cancelBtn.hidden = true;
+	const modelSelect = doc.getElementById('model-select') as HTMLSelectElement | null;
+	if (modelSelect) modelSelect.disabled = false;
+	const timer = doc.getElementById('interpreter-timer');
+	if (timer) timer.style.display = 'none';
+	const message = doc.getElementById('interpreter-error');
+	if (message) clearInterpreterMessage(message);
+	for (const id of ['clip-btn', 'more-btn']) {
+		const control = doc.getElementById(id) as HTMLButtonElement | null;
+		if (control) control.disabled = false;
+	}
+	const count = Number(container?.dataset.promptCount);
+	const summary = doc.getElementById('interpreter-summary');
+	if (summary && count > 0) summary.textContent = interpreterPromptCountText(count);
+}
+
 function syncPromptChips(state: PromptChipState): void {
 	refreshPromptChips(document, { getMessage, state });
 }
@@ -322,6 +363,7 @@ async function runInterpreter(
 ): Promise<AiActionStatus> {
 	const action = getInterpreterAction();
 	retryFailedRun = undefined;
+	const generation = barGeneration;
 	const { container, interpretBtn, cancelBtn, message, timer, modelSelect, clipButton, moreButton } = ui;
 
 	// Everything up to the first await runs synchronously, so a Clip that clicks the button sees
@@ -353,8 +395,8 @@ async function runInterpreter(
 		window.clearInterval(timerInterval);
 	}
 	const { state } = action;
-	// A newer run owns the controls now.
-	if (state.status === 'running') return state.status;
+	// A newer run owns the controls now, or the bar was reset for rebuilt fields.
+	if (state.status === 'running' || generation !== barGeneration) return state.status;
 
 	if (cancelBtn) cancelBtn.hidden = true;
 	interpretBtn.classList.remove('processing');

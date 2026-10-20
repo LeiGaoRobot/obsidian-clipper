@@ -173,9 +173,6 @@
 	"aiSettings": {
 		"message": "AI"
 	},
-	"aiConnections": {
-		"message": "连接"
-	},
 	"aiConnectionsEmpty": {
 		"message": "还没有连接。添加一个 API 提供商或本地 CLI 即可开始。"
 	},
@@ -356,9 +353,6 @@
 	"aiStatusNeedsSetup": {
 		"message": "需要设置"
 	},
-	"aiProfiles": {
-		"message": "模型"
-	},
 	"aiAddProfile": {
 		"message": "+ 添加模型"
 	},
@@ -421,9 +415,6 @@
 	},
 	"aiProfileModelNotListedTitle": {
 		"message": "上次测试未在提供商的列表中找到此模型。请检查模型 ID。"
-	},
-	"aiRouting": {
-		"message": "任务路由"
 	},
 	"aiRoutingDefault": {
 		"message": "默认模型"
@@ -553,6 +544,9 @@
 	},
 	"aiPromptChip": {
 		"message": "由 AI 填写"
+	},
+	"aiPromptChipName": {
+		"message": "$1：$2"
 	},
 	"aiPromptChipRunning": {
 		"message": "AI 正在填写…"

@@ -80,13 +80,13 @@ export function routingProblem(state: AiSettingsState, row: RoutingRowKey): Conn
 	return fallback.state === badge.state && fallback.label === badge.label ? undefined : badge;
 }
 
-/** Tasks whose stored route differs from Use default. */
+/**
+ * Tasks set to a model instead of Use default, as their selects show. A task set to the model that
+ * is the default now still counts: it keeps that model when the default changes.
+ */
 export function customizedTaskCount(state: AiSettingsState): number {
 	const { routing } = state.view;
-	return AI_TASKS.filter(task => {
-		const profileId = routing.taskProfiles[task];
-		return profileId !== undefined && profileId !== routing.defaultProfileId;
-	}).length;
+	return AI_TASKS.filter(task => routing.taskProfiles[task] !== undefined).length;
 }
 
 interface RoutingOption {

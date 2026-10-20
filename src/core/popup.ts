@@ -19,6 +19,7 @@ import {
 	populatePopupModelSelect,
 	prepareInterpreterForClip,
 	showInterpreterIdle,
+	resetInterpreterBar,
 	InterpreterCancelledError,
 	InterpreterFailedError,
 	InterpreterPartialError
@@ -888,6 +889,8 @@ function buildTemplateFieldsSkeleton(template: Template | null) {
 	const promptCount = collectPromptVariables(template).length;
 	const hasPromptVars = aiSettings.enabled && promptCount > 0;
 	if (interpreterContainer) interpreterContainer.style.display = hasPromptVars ? 'flex' : 'none';
+	// The previous template's run, or its outcome, does not apply to these fields.
+	resetInterpreterBar({ cancelRunning: true });
 	if (hasPromptVars) showInterpreterIdle(promptCount);
 
 	// Populate model dropdown immediately (only needs the loaded settings)
@@ -953,6 +956,10 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 	if (noteContentField) {
 		noteContentField.value = template.noteContentFormat ? formattedContent : '';
 	}
+
+	// The fields hold their prompts again, so a shown outcome no longer applies; a run in flight
+	// still fills them when it settles.
+	resetInterpreterBar({ cancelRunning: false });
 
 	// Properties still holding a prompt show a chip in place of the raw prompt (display only).
 	const interpretState = document.getElementById('interpret-btn')?.classList;
