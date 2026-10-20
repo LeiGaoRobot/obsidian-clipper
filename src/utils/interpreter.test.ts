@@ -35,6 +35,7 @@ import {
 	popupInterpretProfileId,
 	prepareInterpreterForClip,
 	saveInterpretProfile,
+	showInterpreterIdle,
 	waitForInterpreter
 } from './interpreter';
 
@@ -108,6 +109,7 @@ describe('Interpreter', () => {
 	beforeEach(() => {
 		document.body.innerHTML = `
 			<div id="interpreter"></div>
+			<span id="interpreter-summary"></span>
 			<button id="interpret-btn"></button>
 			<div id="interpreter-error"></div>
 			<span id="interpreter-timer"></span>
@@ -157,7 +159,7 @@ describe('Interpreter', () => {
 		expect(container.classList.contains('done')).toBe(false);
 		expect(button.classList.contains('partial')).toBe(true);
 		expect(button.classList.contains('done')).toBe(false);
-		expect(button.textContent).toBe('interpreterpartialstatus');
+		expect(summary()).toBe('interpreterPartialStatus');
 		const warning = document.getElementById('interpreter-error') as HTMLDivElement;
 		expect(warning.style.display).toBe('block');
 		expect(warning.classList.contains('warning')).toBe(true);
@@ -325,10 +327,12 @@ describe('Interpreter', () => {
 
 		const container = document.getElementById('interpreter-error') as HTMLDivElement;
 		expect(container.style.display).toBe('block');
+		// The bar's compact card: Retry first, the explanation and raw detail behind Details.
+		expect(container.querySelector('.ai-error-card.is-compact')).not.toBeNull();
 		expect(container.querySelector('.ai-error-card-title')?.textContent).toBe('aiErrorAuthTitle');
 		expect(container.querySelector('.ai-error-card-body')?.textContent).toBe('aiErrorAuthBody');
 		expect(container.querySelector('.ai-error-card-detail')?.textContent).toContain('invalid x-api-key');
-		expect(cardActions()).toEqual(['openSettings', 'retry']);
+		expect(cardActions()).toEqual(['retry', 'openSettings']);
 		expect(document.getElementById('interpreter')?.classList.contains('error')).toBe(true);
 		expect(interpretButton().classList.contains('error')).toBe(true);
 		expect(cancelButton().hidden).toBe(true);
@@ -339,7 +343,7 @@ describe('Interpreter', () => {
 		error.mockRestore();
 	});
 
-	test('the error card replaces the button label and is scrolled into view', async () => {
+	test('the error card takes the bar in place of Run and is scrolled into view', async () => {
 		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		const scrollIntoView = vi.fn();
 		Element.prototype.scrollIntoView = scrollIntoView;
@@ -347,16 +351,63 @@ describe('Interpreter', () => {
 
 		await handleInterpreterUI(template, {}, 1, 'https://example.com');
 
-		// The card's title names the error, so the button's "Error" label is not shown above it.
-		expect(interpretButton().style.display).toBe('none');
+		// The bar's `error` state hides its controls (styles), so the card names the error alone.
+		expect(document.getElementById('interpreter')?.classList.contains('error')).toBe(true);
+		expect(interpretButton().classList.contains('error')).toBe(true);
+		expect(interpretButton().style.display).toBe('');
 		expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
 		expect(scrollIntoView.mock.contexts[0]).toBe(document.getElementById('interpreter-error'));
 
 		cardAction('retry').click();
-		expect(interpretButton().style.display).toBe('inline-block');
+		expect(interpretButton().classList.contains('error')).toBe(false);
+		expect(document.getElementById('interpreter')?.classList.contains('running')).toBe(true);
 		await vi.waitFor(() => expect(interpretButton().classList.contains('done')).toBe(true));
-		expect(interpretButton().style.display).toBe('inline-block');
+		expect(document.getElementById('interpreter')?.classList.contains('running')).toBe(false);
 		delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+		error.mockRestore();
+	});
+
+	test('the error card names the failed connection and model with the HTTP status', async () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		populatePopupModelSelect(modelSelect(), storedView());
+		mocks.runAiTask.mockRejectedValueOnce(new AiError('auth', { status: 401, profileId: 'gpt', detail: 'bad key' }));
+
+		await handleInterpreterUI(template, {}, 1, 'https://example.com', 'gpt');
+
+		const card = document.querySelector('#interpreter-error .ai-error-card') as HTMLElement;
+		// The mocked getMessage returns keys, so the source line shows which message was used.
+		expect(card.querySelector('.ai-error-card-body')?.textContent).toBe('aiErrorSourceHttp');
+		// The explanation the source line replaced is behind Details, with the raw detail.
+		const toggle = card.querySelector('.ai-error-card-details-toggle') as HTMLButtonElement;
+		const panel = card.querySelector('.ai-error-card-detail') as HTMLElement;
+		expect(panel.hidden).toBe(true);
+		expect(panel.textContent).toContain('aiErrorAuthBody');
+		expect(panel.textContent).toContain('bad key');
+		toggle.click();
+		expect(panel.hidden).toBe(false);
+		expect(toggle.getAttribute('aria-expanded')).toBe('true');
+		error.mockRestore();
+	});
+
+	test('dismissing the error returns the bar to idle, and Run starts a new run', async () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		await initializeInterpreter(template, {}, 1, 'https://example.com', storedView());
+		mocks.runAiTask.mockRejectedValueOnce(new AiError('network'));
+		interpretButton().click();
+		await vi.waitFor(() => expect(interpretButton().classList.contains('error')).toBe(true));
+
+		(document.querySelector('#interpreter-error .ai-error-card-dismiss') as HTMLButtonElement).click();
+
+		const container = document.getElementById('interpreter') as HTMLElement;
+		expect(container.classList.contains('error')).toBe(false);
+		expect((document.getElementById('interpreter-error') as HTMLElement).style.display).toBe('none');
+		expect(interpretButton().disabled).toBe(false);
+		expect(interpretButton().classList.contains('error')).toBe(false);
+		expect(summary()).toBe('interpreterPromptCount');
+
+		// With the error gone, a Clip starts a fresh run through the button.
+		await expect(prepareInterpreterForClip(interpretButton())).resolves.toBeUndefined();
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(2);
 		error.mockRestore();
 	});
 
@@ -444,6 +495,9 @@ describe('Interpreter', () => {
 		expect(interpretButton().classList.contains('processing')).toBe(true);
 		expect((document.getElementById('clip-btn') as HTMLButtonElement).disabled).toBe(true);
 
+		expect(summary()).toBe('interpreterRunningSummary');
+		expect(modelSelect().disabled).toBe(true);
+
 		cancelButton().click();
 		await expect(run).resolves.toBe('cancelled');
 
@@ -451,7 +505,10 @@ describe('Interpreter', () => {
 		expect(cancelButton().hidden).toBe(true);
 		expect(interpretButton().classList.contains('processing')).toBe(false);
 		expect(interpretButton().classList.contains('cancelled')).toBe(true);
-		expect(interpretButton().textContent).toBe('interpret');
+		expect(interpretButton().textContent).toBe('interpreterRun');
+		expect(summary()).toBe('aiRequestCancelled');
+		expect(modelSelect().disabled).toBe(false);
+		expect(document.getElementById('interpreter')?.classList.contains('running')).toBe(false);
 		expect(interpretButton().disabled).toBe(false);
 		expect((document.getElementById('interpreter-timer') as HTMLSpanElement).style.display).toBe('none');
 		expect((document.getElementById('interpreter-error') as HTMLDivElement).style.display).toBe('none');
@@ -496,6 +553,93 @@ describe('Interpreter', () => {
 		expect(mocks.runAiTask).toHaveBeenCalledTimes(2);
 	});
 
+	test('the idle bar counts the template prompts, pluralized', async () => {
+		const twoPrompts = { ...template, noteContentFormat: '{{"Summarize"}} {{"Tags"}}' };
+		await initializeInterpreter(twoPrompts, {}, 1, 'https://example.com', storedView());
+
+		expect(document.getElementById('interpreter')?.style.display).toBe('flex');
+		expect(summary()).toBe('interpreterPromptCountPlural');
+		expect(modelSelect().getAttribute('aria-label')).toBe('interpreterModelLabel');
+
+		showInterpreterIdle(1);
+		expect(summary()).toBe('interpreterPromptCount');
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
+	});
+
+	test('the bar is hidden when the template has no prompts or AI is off', async () => {
+		await initializeInterpreter({ ...template, noteContentFormat: 'No prompts' }, {}, 1, 'https://example.com', storedView());
+		expect(document.getElementById('interpreter')?.style.display).toBe('none');
+
+		await initializeInterpreter(template, {}, 1, 'https://example.com', { ...storedView(), enabled: false });
+		expect(document.getElementById('interpreter')?.style.display).toBe('none');
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
+	});
+
+	test('initializing never starts a run, with or without auto-run', async () => {
+		const view = storedView();
+		await initializeInterpreter(template, {}, 1, 'https://example.com', view);
+		view.interpreter.autoRun = true;
+		await initializeInterpreter(template, {}, 1, 'https://example.com', view);
+
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
+	});
+
+	test('a successful run leaves a quiet done state', async () => {
+		populatePopupModelSelect(modelSelect(), storedView());
+
+		await expect(handleInterpreterUI(template, {}, 1, 'https://example.com', 'gpt')).resolves.toBe('done');
+
+		expect(document.getElementById('interpreter')?.classList.contains('done')).toBe(true);
+		expect(summary()).toBe('interpreterDoneSummary');
+		expect(cancelButton().hidden).toBe(true);
+		// The model that filled the prompts stays named, as a label rather than a choice.
+		expect(modelSelect().disabled).toBe(true);
+		expect((document.getElementById('interpreter-error') as HTMLElement).style.display).toBe('none');
+
+		// A rebuild of the fields keeps the outcome on the bar.
+		showInterpreterIdle(3);
+		expect(summary()).toBe('interpreterDoneSummary');
+	});
+
+	test('prompt chips follow the run: filling, then gone once filled', async () => {
+		document.body.insertAdjacentHTML('beforeend', `
+			<div class="metadata-property"><div class="metadata-property-value">
+				<input id="summary" type="text" value='{{"Summarize"}}'>
+			</div></div>`);
+		let finish: (value: unknown) => void = () => undefined;
+		mocks.runAiTask.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+
+		const run = handleInterpreterUI(template, {}, 1, 'https://example.com');
+		const chip = () => document.querySelector('.ai-prompt-chip') as HTMLElement | null;
+		expect(chip()?.dataset.state).toBe('running');
+		expect(chip()?.textContent).toContain('aiPromptChipRunning');
+
+		finish({ output: { responses: { prompt_1: 'A summary' }, missing: [] }, connectionKind: 'cli-codex' });
+		await run;
+
+		const input = document.getElementById('summary') as HTMLInputElement;
+		expect(chip()).toBeNull();
+		expect(input.hidden).toBe(false);
+		expect(input.value).toBe('A summary');
+	});
+
+	test('prompt chips say "Not filled" after an error', async () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		document.body.insertAdjacentHTML('beforeend', `
+			<div class="metadata-property"><div class="metadata-property-value">
+				<input id="summary" type="text" value='{{"Summarize"}}'>
+			</div></div>`);
+		mocks.runAiTask.mockRejectedValueOnce(new AiError('network'));
+
+		await handleInterpreterUI(template, {}, 1, 'https://example.com');
+
+		const chip = document.querySelector('.ai-prompt-chip') as HTMLElement;
+		expect(chip.dataset.state).toBe('failed');
+		expect(chip.textContent).toContain('aiPromptChipNotFilled');
+		expect((document.getElementById('summary') as HTMLInputElement).value).toBe('{{"Summarize"}}');
+		error.mockRestore();
+	});
+
 	test('with auto-run the button runs again after a cancel', async () => {
 		const view = storedView();
 		view.interpreter.autoRun = true;
@@ -506,6 +650,10 @@ describe('Interpreter', () => {
 		await vi.waitFor(() => expect(mocks.runAiTask).toHaveBeenCalledOnce());
 	});
 });
+
+function summary(): string {
+	return document.getElementById('interpreter-summary')?.textContent ?? '';
+}
 
 function interpretButton(): HTMLButtonElement {
 	return document.getElementById('interpret-btn') as HTMLButtonElement;

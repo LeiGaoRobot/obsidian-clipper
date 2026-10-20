@@ -47,6 +47,9 @@
 	"aiEditPresetLabel": {
 		"message": "AI 编辑方式"
 	},
+	"aiEditToggle": {
+		"message": "用 AI 编辑…"
+	},
 	"aiEditPresetPolish": {
 		"message": "润色"
 	},
@@ -539,6 +542,24 @@
 	"aiErrorTechnicalDetails": {
 		"message": "技术详情"
 	},
+	"aiErrorDetails": {
+		"message": "详情"
+	},
+	"aiErrorSource": {
+		"message": "$1 · $2"
+	},
+	"aiErrorSourceHttp": {
+		"message": "$1 · HTTP $2"
+	},
+	"aiPromptChip": {
+		"message": "由 AI 填写"
+	},
+	"aiPromptChipRunning": {
+		"message": "AI 正在填写…"
+	},
+	"aiPromptChipNotFilled": {
+		"message": "未填写"
+	},
 	"aiErrorActionRetry": {
 		"message": "重试"
 	},
@@ -996,9 +1017,6 @@
 	"importTemplate": {
 		"message": "导入模板"
 	},
-	"interpret": {
-		"message": "解释"
-	},
 	"interpreter": {
 		"message": "解释器"
 	},
@@ -1016,6 +1034,24 @@
 	},
 	"interpreterPartialTitle": {
 		"message": "部分提示词没有得到回答。"
+	},
+	"interpreterRun": {
+		"message": "运行"
+	},
+	"interpreterPromptCount": {
+		"message": "此模板中有 $1 个 AI 提示"
+	},
+	"interpreterPromptCountPlural": {
+		"message": "此模板中有 $1 个 AI 提示"
+	},
+	"interpreterRunningSummary": {
+		"message": "正在运行…"
+	},
+	"interpreterDoneSummary": {
+		"message": "AI 提示已填写"
+	},
+	"interpreterModelLabel": {
+		"message": "模型"
 	},
 	"interpreterPartialBody": {
 		"message": "模型回答了 $2 个提示词中的 $1 个。下面未回答的提示词会以占位符形式保留在笔记中。你可以手动补全，也可以直接按现状添加到 Obsidian。如需重新解读，请重新打开 Web Clipper。"

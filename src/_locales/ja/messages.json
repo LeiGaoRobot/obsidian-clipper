@@ -375,9 +375,6 @@
 	"importTemplate": {
 		"message": "テンプレートをインポート"
 	},
-	"interpret": {
-		"message": "解釈"
-	},
 	"interpreter": {
 		"message": "インタープリター"
 	},

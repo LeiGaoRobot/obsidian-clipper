@@ -375,9 +375,6 @@
 	"importTemplate": {
 		"message": "匯入範本"
 	},
-	"interpret": {
-		"message": "解譯"
-	},
 	"interpreter": {
 		"message": "解譯器"
 	},

@@ -262,6 +262,87 @@ describe('renderAiErrorCard', () => {
 	});
 });
 
+describe('renderAiErrorCard compact variant', () => {
+	const auth: AiErrorDescription = {
+		title: 'API key rejected',
+		body: 'Check or replace it in Settings.',
+		action: 'openSettings',
+		detail: 'HTTP 401: invalid key'
+	};
+
+	test('shows the source in place of the body, with Retry first and the rest behind Details', () => {
+		const root = container();
+		const retry = vi.fn();
+		const openSettings = vi.fn();
+		const card = renderAiErrorCard(root, auth, {
+			variant: 'compact',
+			source: 'OpenAI · GPT · HTTP 401',
+			handlers: { retry, openSettings }
+		});
+
+		expect(card.classList.contains('is-compact')).toBe(true);
+		expect(card.querySelector('.ai-error-card-title')?.textContent).toBe('API key rejected');
+		const line = card.querySelector('.ai-error-card-body') as HTMLElement;
+		expect(line.textContent).toBe('OpenAI · GPT · HTTP 401');
+		expect(line.title).toBe('OpenAI · GPT · HTTP 401');
+		expect(Array.from(card.querySelectorAll<HTMLElement>('.ai-error-card-action'), button => button.dataset.action))
+			.toEqual(['retry', 'openSettings']);
+		// No <details>: a toggle in the action row opens a panel below it.
+		expect(card.querySelector('details')).toBeNull();
+		const toggle = card.querySelector('.ai-error-card-details-toggle') as HTMLButtonElement;
+		const panel = card.querySelector('.ai-error-card-detail') as HTMLElement;
+		expect(toggle.parentElement?.classList.contains('ai-error-card-actions')).toBe(true);
+		expect(toggle.textContent).toBe('Details');
+		expect(toggle.getAttribute('aria-controls')).toBe(panel.id);
+		expect(panel.hidden).toBe(true);
+		expect(panel.querySelector('.ai-error-card-explanation')?.textContent).toBe('Check or replace it in Settings.');
+		expect(panel.querySelector('code')?.textContent).toBe('HTTP 401: invalid key');
+
+		toggle.click();
+		expect(panel.hidden).toBe(false);
+		expect(toggle.getAttribute('aria-expanded')).toBe('true');
+		toggle.click();
+		expect(panel.hidden).toBe(true);
+
+		(card.querySelector('[data-action="retry"]') as HTMLButtonElement).click();
+		expect(retry).toHaveBeenCalledOnce();
+	});
+
+	test('without a source the body stays on its line, and Details holds only the raw detail', () => {
+		const card = renderAiErrorCard(container(), auth, { variant: 'compact', handlers: { retry: vi.fn() } });
+
+		expect(card.querySelector('.ai-error-card-body')?.textContent).toBe('Check or replace it in Settings.');
+		const panel = card.querySelector('.ai-error-card-detail') as HTMLElement;
+		expect(panel.querySelector('.ai-error-card-explanation')).toBeNull();
+		expect(panel.textContent).toBe('HTTP 401: invalid key');
+	});
+
+	test('with nothing to hide there is no Details toggle', () => {
+		const card = renderAiErrorCard(container(), { ...auth, detail: undefined }, { variant: 'compact', handlers: { retry: vi.fn() } });
+
+		expect(card.querySelector('.ai-error-card-details-toggle')).toBeNull();
+		expect(card.querySelector('.ai-error-card-detail')).toBeNull();
+		expect(card.querySelector('.ai-error-card-actions')).not.toBeNull();
+	});
+
+	test('keeps the dismiss control', () => {
+		const onDismiss = vi.fn();
+		const card = renderAiErrorCard(container(), auth, { variant: 'compact', onDismiss });
+		(card.querySelector('.ai-error-card-dismiss') as HTMLButtonElement).click();
+		expect(onDismiss).toHaveBeenCalledOnce();
+	});
+
+	test('the default variant is unchanged by the compact options it does not use', () => {
+		const card = renderAiErrorCard(container(), auth, { source: 'ignored', handlers: { retry: vi.fn(), openSettings: vi.fn() } });
+
+		expect(card.classList.contains('is-compact')).toBe(false);
+		expect(card.querySelector('.ai-error-card-body')?.textContent).toBe('Check or replace it in Settings.');
+		expect(card.querySelector('details.ai-error-card-detail')).not.toBeNull();
+		expect(Array.from(card.querySelectorAll<HTMLElement>('.ai-error-card-action'), button => button.dataset.action))
+			.toEqual(['openSettings', 'retry']);
+	});
+});
+
 describe('clearAiErrorCard', () => {
 	test('empties and hides the container', () => {
 		const root = container();

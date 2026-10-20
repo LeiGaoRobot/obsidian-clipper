@@ -375,9 +375,6 @@
 	"importTemplate": {
 		"message": "Template import karein"
 	},
-	"interpret": {
-		"message": "Interpret"
-	},
 	"interpreter": {
 		"message": "Interpreter"
 	},

@@ -33,6 +33,7 @@ Get the Obsidian Web Clipper extension from the official directory for your brow
 	- Highlight important passages and select elements you want to save.
 - [[Interpret web pages|Interpreter]]
 	- Use natural language prompts to capture and modify data on a page.
+	- Run prompts from the compact AI bar above **Add to Obsidian**; properties waiting for a prompt show an **✦ AI fills this** chip, and AI edits sit behind **✦ Edit with AI…**.
 	- Use an API provider or a local Grok/Codex CLI through Chrome Native Messaging, with optional per-request Codex model and reasoning-effort overrides and a Settings guide that prepares a cwd-independent one-time Host install command for local source builds.
 	- Set up AI on one guided Settings page: a status card lists what is missing, each provider card holds its models, and per-task model choices stay folded under **Tasks** until you need them.
 	- Test a connection from Settings to check its key, models, and structured-output support (it may send a minimal billable request), and review recent requests in **Diagnostics**.

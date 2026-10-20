@@ -61,6 +61,24 @@ export function initializeLanguageLearningPopup({
 
 	container.style.display = enabled ? 'block' : 'none';
 	if (!enabled) return;
+
+	// The tools start collapsed behind "Edit with AI…"; the choice lasts while this page is open.
+	const toggle = doc.getElementById('ai-edit-toggle') as HTMLButtonElement | null;
+	const panel = doc.getElementById('ai-edit-panel') as HTMLElement | null;
+	if (toggle && panel) {
+		const setExpanded = (expanded: boolean) => {
+			panel.hidden = !expanded;
+			toggle.setAttribute('aria-expanded', String(expanded));
+			toggle.classList.toggle('is-expanded', expanded);
+		};
+		setExpanded(false);
+		toggle.addEventListener('click', () => {
+			const expanded = panel.hidden;
+			setExpanded(expanded);
+			// The popup body scrolls; bring the opened tools into view.
+			if (expanded) panel.scrollIntoView?.({ block: 'nearest' });
+		});
+	}
 	// The select shows only the chosen mode, so it carries its own name for assistive technology.
 	presetSelect.setAttribute('aria-label', getMessage('aiEditPresetLabel'));
 

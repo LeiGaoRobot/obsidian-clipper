@@ -38,56 +38,65 @@
 		</div>
 		<p class="error-message" style="display: none;"></p>
 		<div class="clipper">
-			<textarea id="note-name-field" type="text" data-i18n="noteName" rows="1"></textarea>
-			<div class="metadata-properties-header">
-				<span data-i18n="properties"></span>
-				<i data-lucide="chevron-down"></i>
-			</div>
-			<div class="metadata-properties"></div>
-			<div id="note-content-container">
-				<textarea id="note-content-field" rows="4" data-i18n="notesAboutPage"></textarea>
-			</div>
-			<div id="language-learning-tools" style="display: none;">
-				<div class="ai-edit-controls">
-					<select id="ai-edit-preset">
-						<option value="bilingual" data-i18n="aiEditPresetBilingual">Bilingual</option>
-						<option value="simplify" data-i18n="aiEditPresetSimplify">Simplify</option>
-						<option value="polish" data-i18n="aiEditPresetPolish">Polish</option>
-						<option value="study-notes" data-i18n="aiEditPresetStudyNotes">Study notes</option>
-						<option value="custom" data-i18n="aiEditPresetCustom">Custom</option>
-					</select>
-					<button id="ai-edit-preview-btn" data-i18n="aiEditPreview">Preview AI edit</button>
-					<button id="ai-edit-undo-btn" data-i18n="aiEditUndo" disabled>Undo</button>
+			<div class="clipper-body">
+				<textarea id="note-name-field" type="text" data-i18n="noteName" rows="1"></textarea>
+				<div class="metadata-properties-header">
+					<span data-i18n="properties"></span>
+					<i data-lucide="chevron-down"></i>
 				</div>
-				<textarea id="ai-edit-instruction" rows="2" data-i18n="aiEditInstruction"></textarea>
-				<div id="ai-edit-preview" style="display: none;">
-					<div id="ai-edit-preview-content"></div>
-					<div class="ai-edit-preview-actions">
-						<button id="ai-edit-apply-btn" class="mod-cta" data-i18n="apply">Apply</button>
-						<button id="ai-edit-cancel-btn" data-i18n="cancel">Cancel</button>
+				<div class="metadata-properties"></div>
+				<div id="note-content-container">
+					<textarea id="note-content-field" rows="4" data-i18n="notesAboutPage"></textarea>
+				</div>
+				<div id="language-learning-tools" style="display: none;">
+					<button id="ai-edit-toggle" type="button" aria-expanded="false" aria-controls="ai-edit-panel">
+						<span class="ai-mark" aria-hidden="true">&#10022;</span>
+						<span data-i18n="aiEditToggle">Edit with AI…</span>
+					</button>
+					<div id="ai-edit-panel" hidden>
+						<div class="ai-edit-controls">
+							<select id="ai-edit-preset">
+								<option value="bilingual" data-i18n="aiEditPresetBilingual">Bilingual</option>
+								<option value="simplify" data-i18n="aiEditPresetSimplify">Simplify</option>
+								<option value="polish" data-i18n="aiEditPresetPolish">Polish</option>
+								<option value="study-notes" data-i18n="aiEditPresetStudyNotes">Study notes</option>
+								<option value="custom" data-i18n="aiEditPresetCustom">Custom</option>
+							</select>
+							<button id="ai-edit-preview-btn" data-i18n="aiEditPreview">Preview AI edit</button>
+							<button id="ai-edit-undo-btn" data-i18n="aiEditUndo" disabled>Undo</button>
+						</div>
+						<textarea id="ai-edit-instruction" rows="2" data-i18n="aiEditInstruction"></textarea>
+						<div id="ai-edit-preview" style="display: none;">
+							<div id="ai-edit-preview-content"></div>
+							<div class="ai-edit-preview-actions">
+								<button id="ai-edit-apply-btn" class="mod-cta" data-i18n="apply">Apply</button>
+								<button id="ai-edit-cancel-btn" data-i18n="cancel">Cancel</button>
+							</div>
+						</div>
+						<button id="ai-edit-cancel-request-btn" data-i18n="cancel" hidden>Cancel</button>
+						<div id="ai-edit-status" aria-live="polite"></div>
+						<div id="ai-edit-error" hidden></div>
 					</div>
 				</div>
-				<button id="ai-edit-cancel-request-btn" data-i18n="cancel" hidden>Cancel</button>
-				<div id="ai-edit-status" aria-live="polite"></div>
-				<div id="ai-edit-error" hidden></div>
 			</div>
 			<div class="clipper-footer">
+				<div id="interpreter" style="display: none;">
+					<textarea id="prompt-context" rows="3"></textarea>
+					<div class="interpreter-controls">
+						<span id="interpreter-summary" aria-live="polite"></span>
+						<span id="interpreter-timer" style="display: none;"></span>
+						<select id="model-select" style="display: none;"></select>
+						<button id="interpreter-cancel-btn" type="button" data-i18n="cancel" hidden>Cancel</button>
+						<button id="interpret-btn" type="button" class="mod-cta" data-i18n="interpreterRun"></button>
+					</div>
+					<div id="token-counter" class="token-counter"></div>
+					<div id="interpreter-error" style="display: none;"></div>
+				</div>
 				<div class="vault-path-container">
 					<div id="vault-container" style="display: none;">
 						<select id="vault-select"></select>
 					</div>
 					<input id="path-name-field" type="text" data-i18n="folder"/>
-				</div>
-				<div id="interpreter" style="display: none;">
-					<textarea id="prompt-context" rows="3"></textarea>
-					<div class="interpreter-controls">
-						<select id="model-select" style="display: none;"></select>
-						<button id="interpret-btn" data-i18n="interpret"></button>
-						<span id="interpreter-timer" style="display: none;"></span>
-						<button id="interpreter-cancel-btn" type="button" data-i18n="cancel" hidden>Cancel</button>
-					</div>
-					<div id="token-counter" class="token-counter"></div>
-					<div id="interpreter-error" style="display: none;"></div>
 				</div>
 				<div class="action-buttons" id="action-buttons">
 					<button id="clip-btn" class="mod-cta"><!-- Text set by determineMainAction --></button>

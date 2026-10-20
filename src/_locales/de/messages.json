@@ -375,9 +375,6 @@
 	"importTemplate": {
 		"message": "Vorlage importieren"
 	},
-	"interpret": {
-		"message": "interpretieren"
-	},
 	"interpreter": {
 		"message": "Interpreter"
 	},

@@ -1,12 +1,16 @@
+// The popup's AI bar (`#interpreter`): a compact row in the footer, above the vault and the Add
+// button. Idle shows the template's prompt count, the model select, and Run; running shows progress
+// and Cancel; an error turns the bar into the compact shared error card; done stays quiet.
 .clipper {
 	#interpreter {
-		--interpreter-background-color: hsla(var(--color-accent-hsl), 0.075);
-		--interpreter-border-color: hsla(var(--color-accent-hsl), 0.15);
-		--interpreter-text-color: var(--text-accent);
+		--interpreter-background-color: hsla(var(--color-accent-hsl), 0.06);
+		--interpreter-border-color: hsla(var(--color-accent-hsl), 0.2);
+		--interpreter-text-color: var(--text-normal);
 		display: none;
 		flex-direction: column;
+		flex-shrink: 0;
 
-		border-radius: 4px;
+		border-radius: var(--radius-m);
 		background-color: var(--interpreter-background-color);
 		border: 1px solid var(--interpreter-border-color);
 
@@ -14,34 +18,22 @@
 			--interpreter-background-color: var(--background-modifier-success);
 			--interpreter-border-color: var(--background-modifier-success-border);
 			--interpreter-text-color: var(--text-success);
-			#model-select {
-				opacity: 1;
-			}
 		}
 
 		&.partial {
 			--interpreter-background-color: var(--background-modifier-warning);
 			--interpreter-border-color: var(--background-modifier-warning-border);
 			--interpreter-text-color: var(--text-warning);
-			#model-select {
-				opacity: 1;
-			}
 		}
 
 		&.error {
 			--interpreter-background-color: var(--background-modifier-error);
 			--interpreter-border-color: var(--background-modifier-error-border);
 			--interpreter-text-color: var(--text-error);
-			// The error card below names the error; the model above it is a plain, muted label.
-			#model-select {
-				opacity: 1;
-				color: var(--text-muted);
-				font-family: var(--font-default);
+			// The card names the error and offers what to do; the idle controls step aside.
+			.interpreter-controls {
+				display: none;
 			}
-		}
-
-		#model-select {
-			color: var(--interpreter-text-color);
 		}
 	}
 
@@ -52,198 +44,112 @@
 	.interpreter-controls {
 		display: flex;
 		align-items: center;
-		padding: 0.25rem 0.5rem;
-		padding-inline-end: 0.625rem;
-		gap: 0.25rem;
+		gap: 0.5rem;
+		min-height: 2.75rem;
+		padding: 0.375rem;
+		padding-inline-start: 0.75rem;
+	}
+
+	// Up to two lines, so the count fits beside the model select and Run in a narrow popup.
+	#interpreter-summary {
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-height: 1.25;
+		font-size: var(--font-ui-smaller);
+		color: var(--interpreter-text-color);
+		user-select: none;
+		-webkit-user-select: none;
+		cursor: default;
+	}
+
+	#interpreter-timer {
+		flex-shrink: 0;
+		user-select: none;
+		-webkit-user-select: none;
+		cursor: default;
+		font-size: var(--font-ui-smallest);
+		color: var(--text-muted);
+		font-variant: tabular-nums;
 	}
 
 	#model-select {
-		user-select: none;
-		-webkit-user-select: none;
-		cursor: default;
-		font-variant: tabular-nums;
-		background-image: none;
-		background-color: transparent;
-		color: var(--interpreter-text-color);
-		font-family: var(--font-monospace-default);
-		height: 1.5rem;
-		appearance: none;
-		border-radius: 4px;
-		border: none;
-		box-shadow: none;
-		flex-shrink: 1;
-		max-width: 50%;
-		font-size: 0.6875rem;
-		padding: 0px;
-		padding-inline-end: 1.25rem;
+		flex: 0 1 auto;
+		width: auto;
+		min-width: 0;
+		max-width: 7rem;
+		height: 1.75rem;
+		font-size: var(--font-ui-smallest);
 		text-overflow: ellipsis;
-		color: var(--text-accent);
-		opacity: 0.75;
-		@media (hover: hover) {
-			&:hover {
-				opacity: 1;
-			}
-		}
-		&:active,
-		&:focus {
+		background-color: var(--background-primary);
+		cursor: default;
+
+		// While running and once done, the select is a plain label naming the model used.
+		&:disabled {
+			opacity: 1;
+			color: var(--text-muted);
+			background-image: none;
+			background-color: transparent;
+			border-color: transparent;
 			box-shadow: none;
+			padding-inline: 0;
+			cursor: default;
 		}
 	}
 
-	#interpret-btn {
-		cursor: default;
-		user-select: none;
-		-webkit-user-select: none;
-		font-family: var(--font-monospace-default);
-		font-weight: 600;
-		font-size: 0.75rem;
-		height: 1.5rem;
-		padding: 0;
-		box-shadow: none;
+	#interpret-btn,
+	#interpreter-cancel-btn {
+		flex: 0 0 auto;
 		width: auto;
-		white-space: nowrap;
-		background-color: transparent;
-		flex-grow: 1;
-		text-align: end;
-		color: var(--text-accent);
+		height: 1.75rem;
+		padding: 0 0.875rem;
+		cursor: default;
+	}
 
-		&.processing {
-			pointer-events: none;
-			cursor: default;
-			color: var(--text-accent);
-			@media (hover: hover) {
-				&:hover {
-					color: var(--text-accent);
-				}
-			}
-		}
-		&.done {
-			pointer-events: none;
-			cursor: default;
-			color: var(--text-success);
-			opacity: 1;
-			@media (hover: hover) {
-				&:hover {
-					color: var(--text-success);
-				}
-			}
-			~ {
-				#interpreter-timer {
-					color: var(--text-success);
-				}
-			}
-		}
-		&.partial {
-			pointer-events: none;
-			cursor: default;
-			color: var(--text-warning);
-			opacity: 1;
-			@media (hover: hover) {
-				&:hover {
-					color: var(--text-warning);
-				}
-			}
-			~ {
-				#interpreter-timer {
-					color: var(--text-warning);
-				}
-			}
-		}
+	#interpret-btn {
+		font-weight: 600;
+		// Run is offered while idle or after a cancel; otherwise the bar shows the run's state.
+		&.processing,
+		&.done,
+		&.partial,
 		&.error {
-			pointer-events: none;
-			cursor: default;
-			color: var(--text-error);
-			opacity: 1;
-			@media (hover: hover) {
-				&:hover {
-					color: var(--text-error);
-				}
-			}
-			~ {
-				#interpreter-timer {
-					color: var(--text-error);
-				}
-			}
-		}
-		@media (hover: hover) {
-			&:hover {
-				color: var(--color-accent-3);
-			}
+			display: none;
 		}
 	}
 
 	#interpreter-cancel-btn {
-		font-family: var(--font-monospace-default);
-		font-size: 0.6875rem;
-		height: 1.5rem;
-		padding: 0 0.25rem;
-		width: auto;
-		box-shadow: none;
-		background-color: transparent;
-		color: var(--text-muted);
-		white-space: nowrap;
+		padding: 0 0.625rem;
 		&[hidden] {
 			display: none;
 		}
-		@media (hover: hover) {
-			&:hover {
-				color: var(--text-normal);
-			}
-		}
-	}
-
-	#interpreter-timer {
-		user-select: none;
-		-webkit-user-select: none;
-		cursor: default;
-		font-size: 0.75rem;
-		color: var(--text-accent);
-		min-width: 2rem;
-		text-align: end;
-		font-family: var(--font-monospace-default);
-		font-variant: tabular-nums;
 	}
 
 	.token-counter {
 		display: none;
-		padding: 0.5rem 0.5rem;
-		font-size: 0.6875rem;
-		color: var(--text-muted);
-		font-family: var(--font-monospace-default);
-		border-top: 1px solid var(--interpreter-border-color);
-		
-		&.warning {
-			color: var(--text-warning);
-		}
-		
-		&.error {
-			color: var(--text-error);
-		}
 	}
 
-	// Holds the shared AI error card, or the partial-result warning.
+	// Holds the compact AI error card, or the partial-result warning under the bar's line.
 	#interpreter-error {
-		border-top: 1px solid var(--background-modifier-error-border);
-		padding: 0.5rem;
-		max-height: 200px;
-		overflow-y: auto;
 		display: none;
 
-		// The Interpreter box is already tinted for the error, so the card drops its own frame.
 		.ai-error-card {
-			padding: 0;
 			background-color: transparent;
 			border: none;
-			font-size: var(--font-ui-smaller);
 		}
 
 		&.warning {
-			border-top-color: var(--background-modifier-warning-border);
+			border-top: 1px solid var(--background-modifier-warning-border);
+			padding: 0.5rem 0.75rem;
+			max-height: 7.5rem;
+			overflow-y: auto;
 			font-size: var(--font-ui-smaller);
 			color: var(--text-warning);
 			white-space: pre-wrap;
 			word-break: break-word;
-			line-height: 1.2;
+			line-height: 1.3;
 		}
 
 		ul {
@@ -251,5 +157,66 @@
 			padding-inline-start: 1.25rem;
 			white-space: normal;
 		}
+	}
+}
+
+// A property still holding an Interpreter prompt shows this chip in place of the raw prompt; the
+// input stays in the DOM, hidden, with its value unchanged.
+.metadata-property-value > input[hidden] {
+	display: none;
+}
+
+button.ai-prompt-chip {
+	flex: 0 1 auto;
+	width: auto;
+	min-width: 0;
+	height: 1.375rem;
+	padding: 0 0.5rem;
+	gap: 0.25rem;
+	border-radius: 999px;
+	font-family: var(--font-default);
+	font-size: var(--font-ui-smallest);
+	font-weight: 500;
+	color: var(--text-accent);
+	background-color: hsla(var(--color-accent-hsl), 0.1);
+	box-shadow: none;
+	cursor: default;
+
+	.ai-prompt-chip-label {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	@media (hover: hover) {
+		&:hover {
+			background-color: hsla(var(--color-accent-hsl), 0.18);
+			box-shadow: none;
+		}
+	}
+
+	&[data-state="running"] .ai-prompt-chip-mark {
+		animation: ai-prompt-chip-pulse 1.2s ease-in-out infinite;
+	}
+
+	&[data-state="failed"] {
+		color: var(--text-error);
+		background-color: var(--background-modifier-error);
+		@media (hover: hover) {
+			&:hover {
+				background-color: hsla(var(--color-red-hsl), 0.16);
+			}
+		}
+	}
+}
+
+@keyframes ai-prompt-chip-pulse {
+	50% {
+		opacity: 0.35;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	button.ai-prompt-chip[data-state="running"] .ai-prompt-chip-mark {
+		animation: none;
 	}
 }
