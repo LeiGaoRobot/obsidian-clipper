@@ -9,6 +9,8 @@ const verify = process.argv.includes('--verify');
 
 const entryBudgets = {
 	// Raised for the AI gateway's job runner (Phase 4) and the bundled catalog and settings migration (Phase 5).
+	// 200,211 bytes measured at the end of Phase 7 (973,666 at the end of Phase 6, when the unused
+	// buildNativeCliRequest pulled the template filters into the worker through cli-execution-contract.ts).
 	'background.js': 980_000,
 	'content.js': 1_425_000,
 	'highlights.js': 1_450_000,
@@ -21,16 +23,19 @@ const entryBudgets = {
 const chunkBudgets = {
 	'popup-language-learning.js': 30_000,
 	'reader-content-extraction.js': 380_000,
-	// Phase 6 brings the shared AI error mapping into the Reader (about 160 KB measured after AiError
-	// end to end) before the shared controller and card arrive and Phase 7 moves the job limits out
-	// of the runner; re-measured and set to measured size plus about 10% at the end of Phase 7.
-	'reader-language-learning.js': 175_000,
+	// Measured at the end of Phase 7: 173,656 bytes (163,908 at the end of Phase 6; the job-limits
+	// move saved nothing because the runner was already tree-shaken, and derived mode's one v1
+	// sanitizer brings migrate.ts and the catalog, about 8.6 KB, until the v1 deletion release).
+	// Budget is the measured size plus about 10%.
+	'reader-language-learning.js': 191_000,
 	'reader-markdown.js': 10_000,
 	'reader-syntax-highlighting.js': 250_000,
 	// The AI settings section: about 103 KB in Phase 5b; 124 KB measured in Phase 5c after the
 	// connection Test panel, the Diagnostics panel, and the model-listing badges. About 17% headroom.
 	'settings-ai.js': 145_000,
-	'language-learning-runtime.js': 40_000,
+	// The runtime the Popup and Reader chunks share: 33,469 bytes measured at the end of Phase 7
+	// (33,958 at the end of Phase 6). Budget is the measured size plus about 10%.
+	'language-learning-runtime.js': 37_000,
 	'vendors-node_modules_defuddle_dist_index_full_js.js': 800_000
 };
 
