@@ -73,7 +73,7 @@ This document describes the implemented language-learning MVP and the interfaces
 | `src/cli-process.ts` | Node-only `--execution-mode` support for `src/cli.ts`: spawns the Grok or Codex CLI with the arguments from `native-host/cli-invocation.mjs` (shared with the Native Messaging Host), and writes the answers into the note content, properties, and note name. `clip` leaves a property that still holds a kept placeholder unformatted, so number, checkbox, and date properties are formatted only after they are filled |
 | `src/utils/native-cli-install.ts` | Platform-aware Settings guide that builds and copies the one-time Host install command for the current extension ID |
 | `src/background.ts` | Registers the AI gateway on the `ai` Port with the session-storage job store, runs its init (resume and legacy-key cleanup), loads AI settings once at startup so the v1 migration runs, and hosts the Bilibili subtitle bridge |
-| `src/settings/ai/` | The Settings **AI** section (connections with Test, models, task routing, language, interpreter, diagnostics), loaded as the lazy `settings-ai` chunk |
+| `src/settings/ai/` | The Settings **AI** section, one guided page loaded as the lazy `settings-ai` chunk: the status card (`status.ts`: master switch and a checklist derived from settings and `ai_connection_status`), **Providers and models** (`connections.ts` cards with Test, their models nested from `profiles.ts`, and a CLI card's install command while its Host check failed or never ran; `native-cli.ts` keeps the shared guide behind a disclosure), **Tasks** (`routing.ts` default model, `language.ts` response language, per-task rows in a collapsed disclosure with problem-only badges), Interpreter, and Diagnostics collapsed with a run/failure summary |
 
 Bilibili transcript capture is limited to the in-page Reader on Chromium and Firefox. Before Reader removes the live page, the background runs in the page's MAIN world, verifies the current BVID, AID, and CID, waits briefly for the matching player response, and fetches the selected subtitle in that same page context. Expired request URLs are ignored while the polling window remains open. This path does not use AI credentials or create a provider request.
 
@@ -189,7 +189,7 @@ An AI-edit preview records the full source value and replacement range. Apply su
 
 The response language is resolved for every action in this order:
 
-1. Trimmed `ai_routing.responseLanguage`, set in the **Language** panel of the AI section. The v1 migration copies `readerSettings.learningResponseLanguage` into it once.
+1. Trimmed `ai_routing.responseLanguage`, set in the **Tasks** group of the AI section. The v1 migration copies `readerSettings.learningResponseLanguage` into it once.
 2. `navigator.language`.
 3. `English`.
 

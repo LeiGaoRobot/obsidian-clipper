@@ -13,7 +13,7 @@ Interpreter is a [[Introduction to Obsidian Web Clipper|Web Clipper]] feature th
 Interpreter leverages language models to process information on a web page, and return results using [[Variables]] that you can add to your [[Obsidian Web Clipper/Templates|Web Clipper Templates]].
 
 > [!tip] Language learning
-> The same connections and models power AI clipping edits, bilingual YouTube transcripts, and contextual word or sentence explanations. You choose a model per task in **Settings → AI → Task routing**. See [[Language learning]].
+> The same connections and models power AI clipping edits, bilingual YouTube transcripts, and contextual word or sentence explanations. You choose a model per task in **Settings → AI → Tasks**. See [[Language learning]].
 
 ![[web-clipper-interpreter-demo.mp4#interface]]
 
@@ -32,24 +32,24 @@ The output of your prompts can be further manipulated using [[Filters]]. Filters
 Interpreter works with almost any language model provider, including options that run privately on your device. To set up Interpreter:
 
 1. Go to the **AI** section in Web Clipper settings.
-2. Under **Connections**, select **Add API provider**, choose your provider (or **Custom**), and enter its API key. See [[Interpret web pages#Models|models]] below.
-3. Under **Models**, add the model you want to use for that connection. The first model you add becomes the **Default model** in **Task routing**.
+2. Under **Providers and models**, select **Add API provider**, choose your provider (or **Custom**), and enter its API key. See [[Interpret web pages#Models|models]] below.
+3. In the connection's card, select **+ Add model** and add the model you want to use. The first model you add becomes the **Default model** under **Tasks**, and its row is marked **Default**.
 4. Optionally select **Test** on the connection to check the key and the model. See [[Interpret web pages#Test a connection|Test a connection]].
-5. At the top of the **AI** section, turn on **Enable AI features**. Adding a model does not turn it on: if it is off when you add your first model, a note next to the switch says so.
+5. In the status card at the top of the **AI** section, turn on the switch (**Enable AI features**). The card also lists what is set up and what is missing: a connected provider, the default model, and the last Test. Adding a model does not turn it on: if it is off when you add your first model, a note next to the switch says so.
 6. Add [[Variables|prompt variables]] to your [[Obsidian Web Clipper/Templates|templates]].
 7. If your template includes prompt variables, the Interpreter section will be visible when you [[Clip web pages|clip a page]]. Click **interpret** to process the prompt variables.
 
 > [!info] API keys stay on this device
-> API keys are stored only on the device where you enter them, in the browser's local extension storage, as plain text. They are not encrypted and do not sync to your other devices, which also keeps them out of the browser's sync storage limits. Connections, models, and task routing do sync. On another device a synced connection that needs a key shows **Key missing on this device** until you enter the key there.
+> API keys are stored only on the device where you enter them, in the browser's local extension storage, as plain text. They are not encrypted and do not sync to your other devices, which also keeps them out of the browser's sync storage limits. Connections, models, and task choices do sync. On another device a synced connection that needs a key shows **Key missing on this device** until you enter the key there.
 
 > [!note] Upgrading from the Interpreter settings section
-> The first time this version runs, it copies your providers, models, selected model, and Interpreter options into the **AI** section once, and leaves the previous settings unchanged in sync storage so an older version still works. API keys saved by the previous version are imported on each device where they are still present. A key you enter afterwards must be entered on each device. If you used **Grok CLI** or **Codex CLI** as the execution mode, that CLI is carried over as a connection; add the other one with **Add local CLI**. Model ordering is no longer used; choose the model per task in **Task routing** instead.
+> The first time this version runs, it copies your providers, models, selected model, and Interpreter options into the **AI** section once, and leaves the previous settings unchanged in sync storage so an older version still works. API keys saved by the previous version are imported on each device where they are still present. A key you enter afterwards must be entered on each device. If you used **Grok CLI** or **Codex CLI** as the execution mode, that CLI is carried over as a connection; add the other one with **Add local CLI**. Model ordering is no longer used; choose the model per task under **Tasks** instead.
 
 ### Test a connection
 
-Select **Test** on a connection in **Settings → AI → Connections** to check it. A Test runs only when you select it; adding, editing, or loading a connection never sends a request.
+Select **Test** on a connection in **Settings → AI → Providers and models** to check it. A Test runs only when you select it; adding, editing, or loading a connection never sends a request.
 
-- For an API provider, Test first lists the provider's models with your key, which is free. The result says how many of the connection's models the provider lists, a model it does not list shows **Model not listed** under **Models**, and the listed models become the model ID suggestions.
+- For an API provider, Test first lists the provider's models with your key, which is free. The result says how many of the connection's models the provider lists, a model it does not list shows **Model not listed** in the connection's card, and the listed models become the model ID suggestions.
 - For a compatible server other than OpenAI's own API, such as DeepSeek, OpenRouter, or Gemini, Test then sends one minimal request to find the structured-output mode the server accepts: JSON schema, JSON object, or none. The mode is stored with the connection and used for later requests. This request needs a model, so a connection without one is only listed. If such a server has no model list, Test still sends the request. Providers without a model list, such as Azure OpenAI, Hugging Face, and Perplexity, get a minimal 1-token request instead.
 - A Test that only lists models never falls back to a billable request. If the provider answers that it has no model list (HTTP 404, 405, or 501), the Test fails with that status and says what to check: the base URL, or, for a compatible server without a model, adding one so the next Test can send its minimal request.
 - For a local CLI, Test checks the Native Messaging Host, then runs the CLI once with a short prompt: once for each enabled Codex CLI model, or once for Grok CLI.
@@ -63,17 +63,17 @@ If a request on this device was rejected for its structured-output option and su
 
 ### Diagnostics
 
-**Settings → AI → Diagnostics** lists the last 100 model runs and connection Tests in this browser, newest first: the task, connection, outcome, HTTP status, duration, structured-output mode, and, for transcript jobs, the number of groups and retries. Prompts, page content, API keys, and provider error text are never recorded. The list lives in the browser's session storage, so it is cleared when the browser closes. **Copy as JSON** copies it, for example for a bug report, and **Clear** empties it.
+**Settings → AI → Diagnostics**, collapsed at the bottom of the section with a count of recent runs and failures, lists the last 100 model runs and connection Tests in this browser, newest first: the task, connection, outcome, HTTP status, duration, structured-output mode, and, for transcript jobs, the number of groups and retries. Prompts, page content, API keys, and provider error text are never recorded. The list lives in the browser's session storage, so it is cleared when the browser closes. **Copy as JSON** copies it, for example for a bug report, and **Clear** empties it.
 
 ### Local Grok and Codex CLI connections
 
 On Chrome, Interpreter can send the page context to a locally installed and authenticated Grok or Codex CLI through Native Messaging. This is useful when you want to reuse a CLI login instead of configuring an API provider.
 
 1. Build and load the Chromium extension from this repository.
-2. In **Settings → AI → Connections**, select **Add local CLI**, then **Add Codex CLI** or **Add Grok CLI**. Each CLI can be added once, and it gets a default model.
-3. Select **Copy install command**. A local unpacked build inserts the current extension ID and source path for you.
-4. Run the copied command once from any Terminal directory, then reload the extension.
-5. In **Task routing**, choose the CLI's model for the tasks that should use it, or make it the **Default model**.
+2. In **Settings → AI → Providers and models**, under **Add local CLI**, select **Add Codex CLI** or **Add Grok CLI**. Each CLI can be added once, and it gets a default model.
+3. The CLI's card shows **Needs setup** until a Test reaches the Native Messaging Host. Select **Copy install command** in the card, or under **Native Messaging Host setup**. A local unpacked build inserts the current extension ID and source path for you.
+4. Run the copied command once from any Terminal directory, then reload the extension and select **Test** on the CLI's card.
+5. Under **Tasks**, choose the CLI's model for the tasks that should use it, or make it the **Default model**.
 
 The installer records the executable paths it finds for `grok` and `codex`. Rerun the installer after updating the repository so the installed Host protocol stays in sync. This version uses Host protocol 5; an older Host reports an outdated-Host error until you rerun the installer. Chrome does not allow an extension page to silently register a Native Messaging Host, so the copied command remains a one-time explicit system-installation step. The local source path is available to an unpacked development build but is excluded from packaged release ZIPs; packaged builds use the separately distributed Native Messaging Host companion. The CLI request runs in a read-only/ephemeral mode and returns one JSON response for all prompt variables. Grok runs as a single-turn transformation without built-in tools, web search, or cross-session memory. The guided Native Messaging installer currently supports Google Chrome on macOS and Linux; install and authenticate the selected CLI before using it. This action sends the page context to the local CLI and may use that CLI's account or subscription. Firefox has no Native Messaging support here, so **Add local CLI** is hidden there, and a CLI connection synced from another browser shows **Unsupported in this browser**.
 
@@ -145,9 +145,9 @@ In general we recommend using small models with Web Clipper because they are fas
 
 To add a custom provider and/or model go to Web Clipper **[[Settings]]** → **AI**:
 
-- **Connections → Add API provider** to configure preset and custom providers. Choose **Custom** for any other endpoint. Turn off **Requires API key** for a local server that accepts requests without a key. The option appears for **Custom** and for presets that can run without a key, such as Ollama; presets that always need a key, such as OpenAI, do not show it. Under **Advanced**, **Max concurrent requests** limits how many requests a long job, such as a transcript translation, sends to the connection at once.
-- **Models → Add model** to add a model to a connection. The model ID field suggests the preset's popular models. Use the toggle to disable a model without deleting it; only enabled models appear in **Task routing** and model menus.
-- **Task routing** to choose the **Default model** and, optionally, a different model for each task.
+- **Providers and models → Add API provider** to configure preset and custom providers. Choose **Custom** for any other endpoint. Turn off **Requires API key** for a local server that accepts requests without a key. The option appears for **Custom** and for presets that can run without a key, such as Ollama; presets that always need a key, such as OpenAI, do not show it. Under **Advanced**, **Max concurrent requests** limits how many requests a long job, such as a transcript translation, sends to the connection at once.
+- **+ Add model** in a connection's card to add a model to it. The model ID field suggests the preset's popular models. Use the toggle to disable a model without deleting it; only enabled models appear in **Tasks** and model menus.
+- **Tasks** to choose the **Default model** and, optionally under **Customize per task**, a different model for each task.
 
 When adding a custom provider, we recommend that you use their chat completions endpoint for the **Base URL** — it typically ends with `/chat/completions`.
 

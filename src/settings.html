@@ -545,46 +545,45 @@
 							<h2 data-i18n="aiSettings">AI</h2>
 						</div>
 						<div id="ai-settings-error" class="ai-settings-error" hidden></div>
-						<div class="setting-group" id="ai-enabled-group">
-							<div id="ai-enabled"></div>
-						</div>
-						<div class="setting-group" id="ai-connections-group">
-							<div class="setting-item setting-item-heading">
-								<h3 data-i18n="aiConnections">Connections</h3>
-								<div class="setting-item-description ai-group-description" data-i18n="aiConnectionsDescription">API providers and local CLIs that can run AI tasks. API keys are stored only on this device, in the browser's local extension storage. They don't sync to your other devices and aren't encrypted.</div>
-								<div class="warning-container">
-									<div class="warning-icon">
-										<i data-lucide="alert-triangle"></i>
+						<div class="setting-group" id="ai-status-group">
+							<div id="ai-status" class="ai-status-card">
+								<div class="ai-status-header">
+									<div class="ai-status-text">
+										<label id="ai-status-title" class="ai-status-title" for="ai-interpreter-enabled"></label>
+										<div class="setting-item-description ai-status-description" data-i18n="aiEnabledDescription">Lets Interpreter, AI edits, and Reader's language tools use the models set up below.</div>
+										<div class="setting-item-description ai-enabled-hint" role="status" data-i18n="aiEnabledOffHint" hidden>AI features are off, so the models you add aren't used yet. Turn this on to use them.</div>
 									</div>
-									<div class="warning-text" data-i18n="apiKeysWarning">By using an external provider you agree to their terms and privacy policy. Interpreter requests are sent directly to the provider you choose. Obsidian does not gather or store any data about your requests.</div>
+									<div class="checkbox-container">
+										<input type="checkbox" id="ai-interpreter-enabled" />
+									</div>
 								</div>
-							</div>
-							<div class="setting-items ai-connections-items">
-								<div id="ai-connections"></div>
-								<div id="ai-add-local-cli" class="ai-native-cli" hidden></div>
+								<ul class="ai-status-checklist" aria-labelledby="ai-status-title"></ul>
 							</div>
 						</div>
-						<div class="setting-group" id="ai-profiles-group">
+						<div class="setting-group" id="ai-providers-group">
 							<div class="setting-item setting-item-heading">
-								<h3 data-i18n="aiProfiles">Models</h3>
-								<div class="setting-item-description ai-group-description" data-i18n="aiProfilesDescription">The models each connection offers. Only enabled models appear in task routing and model menus.</div>
+								<h3 data-i18n="aiProviders">Providers and models</h3>
+								<div class="setting-item-description ai-group-description" data-i18n="aiProvidersDescription">API keys are stored only on this device, in the browser's local extension storage. They don't sync and aren't encrypted. Only enabled models appear in task menus.</div>
 							</div>
-							<div class="setting-items">
-								<div id="ai-profiles"></div>
+							<div id="ai-connections"></div>
+							<div id="ai-add-local-cli" class="ai-native-cli" hidden></div>
+							<div class="ai-terms-note">
+								<i data-lucide="alert-triangle" aria-hidden="true"></i>
+								<div data-i18n="apiKeysWarning">By using an external provider you agree to their terms and privacy policy. Interpreter requests are sent directly to the provider you choose. Obsidian does not gather or store any data about your requests.</div>
 							</div>
 						</div>
-						<div class="setting-group" id="ai-routing-group">
+						<div class="setting-group" id="ai-tasks-group">
 							<div class="setting-item setting-item-heading">
-								<h3 data-i18n="aiRouting">Task routing</h3>
-								<div class="setting-item-description ai-group-description" data-i18n="aiRoutingDescription">Choose the model for each task. Tasks set to Use default follow the default model.</div>
+								<h3 data-i18n="aiTasks">Tasks</h3>
 							</div>
-							<div id="ai-routing"></div>
-						</div>
-						<div class="setting-group" id="ai-language-group">
-							<div class="setting-item setting-item-heading">
-								<h3 data-i18n="aiLanguage">Language</h3>
+							<div class="setting-items ai-tasks-items">
+								<div id="ai-routing"></div>
+								<div id="ai-language"></div>
+								<details id="ai-routing-customize" class="ai-routing-customize">
+									<summary><span data-i18n="aiRoutingCustomize">Customize per task</span><span id="ai-routing-customize-count" class="ai-routing-customize-count"></span></summary>
+									<div id="ai-routing-tasks" class="ai-routing-tasks"></div>
+								</details>
 							</div>
-							<div id="ai-language"></div>
 						</div>
 						<div class="setting-group" id="ai-interpreter-group">
 							<div class="setting-item setting-item-heading">
@@ -593,11 +592,14 @@
 							<div id="ai-interpreter"></div>
 						</div>
 						<div class="setting-group" id="ai-diagnostics-group">
-							<div class="setting-item setting-item-heading">
-								<h3 data-i18n="aiDiagnostics">Diagnostics</h3>
-								<div class="setting-item-description ai-group-description" data-i18n="aiDiagnosticsDescription">The last 100 model runs and connection Tests in this browser, kept until the browser closes. Prompts, page content, and API keys are never recorded.</div>
-							</div>
-							<div id="ai-diagnostics"></div>
+							<details id="ai-diagnostics-details" class="ai-diagnostics-disclosure">
+								<summary>
+									<span class="ai-diagnostics-heading" data-i18n="aiDiagnostics">Diagnostics</span>
+									<span id="ai-diagnostics-overview" class="ai-diagnostics-overview"></span>
+								</summary>
+								<div class="setting-item-description" data-i18n="aiDiagnosticsDescription">The last 100 model runs and connection Tests in this browser, kept until the browser closes. Prompts, page content, and API keys are never recorded.</div>
+								<div id="ai-diagnostics"></div>
+							</details>
 						</div>
 					</div>
 

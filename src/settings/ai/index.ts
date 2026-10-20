@@ -4,19 +4,21 @@ import { AI_DIAGNOSTICS_KEY, type AiSettingsStore, type AiStorageKey } from '../
 import { browserSessionArea, createBrowserAiSettingsStore } from '../../utils/ai-settings';
 import browser from '../../utils/browser-polyfill';
 import { createAiSettingsController, type AiSettingsController, type AiSettingsControllerOptions } from './controller';
-import { createConnectionsPanel, type RunConnectionTest } from './connections';
+import { createConnectionsPanel, type ConnectionsPanel, type RunConnectionTest } from './connections';
 import { createDiagnosticsPanel } from './diagnostics';
 import { renderErrorCard, type ErrorCardHandlers } from './error-card';
 import { createInterpreterPanel } from './interpreter';
 import { createLanguagePanel } from './language';
 import { createNativeCliPanel, type NativeCliInstallEnvironment } from './native-cli';
 import type { AiSettingsPanel } from './panel';
-import { createProfilesPanel } from './profiles';
+import { createProfiles } from './profiles';
 import { createRoutingPanel } from './routing';
+import { createStatusPanel } from './status';
 
 // Entry of the AI settings section (lazy `settings-ai` chunk). Loads the view, builds the panels
 // into their static containers, and re-renders a panel when the controller or `storage.onChanged`
 // reports one of its keys and what it shows actually changed. Diagnostics follow `storage.session`.
+// Page order: status card, Providers and models, Tasks, Interpreter, Diagnostics (collapsed).
 
 export interface InitializeAiSettingsOptions {
 	doc?: Document;
@@ -112,10 +114,22 @@ export async function initializeAiSettings(options: InitializeAiSettingsOptions 
 
 	const confirm = options.confirm;
 	let errorHandlers: () => ErrorCardHandlers = () => ({});
-	const connections = createConnectionsPanel({
+	const status = createStatusPanel({ doc, controller, container: requireContainer(doc, 'ai-status') });
+	const connectionsContainer = requireContainer(doc, 'ai-connections');
+	let connections: ConnectionsPanel | undefined;
+	const profiles = createProfiles({
 		doc,
 		controller,
-		container: requireContainer(doc, 'ai-connections'),
+		root: connectionsContainer,
+		...(confirm ? { confirm } : {}),
+		rerender: () => connections?.render(controller.state)
+	});
+	connections = createConnectionsPanel({
+		doc,
+		controller,
+		container: connectionsContainer,
+		profiles,
+		...(environment ? { installGuide: environment } : {}),
 		...(confirm ? { confirm } : {}),
 		...(options.runTest ? { runTest: options.runTest } : {}),
 		...(options.isTrusted ? { isTrusted: options.isTrusted } : {}),
@@ -127,21 +141,26 @@ export async function initializeAiSettings(options: InitializeAiSettingsOptions 
 		container: requireContainer(doc, 'ai-add-local-cli'),
 		...(environment ? { installGuide: environment } : {})
 	});
-	const profiles = createProfilesPanel({ doc, controller, container: requireContainer(doc, 'ai-profiles'), ...(confirm ? { confirm } : {}) });
-	const routing = createRoutingPanel({ doc, controller, container: requireContainer(doc, 'ai-routing') });
+	const routing = createRoutingPanel({
+		doc,
+		controller,
+		container: requireContainer(doc, 'ai-routing'),
+		tasksContainer: requireContainer(doc, 'ai-routing-tasks'),
+		summaryCount: requireContainer(doc, 'ai-routing-customize-count')
+	});
 	const language = createLanguagePanel({ doc, controller, container: requireContainer(doc, 'ai-language') });
 	const interpreter = createInterpreterPanel({
 		doc,
 		controller,
 		container: requireContainer(doc, 'ai-interpreter'),
-		enabledContainer: requireContainer(doc, 'ai-enabled'),
 		...(options.promptContextDebounceMs !== undefined ? { debounceMs: options.promptContextDebounceMs } : {})
 	});
-	const panels: AiSettingsPanel[] = [connections, nativeCli, profiles, routing, language, interpreter];
+	const panels: AiSettingsPanel[] = [status, connections, nativeCli, routing, language, interpreter];
 	const session = options.session === null ? undefined : options.session ?? browserSessionArea();
 	const diagnostics = createDiagnosticsPanel({
 		doc,
 		container: requireContainer(doc, 'ai-diagnostics'),
+		overview: requireContainer(doc, 'ai-diagnostics-overview'),
 		...(session ? { session } : {}),
 		view: () => controller.state.view,
 		...(options.copyText ? { copyText: options.copyText } : {})

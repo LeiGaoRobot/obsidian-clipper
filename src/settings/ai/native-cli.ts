@@ -7,7 +7,8 @@ import { createElement, createIcon, createSettingItem, createTextButton, finishR
 import type { AiSettingsPanel } from './panel';
 
 // "Add local CLI" (decision 8): one connection per CLI kind, plus the Native Messaging Host
-// install guide with its element ids unchanged. Hidden where the browser has no Native Messaging.
+// install guide (element ids unchanged) behind a disclosure. Hidden where the browser has no
+// Native Messaging.
 
 /** What the install guide needs from the browser; resolved once by the section. */
 export interface NativeCliInstallEnvironment {
@@ -32,6 +33,43 @@ export interface NativeCliPanel extends AiSettingsPanel {
 	/** Whether the copy button is offered on this platform. */
 	canCopyInstallCommand(): boolean;
 	pendingCopy(): Promise<void>;
+}
+
+export interface InstallGuide {
+	element: HTMLElement;
+	copyButton: HTMLButtonElement;
+	pendingCopy(): Promise<void>;
+}
+
+/**
+ * The Host install guide: description, command, Copy, and its status. `ids` puts the element ids
+ * on it, which only the "Add local CLI" copy has; a CLI card's copy has none.
+ */
+export function createInstallGuide(doc: Document, environment: NativeCliInstallEnvironment | undefined, ids: boolean, className = ''): InstallGuide {
+	const element = createElement(doc, 'div', `native-cli-install-guide ${className}`);
+	const parts: Record<string, HTMLElement> = {
+		'native-cli-install-description': createElement(doc, 'div', 'setting-item-description'),
+		'native-cli-install-command': createElement(doc, 'code', 'native-cli-install-command'),
+		'native-cli-install-copy': createTextButton(doc, getMessage('nativeCliInstallCopy'), 'native-cli-install-copy'),
+		'native-cli-install-status': createElement(doc, 'div', 'setting-item-description native-cli-install-status')
+	};
+	for (const [id, part] of Object.entries(parts)) {
+		if (ids) part.id = id;
+		element.appendChild(part);
+	}
+	const status = parts['native-cli-install-status'];
+	status.setAttribute('role', 'status');
+	status.setAttribute('aria-live', 'polite');
+	const copyButton = parts['native-cli-install-copy'] as HTMLButtonElement;
+	const wired = environment
+		? wireNativeCliInstallGuide({ doc: { getElementById: id => parts[id] ?? null }, ...environment })
+		: undefined;
+	if (!environment) {
+		parts['native-cli-install-description'].textContent = getMessage('nativeCliInstallUnsupported');
+		parts['native-cli-install-command'].hidden = true;
+		copyButton.hidden = true;
+	}
+	return { element, copyButton, pendingCopy: () => wired?.pendingCopy() ?? Promise.resolve() };
 }
 
 function cliName(kind: CliConnectionKind): string {
@@ -67,33 +105,16 @@ export function createNativeCliPanel(options: NativeCliPanelOptions): NativeCliP
 	}
 
 	// The guide markup lives here (not in settings.html), so it exists only where the control does.
-	const guide = createElement(doc, 'div', 'native-cli-install-guide');
-	const description = createElement(doc, 'div', 'setting-item-description');
-	description.id = 'native-cli-install-description';
-	const command = createElement(doc, 'code', 'native-cli-install-command');
-	command.id = 'native-cli-install-command';
-	const copyButton = createTextButton(doc, getMessage('nativeCliInstallCopy'), 'native-cli-install-copy');
-	copyButton.id = 'native-cli-install-copy';
-	const status = createElement(doc, 'div', 'setting-item-description native-cli-install-status');
-	status.id = 'native-cli-install-status';
-	status.setAttribute('role', 'status');
-	status.setAttribute('aria-live', 'polite');
-	guide.append(description, command, copyButton, status);
+	// The command is needed once per computer, so it stays behind a disclosure here; a CLI card
+	// whose Host check failed shows it directly.
+	const guide = createInstallGuide(doc, options.installGuide, true);
+	const { copyButton } = guide;
+	const setup = createElement(doc, 'details', 'ai-native-cli-setup');
+	setup.id = 'ai-native-cli-setup';
+	setup.append(createElement(doc, 'summary', undefined, getMessage('aiNativeHostSetup')), guide.element);
 
-	container.replaceChildren(item, guide);
+	container.replaceChildren(item, setup);
 	finishRender(container);
-
-	const scoped = {
-		getElementById: (id: string) => container.querySelector<HTMLElement>(`[id="${id}"]`)
-	};
-	const installGuide = options.installGuide
-		? wireNativeCliInstallGuide({ doc: scoped, ...options.installGuide })
-		: undefined;
-	if (!options.installGuide) {
-		description.textContent = getMessage('nativeCliInstallUnsupported');
-		command.hidden = true;
-		copyButton.hidden = true;
-	}
 
 	function render(state: AiSettingsState): void {
 		container.hidden = state.view.nativeMessaging === 'none';
@@ -114,8 +135,6 @@ export function createNativeCliPanel(options: NativeCliPanelOptions): NativeCliP
 		canCopyInstallCommand() {
 			return !container.hidden && !copyButton.hidden;
 		},
-		pendingCopy() {
-			return installGuide?.pendingCopy() ?? Promise.resolve();
-		}
+		pendingCopy: guide.pendingCopy
 	};
 }

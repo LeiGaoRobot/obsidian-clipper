@@ -4,7 +4,7 @@ import type { AiSettingsController, AiSettingsState } from './controller';
 import { createElement, createSettingItem, hasFocus } from './dom';
 import type { AiSettingsPanel } from './panel';
 
-// Language panel: the response language for translations and explanations
+// Response language row of the Tasks group: the language for translations and explanations
 // (`ai_routing.responseLanguage`). Blank uses the browser language.
 
 /** The suggestions the Reader's response-language control offered. */
@@ -22,7 +22,7 @@ export const RESPONSE_LANGUAGE_SUGGESTIONS: readonly string[] = [
 export interface LanguagePanelOptions {
 	doc: Document;
 	controller: AiSettingsController;
-	/** `#ai-language`. */
+	/** `#ai-language`, inside the Tasks group. */
 	container: HTMLElement;
 }
 
@@ -58,9 +58,7 @@ export function createLanguagePanel(options: LanguagePanelOptions): AiSettingsPa
 		datalist.appendChild(option);
 	}
 	control.append(input, datalist);
-	const items = createElement(doc, 'div', 'setting-items');
-	items.appendChild(item);
-	container.replaceChildren(items);
+	container.replaceChildren(item);
 
 	function updateEffective(): void {
 		const language = input.value.trim();

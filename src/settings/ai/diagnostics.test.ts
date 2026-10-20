@@ -54,14 +54,24 @@ describe('Diagnostics panel', () => {
 		expect(ok.querySelector('.ai-diagnostics-details')?.textContent).toContain('JSON schema');
 	});
 
+	test('is collapsed by default, with a summary of runs and failures', async () => {
+		await section();
+		const details = document.getElementById('ai-diagnostics-details') as HTMLDetailsElement;
+		expect(details.open).toBe(false);
+		expect(details.contains(document.getElementById('ai-diagnostics'))).toBe(true);
+		expect(details.querySelector('summary')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Diagnostics 3 recent runs, 1 failed');
+	});
+
 	test('follows new entries in storage.session', async () => {
 		const { session } = await section([]);
+		expect(document.getElementById('ai-diagnostics-overview')?.textContent).toBe('No AI requests yet.');
 		expect(document.querySelector('#ai-diagnostics .ai-empty-state')?.textContent).toBe('No AI requests yet.');
 		expect(button('copy').disabled).toBe(true);
 		await session.set({ ai_diagnostics: { v: 1, entries: [ENTRIES[0]] } });
 		await settle();
 		expect(rows()).toHaveLength(1);
 		expect(button('copy').disabled).toBe(false);
+		expect(document.getElementById('ai-diagnostics-overview')?.textContent).toBe('1 recent run');
 	});
 
 	test('Copy puts the entries on the clipboard as JSON', async () => {

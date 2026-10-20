@@ -58,20 +58,31 @@ beforeEach(() => {
 	loadSettingsDocument();
 });
 
-describe('Models panel', () => {
-	test('groups profiles under their connection in creation order', async () => {
+describe('Models in connection cards', () => {
+	test('are nested in their connection card in creation order', async () => {
 		await section({
 			connections: [API_CONNECTION, LOCAL_CONNECTION, CODEX_CONNECTION],
-			profiles: [LLAMA_PROFILE, MINI_PROFILE, CODEX_PROFILE, GPT_PROFILE, { ...GPT_PROFILE, id: 'orphan', connectionId: 'gone' }]
+			profiles: [LLAMA_PROFILE, MINI_PROFILE, CODEX_PROFILE, GPT_PROFILE, { ...GPT_PROFILE, id: 'orphan', connectionId: 'gone' }],
+			routing: { defaultProfileId: 'gpt', taskProfiles: {} }
 		});
 
-		const groups = Array.from(document.querySelectorAll<HTMLElement>('#ai-profiles .ai-profile-group'));
-		expect(groups.map(item => item.dataset.connectionId)).toEqual(['openai', 'ollama', 'codex', '']);
-		expect(groups.map(item => item.querySelector('.ai-profile-group-name')?.textContent))
+		expect(document.getElementById('ai-profiles')).toBeNull();
+		const cards = Array.from(document.querySelectorAll<HTMLElement>('#ai-connections .ai-connection-item'));
+		expect(cards.map(item => item.dataset.connectionId)).toEqual(['openai', 'ollama', 'codex', '']);
+		expect(cards.map(item => item.querySelector('.ai-connection-name')?.textContent))
 			.toEqual(['OpenAI', 'Ollama', 'Codex CLI', 'Missing connection']);
+		for (const card of cards) {
+			expect(card.querySelector('.ai-profile-group')?.getAttribute('data-connection-id')).toBe(card.dataset.connectionId);
+		}
 		expect(Array.from(group('openai').querySelectorAll<HTMLElement>('.ai-profile-row')).map(item => item.dataset.profileId))
 			.toEqual(['mini', 'gpt']);
 		expect(row('mini').querySelector('.ai-profile-name')?.textContent).toBe('gpt-5.6-mini');
+		// The default model is marked in its row.
+		expect(row('gpt').querySelector('.ai-profile-default-badge')?.textContent).toBe('Default');
+		expect(row('mini').querySelector('.ai-profile-default-badge')).toBeNull();
+		// Every connection has its own "+ Add model"; the orphans card has none.
+		expect(group('ollama').querySelector('.ai-add-profile')?.getAttribute('aria-label')).toBe('Add model to Ollama');
+		expect(group('').querySelector('.ai-add-profile')).toBeNull();
 		expect(row('gpt').querySelector('.ai-profile-details')?.textContent).toBe('gpt-5.6');
 		expect(row('codex-high').querySelector('.ai-profile-details')?.textContent).toBe('gpt-5.6-sol · Effort: high');
 		// An orphan can only be deleted.

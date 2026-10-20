@@ -11,13 +11,13 @@ The language-learning tools in [[Introduction to Obsidian Web Clipper|Web Clippe
 
 ## Set up language learning
 
-1. Open Web Clipper **Settings** and go to **AI**.
-2. Under **Connections**, add an API provider with **Add API provider**, or, on Chrome, a local CLI with **Add local CLI**. API keys are stored only on this device, in the browser's local extension storage as plain text, and do not sync to your other devices. For a local source build, select **Copy install command**, run the generated command once from any Terminal directory, and reload the extension. For details, see [[Interpret web pages#Local Grok and Codex CLI connections|Local Grok and Codex CLI connections]].
-3. Under **Models**, add and enable at least one model. A Codex CLI model has an optional model ID and **Reasoning effort**; leave either at its default to use the CLI default. Reasoning effort choices are `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`, and availability depends on the selected model. An unsupported model and effort combination is shown as a retryable CLI failure, with no fallback to another model. Higher effort can take longer and use more tokens.
+1. Open Web Clipper **Settings** and go to **AI**. The status card at the top lists what is still missing, such as a provider or a default model, and what is set up.
+2. Under **Providers and models**, add an API provider with **Add API provider**, or, on Chrome, a local CLI with **Add local CLI**. API keys are stored only on this device, in the browser's local extension storage as plain text, and do not sync to your other devices. A local CLI shows **Needs setup** until a Test reaches its Native Messaging Host; for a local source build, select **Copy install command** in its card (or under **Native Messaging Host setup** in **Add local CLI**), run the generated command once from any Terminal directory, and reload the extension. For details, see [[Interpret web pages#Local Grok and Codex CLI connections|Local Grok and Codex CLI connections]].
+3. In the connection's card, select **+ Add model**, and add and enable at least one model. A Codex CLI model has an optional model ID and **Reasoning effort**; leave either at its default to use the CLI default. Reasoning effort choices are `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`, and availability depends on the selected model. An unsupported model and effort combination is shown as a retryable CLI failure, with no fallback to another model. Higher effort can take longer and use more tokens.
    Optionally select **Test** on the connection to check the key and models. A Test may send one minimal request that the provider may bill, or run a local CLI once per model; the connection shows a note when it does. See [[Interpret web pages#Test a connection|Test a connection]].
-4. Under **Task routing**, choose the **Default model**. Optionally choose a different model for **AI edit**, **Subtitle translation**, **Japanese readings**, or **Explanations**; each row shows the status of the connection its model uses.
-5. Under **Language**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`.
-6. At the top of the **AI** section, turn on **Enable AI features**. Adding a model does not turn it on: if it is off when you add your first model, a note next to the switch says so.
+4. Under **Tasks**, choose the **Default model**. Optionally open **Customize per task** and choose a different model for **AI edit**, **Subtitle translation**, **Japanese readings**, or **Explanations**; the summary counts the tasks you changed, and a row shows a badge only when its model cannot run, for example a missing key or a failed Test.
+5. Under **Tasks**, optionally enter or choose an **AI response language**, such as `Simplified Chinese`, `Japanese`, or `English`.
+6. In the status card at the top of the **AI** section, turn on the switch (**Enable AI features**). Adding a model does not turn it on: if it is off when you add your first model, a note next to the switch says so.
 7. In **Reader** → **Transcripts**, optionally set the default compact-player, bilingual-subtitle, and Japanese-reading visibility, and choose the Obsidian vault and folder used for learning notes.
 
 If the response-language field is empty, Web Clipper uses your browser language. The setting controls transcript translations, word and sentence explanations, and presets that use a response language. It moved from the Reader settings to **Settings → AI → Language**; a language you set there before is carried over once.
@@ -28,7 +28,7 @@ On Firefox, the install or update prompt discloses website-content transmission 
 
 ## Revise clipped content with AI
 
-The AI editing controls appear in the extension popup and side panel when AI features are enabled and **Task routing** names a model for **AI edit** (its own choice or the default model). When that model's key is missing on this device, or it is a local CLI this browser cannot reach, the controls still appear and the error card explains what to set up.
+The AI editing controls appear in the extension popup and side panel when AI features are enabled and **Tasks** names a model for **AI edit** (its own choice or the default model). When that model's key is missing on this device, or it is a local CLI this browser cannot reach, the controls still appear and the error card explains what to set up.
 
 1. Capture a page normally.
 2. In the note-content field, select the text you want to change. Leave the selection empty to process the entire clipping.
@@ -111,12 +111,12 @@ The selection action also works with touch selection on mobile browsers that sup
 
 ## Model selection and requests
 
-Each language-learning task uses the model **Settings → AI → Task routing** names for it: **AI edit** for AI edits, **Subtitle translation** for bilingual transcripts, **Japanese readings** for readings (and the Japanese translation before them), and **Explanations** for word and sentence explanations. A task set to **Use default** uses the default model. When a Reader request fails, the error card lists your enabled models; **Switch and retry** routes the task that failed to the chosen model and runs it again. A Codex CLI model's model ID and reasoning effort apply to each of its requests; effort availability depends on the selected model, and higher effort can take longer and use more tokens.
+Each language-learning task uses the model **Settings → AI → Tasks** names for it: **AI edit** for AI edits, **Subtitle translation** for bilingual transcripts, **Japanese readings** for readings (and the Japanese translation before them), and **Explanations** for word and sentence explanations. A task set to **Use default** uses the default model. When a Reader request fails, the error card lists your enabled models; **Switch and retry** routes the task that failed to the chosen model and runs it again. A Codex CLI model's model ID and reasoning effort apply to each of its requests; effort availability depends on the selected model, and higher effort can take longer and use more tokens.
 
 The Reader error card shows what went wrong and what to do next, with the provider's raw message under **Technical details**. Its actions are:
 
 - **Try again** runs the same request again: the same transcript range or the same selection. After a transcript job completed part of its range, the button reads **Continue remaining** and sends only the missing segments.
-- **Switch and retry**, next to a list of your enabled models, as described above. As in **Task routing**, the list shows each model's name under its connection, and it starts on the model the failed request used.
+- **Switch and retry**, next to a list of your enabled models, as described above. As in **Tasks**, the list shows each model's name under its connection, and it starts on the model the failed request used.
 - **Open AI settings**, when the fix is in Settings, such as a missing or rejected API key, AI features that are not set up, or a Native Messaging Host or CLI that is not installed. It opens the **AI** section of Web Clipper settings in a new tab.
 
 The card's buttons respond only to your own clicks, not to clicks generated by the web page.
@@ -142,7 +142,7 @@ The task bar shows **Cancel** while a transcript task or an explanation runs, an
 
 ### AI editing controls are missing
 
-Confirm that **Enable AI features** is on in **Settings → AI**, and that **Task routing** names an enabled model for **AI edit** or as the default model. For a local CLI, confirm that the Native Messaging Host is installed and the CLI is installed and authenticated. Reload the popup after changing AI settings.
+Confirm that **Enable AI features** is on in **Settings → AI**, and that **Tasks** names an enabled model for **AI edit** or as the default model. For a local CLI, confirm that the Native Messaging Host is installed and the CLI is installed and authenticated. Reload the popup after changing AI settings.
 
 For a local CLI, **Local CLI host is out of date** means the extension was rebuilt without reinstalling the Host. **CLI not found** means the CLI's executable was not detected at install time or no longer exists; install the CLI, then run the install command again.
 

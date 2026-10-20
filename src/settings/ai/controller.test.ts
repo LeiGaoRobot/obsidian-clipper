@@ -449,7 +449,6 @@ describe('AI settings section', () => {
 		const first = (id: string) => document.getElementById(id)!.firstElementChild;
 		const before = {
 			connections: document.querySelector('#ai-connection-list .ai-connection-card'),
-			profiles: first('ai-profiles'),
 			routing: first('ai-routing'),
 			language: document.getElementById('ai-response-language'),
 			interpreter: first('ai-interpreter')
@@ -463,7 +462,6 @@ describe('AI settings section', () => {
 		expect(handle.controller.state.view.credentials).toEqual({ openai: 'sk-other-tab' });
 		expect(document.querySelector('#ai-connection-list .ai-connection-card')).not.toBe(before.connections);
 		expect(document.querySelector('[data-connection-id="openai"] .ai-status-badge')?.textContent).toBe('Untested');
-		expect(first('ai-profiles')).toBe(before.profiles);
 		expect(first('ai-routing')).toBe(before.routing);
 		expect(document.getElementById('ai-response-language')).toBe(before.language);
 		expect(first('ai-interpreter')).toBe(before.interpreter);
@@ -472,22 +470,27 @@ describe('AI settings section', () => {
 	test('an observed change with nothing new to show skips the render', async () => {
 		const { sync } = await section({ connections: [API_CONNECTION], profiles: [GPT_PROFILE] });
 		const card = document.querySelector('#ai-connection-list .ai-connection-card');
-		const profilesRoot = document.getElementById('ai-profiles')!.firstElementChild;
+		const routingRow = document.getElementById('ai-routing')!.firstElementChild;
+		const checklist = document.querySelector('#ai-status .ai-status-check');
 
 		await sync.set({ ai_profiles: { v: 1, items: [GPT_PROFILE] } });
 		await settle();
 
-		expect(document.getElementById('ai-profiles')!.firstElementChild).toBe(profilesRoot);
+		expect(document.getElementById('ai-routing')!.firstElementChild).toBe(routingRow);
+		expect(document.querySelector('#ai-status .ai-status-check')).toBe(checklist);
 		expect(document.querySelector('#ai-connection-list .ai-connection-card')).toBe(card);
 	});
 
-	test('codex connections render with their profiles and a routing badge', async () => {
+	test('codex connections render with their profiles, and a Host never checked needs setup', async () => {
 		await section({
 			connections: [CODEX_CONNECTION],
 			profiles: [CODEX_PROFILE],
 			routing: { defaultProfileId: 'codex-high', taskProfiles: {} }
 		});
 		expect(document.querySelector('[data-connection-id="codex"] .ai-connection-name')?.textContent).toBe('Codex CLI');
-		expect(document.querySelector('[data-row="default"] .ai-status-badge')?.textContent).toBe('Untested');
+		expect(document.querySelector('[data-connection-id="codex"] .ai-profile-name-text')?.textContent).toBe('Codex high');
+		expect(document.querySelector('[data-connection-id="codex"] .ai-status-badge')?.textContent).toBe('Needs setup');
+		// Untested is not a problem, so the Default row shows no badge.
+		expect(document.querySelector('[data-row="default"] .ai-status-badge')).toBeNull();
 	});
 });

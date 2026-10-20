@@ -27,8 +27,12 @@ function select(row: string): HTMLSelectElement {
 	return document.getElementById(`ai-routing-${row}`) as HTMLSelectElement;
 }
 
-function badge(row: string): HTMLElement {
-	return document.querySelector(`.ai-routing-row[data-row="${row}"] .ai-status-badge`) as HTMLElement;
+function badge(row: string): HTMLElement | null {
+	return document.querySelector(`.ai-routing-row[data-row="${row}"] .ai-status-badge`);
+}
+
+function customize(): HTMLDetailsElement {
+	return document.getElementById('ai-routing-customize') as HTMLDetailsElement;
 }
 
 function choose(row: string, value: string): void {
@@ -49,10 +53,19 @@ beforeEach(() => {
 });
 
 describe('Task routing', () => {
-	test('has Default on top and one row per task', async () => {
+	test('has Default and the response language on top, and one row per task in a collapsed disclosure', async () => {
 		await section(SETTINGS);
-		const rows = Array.from(document.querySelectorAll<HTMLElement>('#ai-routing .ai-routing-row')).map(row => row.dataset.row);
+		const rows = Array.from(document.querySelectorAll<HTMLElement>('#ai-tasks-group .ai-routing-row')).map(row => row.dataset.row);
 		expect(rows).toEqual(['default', ...AI_TASKS]);
+		expect(document.querySelector('#ai-routing .ai-routing-row')?.getAttribute('data-row')).toBe('default');
+		const language = document.getElementById('ai-response-language')!;
+		expect(select('default').compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(language.compareDocumentPosition(customize()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(customize().open).toBe(false);
+		expect(Array.from(customize().querySelectorAll<HTMLElement>('.ai-routing-row')).map(row => row.dataset.row)).toEqual([...AI_TASKS]);
+		// The Language section is gone; its row lives in Tasks.
+		expect(document.getElementById('ai-language-group')).toBeNull();
+		expect(document.getElementById('ai-tasks-group')?.contains(language)).toBe(true);
 		expect(AI_TASKS).toHaveLength(5);
 		expect(document.querySelector('[data-row="translate"] label')?.textContent).toBe('Subtitle translation');
 		expect(document.querySelector('[data-row="translate"] label')?.getAttribute('for')).toBe('ai-routing-translate');
@@ -83,45 +96,70 @@ describe('Task routing', () => {
 		expect(select('translate').value).toBe('mini');
 	});
 
-	test('the badge follows the resolved profile', async () => {
-		await section(SETTINGS);
-		expect(badge('default').textContent).toBe('OK');
-		// Use default follows the default's connection.
-		expect(badge('translate').textContent).toBe('OK');
-		expect(badge('explain').textContent).toBe('Untested');
+	test('the summary counts tasks routed away from the default, and the disclosure stays open across renders', async () => {
+		await section({ ...SETTINGS, routing: { defaultProfileId: 'gpt', taskProfiles: { explain: 'llama', edit: 'gpt' } } });
+		// A task routed to the default model itself is not a change.
+		expect(customize().querySelector('summary')?.textContent).toBe('Customize per task(1 changed)');
+		customize().open = true;
 
-		choose('default', 'llama');
+		choose('translate', 'mini');
 		await settle();
-		expect(badge('translate').textContent).toBe('Untested');
-		expect(badge('interpret').textContent).toBe('Untested');
+		expect(customize().open).toBe(true);
+		expect(customize().querySelector('.ai-routing-customize-count')?.textContent).toBe('(2 changed)');
+
+		choose('translate', '');
+		choose('explain', '');
+		await settle();
+		expect(customize().querySelector('.ai-routing-customize-count')?.textContent).toBe('');
 	});
 
-	test('the badge reports a missing key, an unsupported CLI, and an unset default', async () => {
+	test('rows show a badge only for a problem', async () => {
+		await section(SETTINGS);
+		// OK and Untested routes show nothing.
+		for (const row of ['default', ...AI_TASKS]) expect(badge(row)).toBeNull();
+		expect(customize().querySelector('summary .ai-status-badge')).toBeNull();
+	});
+
+	test('the badge reports a missing key and an unsupported CLI, but no unset default', async () => {
 		await section({
 			connections: [API_CONNECTION, CODEX_CONNECTION],
 			profiles: [GPT_PROFILE, CODEX_PROFILE],
 			routing: { taskProfiles: { edit: 'gpt', explain: 'codex-high' } },
 			nativeMessaging: 'none'
 		});
-		expect(badge('default').textContent).toBe('Not set');
-		expect(badge('translate').textContent).toBe('Not set');
-		expect(badge('edit').textContent).toBe('Key missing on this device');
-		expect(badge('explain').textContent).toBe('Unsupported in this browser');
+		expect(badge('default')).toBeNull();
+		expect(badge('translate')).toBeNull();
+		expect(badge('edit')?.textContent).toBe('Key missing on this device');
+		expect(badge('explain')?.textContent).toBe('Unsupported in this browser');
+		expect(customize().querySelector('summary .ai-status-badge')?.textContent).toBe('Needs attention (2)');
+	});
+
+	test("a default's problem is shown once, on the Default row", async () => {
+		await section({ ...SETTINGS, credentials: {}, routing: { defaultProfileId: 'gpt', taskProfiles: { explain: 'llama' } } });
+		expect(badge('default')?.textContent).toBe('Key missing on this device');
+		expect(badge('translate')).toBeNull();
+		expect(badge('explain')).toBeNull();
+	});
+
+	test('a failing Test shows on the rows that use it', async () => {
+		await section({ ...SETTINGS, status: { openai: { state: 'failing', code: 'auth', testedAt: 1 } }, routing: { defaultProfileId: 'llama', taskProfiles: { edit: 'gpt' } } });
+		expect(badge('default')).toBeNull();
+		expect(badge('edit')?.textContent).toBe('Failing: API key rejected');
 	});
 
 	test('a routed profile that is disabled stays selected and is marked unavailable', async () => {
 		await section({ ...SETTINGS, routing: { defaultProfileId: 'gpt', taskProfiles: { reading: 'off', edit: 'deleted' } } });
 		expect(select('reading').value).toBe('off');
 		expect(select('reading').selectedOptions[0].textContent).toBe('Off (disabled)');
-		expect(badge('reading').textContent).toBe('Model unavailable');
+		expect(badge('reading')?.textContent).toBe('Model unavailable');
 		expect(select('edit').selectedOptions[0].textContent).toBe('Deleted model');
 	});
 
 	test('the badge updates when a key arrives from another context', async () => {
 		const { local } = await section({ ...SETTINGS, credentials: {} });
-		expect(badge('default').textContent).toBe('Key missing on this device');
+		expect(badge('default')?.textContent).toBe('Key missing on this device');
 		await local.set({ ai_credentials: { openai: 'sk' } });
 		await settle();
-		expect(badge('default').textContent).toBe('OK');
+		expect(badge('default')).toBeNull();
 	});
 });

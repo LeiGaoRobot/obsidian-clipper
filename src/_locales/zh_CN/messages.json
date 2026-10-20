@@ -173,11 +173,14 @@
 	"aiConnections": {
 		"message": "连接"
 	},
-	"aiConnectionsDescription": {
-		"message": "可以运行 AI 任务的 API 提供商和本地 CLI。API 密钥只保存在这台设备的浏览器扩展本地存储中，不会同步到您的其他设备，也没有加密。"
-	},
 	"aiConnectionsEmpty": {
 		"message": "还没有连接。添加一个 API 提供商或本地 CLI 即可开始。"
+	},
+	"aiProviders": {
+		"message": "提供商和模型"
+	},
+	"aiProvidersDescription": {
+		"message": "API 密钥仅保存在此设备的浏览器本地扩展存储中，不会同步，也不会加密。只有已启用的模型会出现在任务菜单中。"
 	},
 	"aiAddApiProvider": {
 		"message": "+ 添加 API 提供商"
@@ -321,10 +324,13 @@
 		"message": "添加本地 CLI"
 	},
 	"aiAddLocalCliDescription": {
-		"message": "通过 Native Messaging Host 使用本机安装的 Codex 或 Grok CLI 运行任务。请先用下面的命令安装一次该主机程序。"
+		"message": "通过 Native Messaging Host 使用本机安装的 Codex 或 Grok CLI 运行任务。每台电脑只需安装一次该主机程序。"
 	},
 	"aiAddCli": {
 		"message": "添加 $1"
+	},
+	"aiNativeHostSetup": {
+		"message": "Native Messaging Host 安装"
 	},
 	"aiStatusUntested": {
 		"message": "未测试"
@@ -344,17 +350,20 @@
 	"aiStatusUnsupported": {
 		"message": "此浏览器不支持"
 	},
+	"aiStatusNeedsSetup": {
+		"message": "需要设置"
+	},
 	"aiProfiles": {
 		"message": "模型"
 	},
-	"aiProfilesDescription": {
-		"message": "每个连接提供的模型。只有已启用的模型才会出现在任务路由和模型菜单中。"
-	},
-	"aiProfilesEmpty": {
-		"message": "请先添加连接，然后在这里添加它的模型。"
-	},
 	"aiAddProfile": {
 		"message": "+ 添加模型"
+	},
+	"aiAddProfileTo": {
+		"message": "为 $1 添加模型"
+	},
+	"aiProfileDefaultBadge": {
+		"message": "默认"
 	},
 	"aiProfileAddTitle": {
 		"message": "添加模型"
@@ -413,11 +422,20 @@
 	"aiRouting": {
 		"message": "任务路由"
 	},
-	"aiRoutingDescription": {
-		"message": "为每个任务选择模型。设为“使用默认”的任务会跟随默认模型。"
-	},
 	"aiRoutingDefault": {
 		"message": "默认模型"
+	},
+	"aiTasks": {
+		"message": "任务"
+	},
+	"aiRoutingCustomize": {
+		"message": "按任务自定义"
+	},
+	"aiRoutingCustomizeChanged": {
+		"message": "（已更改 $1 项）"
+	},
+	"aiRoutingNeedsAttention": {
+		"message": "需要处理（$1）"
 	},
 	"aiRoutingDefaultDescription": {
 		"message": "所有设为“使用默认”的任务都使用此模型。"
@@ -470,9 +488,6 @@
 	"aiTaskExplainDescription": {
 		"message": "阅读器中的单词和句子讲解。"
 	},
-	"aiLanguage": {
-		"message": "语言"
-	},
 	"aiEnabled": {
 		"message": "启用 AI 功能"
 	},
@@ -481,6 +496,45 @@
 	},
 	"aiEnabledOffHint": {
 		"message": "AI 功能目前已关闭，你添加的模型暂时不会被使用。打开此开关即可使用。"
+	},
+	"aiStatusOn": {
+		"message": "AI 功能已开启"
+	},
+	"aiStatusOff": {
+		"message": "AI 功能已关闭"
+	},
+	"aiStatusCheckNoProvider": {
+		"message": "添加提供商"
+	},
+	"aiStatusCheckProviderConnected": {
+		"message": "提供商已连接"
+	},
+	"aiStatusCheckProvidersConnected": {
+		"message": "已连接 $1 个提供商"
+	},
+	"aiStatusCheckProviderAdded": {
+		"message": "已添加提供商，尚未测试"
+	},
+	"aiStatusCheckNoModel": {
+		"message": "添加模型"
+	},
+	"aiStatusCheckDefaultModel": {
+		"message": "默认模型：$1"
+	},
+	"aiStatusCheckDefaultModelNotSet": {
+		"message": "选择默认模型"
+	},
+	"aiStatusCheckDefaultModelUnavailable": {
+		"message": "默认模型不可用"
+	},
+	"aiStatusCheckNotTested": {
+		"message": "尚未测试"
+	},
+	"aiStatusCheckTested": {
+		"message": "测试通过（$1）"
+	},
+	"aiStatusCheckTestFailed": {
+		"message": "上次测试失败（$1）"
 	},
 	"aiErrorTechnicalDetails": {
 		"message": "技术详情"
@@ -547,6 +601,18 @@
 	},
 	"aiDiagnosticsEmpty": {
 		"message": "尚无 AI 请求。"
+	},
+	"aiDiagnosticsOverview": {
+		"message": "最近 $1 次运行"
+	},
+	"aiDiagnosticsOverviewFailed": {
+		"message": "最近 $1 次运行，$2 次失败"
+	},
+	"aiDiagnosticsOverviewOne": {
+		"message": "最近 1 次运行"
+	},
+	"aiDiagnosticsOverviewOneFailed": {
+		"message": "最近 1 次运行，失败"
 	},
 	"aiDiagnosticsUnavailable": {
 		"message": "诊断需要会话存储，但此浏览器不提供。"
