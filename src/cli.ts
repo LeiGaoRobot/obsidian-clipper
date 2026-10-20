@@ -1,14 +1,11 @@
 // Browser globals (DOMParser, window, document) are provided by the esbuild
 // banner in scripts/build-cli.mjs. They must run before any bundled module code.
 import { parseHTML } from 'linkedom';
-import { clip, matchTemplate, DocumentParser } from './api';
+import { clip, createAsyncResolver, createSelectorProcessor, matchTemplate, DocumentParser } from './api';
 import { openInObsidian } from './utils/cli-utils';
-import {
-	CliExecutionMode,
-	collectPromptVariables,
-	executePromptVariables,
-	replacePromptVariables
-} from './utils/cli-execution';
+import { CliExecutionMode, collectPromptVariables } from './utils/cli-execution-contract';
+import { executePromptVariables, fillPromptResponses, promptContextOf } from './cli-process';
+import { compileTemplate } from './utils/template-compiler';
 import { CodexReasoningEffort, Template } from './types/types';
 import { normalizeCodexModel } from './utils/codex-model';
 import { CODEX_REASONING_EFFORTS, normalizeCodexReasoningEffort } from './utils/codex-reasoning-effort';
@@ -276,6 +273,11 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
+	// An execution mode compiles the note name again below, against the same document.
+	if (args.executionMode && !parsedDocument) {
+		parsedDocument = linkedomParser.parseFromString(html, 'text/html');
+	}
+
 	// Call the API (reuse pre-parsed document if available). An execution mode fills the prompt
 	// variables below, so they must survive compilation.
 	const result = await clip({
@@ -300,13 +302,24 @@ async function main(): Promise<void> {
 			throw new Error('--execution-mode requires at least one template prompt variable.');
 		}
 
-		const context = result.variables.content || result.variables.fullHtml || '';
-		const promptResponses = await executePromptVariables(args.executionMode, context, promptVariables, {
+		const promptResponses = await executePromptVariables(args.executionMode, promptContextOf(result.variables), promptVariables, {
 			model: args.codexModel,
 			effort: args.codexEffort
 		});
-		fullContent = replacePromptVariables(fullContent, promptVariables, promptResponses, args.url);
-		noteName = replacePromptVariables(noteName, promptVariables, promptResponses, args.url);
+		// `clip` returns the note name sanitized, which strips the placeholders' quotes and filters.
+		const compiledNoteName = collectPromptVariables([template.noteNameFormat]).length > 0
+			? await compileTemplate(0, template.noteNameFormat, result.variables, args.url, {
+				asyncResolver: createAsyncResolver(parsedDocument),
+				selectorProcessor: createSelectorProcessor(parsedDocument),
+				keepPromptVariables: true
+			})
+			: undefined;
+		({ fullContent, noteName } = fillPromptResponses(
+			{ ...result, template, propertyTypes, compiledNoteName },
+			promptVariables,
+			promptResponses,
+			args.url
+		));
 	}
 
 	// Output

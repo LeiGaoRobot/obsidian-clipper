@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest';
 import { parseHTML } from 'linkedom';
 import { clip, type DocumentParser } from '../api';
 import type { Template } from '../types/types';
-import { buildExecutionPrompt, collectPromptVariables, replacePromptVariables } from './cli-execution-contract';
+import { buildExecutionPrompt, collectPromptVariables, parsePromptResponses, replacePromptVariables } from './cli-execution-contract';
 
 const parser: DocumentParser = { parseFromString: html => parseHTML(html).document };
 const html = '<html><head><title>Fixture</title></head><body><article><p>Body text for the prompts.</p></article></body></html>';
@@ -43,5 +43,53 @@ describe('CLI prompt execution over a clip', () => {
 		const result = await clip({ html, url: 'https://example.com/a', template, documentParser: parser });
 
 		expect(result.content).toBe('Before  after  end');
+	});
+});
+
+describe('CLI execution contract', () => {
+	test('collects unique prompt variables in template order', () => {
+		expect(collectPromptVariables([
+			'{{"Summarize this"}}',
+			'{{"Tag this"|lower}} {{"Summarize this"}}'
+		])).toEqual([
+			{ key: 'prompt_1', prompt: 'Summarize this', filters: '' },
+			{ key: 'prompt_2', prompt: 'Tag this', filters: '|lower' }
+		]);
+	});
+
+	test('replaces responses and preserves template filters', () => {
+		const variables = collectPromptVariables(['{{"Title"|upper}}']);
+		const output = replacePromptVariables(
+			'Answer: {{"Title"|upper}}',
+			variables,
+			{ prompt_1: 'a useful title' },
+			'https://example.com'
+		);
+
+		expect(output).toBe('Answer: A USEFUL TITLE');
+	});
+
+	test('rejects incomplete CLI responses', () => {
+		expect(() => parsePromptResponses(
+			'{"prompt_2":"other"}',
+			[{ key: 'prompt_1', prompt: 'Summarize this', filters: '' }]
+		)).toThrow('did not answer any of: prompt_1');
+	});
+
+	test('rejects a CLI response that leaves out some prompts', () => {
+		expect(() => parsePromptResponses(
+			'{"prompt_1":"done"}',
+			[
+				{ key: 'prompt_1', prompt: 'Summarize this', filters: '' },
+				{ key: 'prompt_2', prompt: 'Tag this', filters: '' }
+			]
+		)).toThrow(expect.objectContaining({ code: 'incomplete', message: 'The reply did not answer: prompt_2.' }));
+	});
+
+	test('skips unrelated JSON emitted before the final response', () => {
+		expect(parsePromptResponses(
+			'{"type":"status"}\n{"prompt_1":"done"}',
+			[{ key: 'prompt_1', prompt: 'Summarize this', filters: '' }]
+		)).toEqual({ prompt_1: 'done' });
 	});
 });

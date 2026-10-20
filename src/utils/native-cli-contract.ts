@@ -4,11 +4,11 @@ import type { CliExecutionMode } from './cli-execution-contract';
 import { buildExecutionPrompt } from './cli-execution-contract';
 import { MAX_CODEX_MODEL_CHARS, normalizeCodexModel } from './codex-model';
 import { normalizeCodexReasoningEffort } from './codex-reasoning-effort';
+import { MAX_OUTPUT_SCHEMA_CHARS, NATIVE_CLI_PROTOCOL_VERSION } from '../../native-host/cli-invocation.mjs';
 
+export { MAX_OUTPUT_SCHEMA_CHARS, NATIVE_CLI_PROTOCOL_VERSION };
+/** Matches `HOST_NAME` in `scripts/install-native-host.mjs`; a parity test keeps them equal. */
 export const NATIVE_CLI_HOST_NAME = 'com.obsidian.web_clipper';
-export const NATIVE_CLI_PROTOCOL_VERSION = 5;
-/** Matches the Host's `MAX_OUTPUT_SCHEMA_CHARS`. */
-export const MAX_OUTPUT_SCHEMA_CHARS = 20_000;
 
 let nativeCliRequestSequence = 0;
 

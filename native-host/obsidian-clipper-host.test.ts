@@ -2,20 +2,19 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildCliInvocation } from '../src/utils/cli-execution';
 // @ts-expect-error The Native Messaging host intentionally remains a standalone ESM script.
 import {
 	HEARTBEAT_INTERVAL_MS,
-	MAX_OUTPUT_SCHEMA_CHARS,
+	MAX_PROMPT_CHARS,
 	createCliInvocation,
 	runCli,
 	validateRequest
 } from './obsidian-clipper-host.mjs';
-// @ts-expect-error The argv module intentionally remains a standalone ESM script.
-import { buildCliArguments } from './cli-invocation.mjs';
+import { MAX_OUTPUT_SCHEMA_CHARS, buildCliArguments } from './cli-invocation.mjs';
 // @ts-expect-error The installer intentionally remains a standalone ESM script.
 import { installNativeHost } from '../scripts/install-native-host.mjs';
-import { NATIVE_CLI_PROTOCOL_VERSION } from '../src/utils/native-cli-contract';
+import { NATIVE_CLI_HOST_NAME, NATIVE_CLI_PROTOCOL_VERSION } from '../src/utils/native-cli-contract';
+import { sanitizeTaskInput } from '../src/ai/protocol';
 
 describe('Obsidian Web Clipper native host', () => {
 	test('runs Grok as a single-turn interpreter without built-in tools or memory', () => {
@@ -48,9 +47,25 @@ describe('Obsidian Web Clipper native host', () => {
 			{ mode: 'grok', prompt: 'prompt' },
 			{ grokPath: '/usr/local/bin/grok', codexPath: '/usr/local/bin/codex' }
 		);
-		const sharedInvocation = buildCliInvocation('grok', 'prompt');
+		const sharedInvocation = buildCliArguments({ mode: 'grok', prompt: 'prompt' });
 
 		expect(nativeInvocation.args).toEqual(sharedInvocation.args);
+	});
+
+	test('accepts exactly the input the extension accepts', () => {
+		// `MAX_INPUT_CHARS` in `src/ai/protocol.ts` is private; its boundary is observable here.
+		const edit = (chars: number) => sanitizeTaskInput('edit', { instruction: 'i', content: 'x'.repeat(chars - 1) });
+		expect(edit(MAX_PROMPT_CHARS)).toBeDefined();
+		expect(edit(MAX_PROMPT_CHARS + 1)).toBeUndefined();
+		const execute = (chars: number) => validateRequest({
+			type: 'executeCli',
+			protocolVersion: NATIVE_CLI_PROTOCOL_VERSION,
+			requestId: 'limit',
+			mode: 'grok',
+			prompt: 'x'.repeat(chars)
+		});
+		expect(execute(MAX_PROMPT_CHARS)).toBeNull();
+		expect(execute(MAX_PROMPT_CHARS + 1)).toBe('Prompt is too large for Native Messaging.');
 	});
 
 	test('passes the selected model to Codex as one argument', () => {
@@ -414,6 +429,9 @@ describe('Obsidian Web Clipper native host', () => {
 				workspaceRoot: path.resolve(__dirname, '..')
 			});
 			const installDirectory = path.join(home, '.config', 'obsidian-web-clipper', 'native-host');
+			// The manifest name is what the extension connects to.
+			const manifestFile = path.join(home, '.config', 'google-chrome', 'NativeMessagingHosts', `${NATIVE_CLI_HOST_NAME}.json`);
+			expect(JSON.parse(readFileSync(manifestFile, 'utf8')).name).toBe(NATIVE_CLI_HOST_NAME);
 			const installed = await import(path.join(installDirectory, 'obsidian-clipper-host.mjs'));
 			expect(installed.NATIVE_CLI_PROTOCOL_VERSION).toBe(NATIVE_CLI_PROTOCOL_VERSION);
 			expect(installed.createCliInvocation(

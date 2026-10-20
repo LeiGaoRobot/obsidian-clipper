@@ -1,14 +1,7 @@
 import type { CodexReasoningEffort } from '../types/types';
+import { CODEX_REASONING_EFFORTS } from '../../native-host/cli-invocation.mjs';
 
-export const CODEX_REASONING_EFFORTS = [
-	'minimal',
-	'low',
-	'medium',
-	'high',
-	'xhigh',
-	'max',
-	'ultra'
-] as const satisfies readonly CodexReasoningEffort[];
+export { CODEX_REASONING_EFFORTS };
 
 export function normalizeCodexReasoningEffort(value: unknown): CodexReasoningEffort | undefined {
 	return typeof value === 'string'

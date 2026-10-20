@@ -1,6 +1,23 @@
-// Shared argv builder for the Grok and Codex CLIs. The Native Messaging Host and the
-// Node CLI (`src/cli.ts`) both use it, so hardening flags cannot drift apart.
+// Shared argv builder and limits for the Grok and Codex CLIs. The Native Messaging Host, the
+// extension (`src/utils/native-cli-contract.ts`, `codex-*.ts`) and the Node CLI (`src/cli.ts`)
+// all import from here, so hardening flags and limits cannot drift apart.
 // Keep this file dependency-free: the Host installer copies it next to the Host.
+
+/** Bumped when the Host and the extension stop understanding each other's messages. */
+export const NATIVE_CLI_PROTOCOL_VERSION = 5;
+/** How long one CLI run may take before it is killed. */
+export const DEFAULT_TIMEOUT_MS = 120_000;
+export const MAX_CODEX_MODEL_CHARS = 200;
+export const MAX_OUTPUT_SCHEMA_CHARS = 20_000;
+export const CODEX_REASONING_EFFORTS = Object.freeze([
+	'minimal',
+	'low',
+	'medium',
+	'high',
+	'xhigh',
+	'max',
+	'ultra'
+]);
 
 const GROK_ARGUMENTS = [
 	'--output-format',

@@ -6,24 +6,21 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
-import { buildCliArguments } from './cli-invocation.mjs';
+import {
+	CODEX_REASONING_EFFORTS,
+	DEFAULT_TIMEOUT_MS,
+	MAX_CODEX_MODEL_CHARS,
+	MAX_OUTPUT_SCHEMA_CHARS,
+	NATIVE_CLI_PROTOCOL_VERSION,
+	buildCliArguments
+} from './cli-invocation.mjs';
 
-export const NATIVE_CLI_PROTOCOL_VERSION = 5;
-export const MAX_CODEX_MODEL_CHARS = 200;
-export const CODEX_REASONING_EFFORTS = new Set([
-	'minimal',
-	'low',
-	'medium',
-	'high',
-	'xhigh',
-	'max',
-	'ultra'
-]);
+// Re-exported so an installed Host can be checked against the extension's protocol.
+export { NATIVE_CLI_PROTOCOL_VERSION };
+/** Matches `MAX_INPUT_CHARS` in `src/ai/protocol.ts`; a parity test keeps them equal. */
 export const MAX_PROMPT_CHARS = 750_000;
 export const MAX_REQUEST_BYTES = 4_000_000;
 export const MAX_RESPONSE_BYTES = 900_000;
-export const MAX_OUTPUT_SCHEMA_CHARS = 20_000;
-const DEFAULT_TIMEOUT_MS = 120_000;
 export const HEARTBEAT_INTERVAL_MS = 10_000;
 
 class NativeHostError extends Error {
@@ -99,7 +96,7 @@ export function validateRequest(request) {
 		if (request.mode !== 'codex') {
 			return 'Codex reasoning effort overrides require Codex execution mode.';
 		}
-		if (typeof request.effort !== 'string' || !CODEX_REASONING_EFFORTS.has(request.effort)) {
+		if (typeof request.effort !== 'string' || !CODEX_REASONING_EFFORTS.includes(request.effort)) {
 			return 'Codex reasoning effort must be a supported value.';
 		}
 	}

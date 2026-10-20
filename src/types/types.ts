@@ -1,3 +1,5 @@
+import type { CODEX_REASONING_EFFORTS } from '../../native-host/cli-invocation.mjs';
+
 export interface Template {
 	id: string;
 	name: string;
@@ -44,14 +46,7 @@ export interface Rating {
 export type SaveBehavior = 'addToObsidian' | 'saveFile' | 'copyToClipboard';
 
 export type InterpreterExecutionMode = 'api' | 'grok' | 'codex';
-export type CodexReasoningEffort =
-	| 'minimal'
-	| 'low'
-	| 'medium'
-	| 'high'
-	| 'xhigh'
-	| 'max'
-	| 'ultra';
+export type CodexReasoningEffort = typeof CODEX_REASONING_EFFORTS[number];
 export type TranscriptLayoutMode = 'reading' | 'notebook' | 'focus';
 
 export interface ReaderSettings {

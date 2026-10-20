@@ -1,4 +1,6 @@
-export const MAX_CODEX_MODEL_CHARS = 200;
+import { MAX_CODEX_MODEL_CHARS } from '../../native-host/cli-invocation.mjs';
+
+export { MAX_CODEX_MODEL_CHARS };
 
 export function normalizeCodexModel(value: unknown): string | undefined {
 	if (typeof value !== 'string') return undefined;
