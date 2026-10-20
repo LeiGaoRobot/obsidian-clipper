@@ -173,11 +173,14 @@
 	"aiConnections": {
 		"message": "Connections"
 	},
-	"aiConnectionsDescription": {
-		"message": "API providers and local CLIs that can run AI tasks. API keys are stored only on this device, in the browser's local extension storage. They don't sync to your other devices and aren't encrypted."
-	},
 	"aiConnectionsEmpty": {
 		"message": "No connections yet. Add an API provider or a local CLI to get started."
+	},
+	"aiProviders": {
+		"message": "Providers and models"
+	},
+	"aiProvidersDescription": {
+		"message": "API keys are stored only on this device, in the browser's local extension storage. They don't sync and aren't encrypted. Only enabled models appear in task menus."
 	},
 	"aiAddApiProvider": {
 		"message": "+ Add API provider"
@@ -321,10 +324,13 @@
 		"message": "Add local CLI"
 	},
 	"aiAddLocalCliDescription": {
-		"message": "Run tasks with a Codex or Grok CLI installed on this computer, through the Native Messaging Host. Install the host once with the command below."
+		"message": "Run tasks with a Codex or Grok CLI installed on this computer, through the Native Messaging Host. The host is installed once per computer."
 	},
 	"aiAddCli": {
 		"message": "Add $1"
+	},
+	"aiNativeHostSetup": {
+		"message": "Native Messaging Host setup"
 	},
 	"aiStatusUntested": {
 		"message": "Untested"
@@ -344,17 +350,20 @@
 	"aiStatusUnsupported": {
 		"message": "Unsupported in this browser"
 	},
+	"aiStatusNeedsSetup": {
+		"message": "Needs setup"
+	},
 	"aiProfiles": {
 		"message": "Models"
 	},
-	"aiProfilesDescription": {
-		"message": "The models each connection offers. Only enabled models appear in task routing and model menus."
-	},
-	"aiProfilesEmpty": {
-		"message": "Add a connection first, then add its models here."
-	},
 	"aiAddProfile": {
 		"message": "+ Add model"
+	},
+	"aiAddProfileTo": {
+		"message": "Add model to $1"
+	},
+	"aiProfileDefaultBadge": {
+		"message": "Default"
 	},
 	"aiProfileAddTitle": {
 		"message": "Add model"
@@ -413,11 +422,20 @@
 	"aiRouting": {
 		"message": "Task routing"
 	},
-	"aiRoutingDescription": {
-		"message": "Choose the model for each task. Tasks set to Use default follow the default model."
-	},
 	"aiRoutingDefault": {
 		"message": "Default model"
+	},
+	"aiTasks": {
+		"message": "Tasks"
+	},
+	"aiRoutingCustomize": {
+		"message": "Customize per task"
+	},
+	"aiRoutingCustomizeChanged": {
+		"message": "($1 changed)"
+	},
+	"aiRoutingNeedsAttention": {
+		"message": "Needs attention ($1)"
 	},
 	"aiRoutingDefaultDescription": {
 		"message": "Used by every task set to Use default."
@@ -470,9 +488,6 @@
 	"aiTaskExplainDescription": {
 		"message": "Word and sentence explanations in Reader."
 	},
-	"aiLanguage": {
-		"message": "Language"
-	},
 	"aiEnabled": {
 		"message": "Enable AI features"
 	},
@@ -481,6 +496,45 @@
 	},
 	"aiEnabledOffHint": {
 		"message": "AI features are off, so the models you add aren't used yet. Turn this on to use them."
+	},
+	"aiStatusOn": {
+		"message": "AI features are on"
+	},
+	"aiStatusOff": {
+		"message": "AI features are off"
+	},
+	"aiStatusCheckNoProvider": {
+		"message": "Add a provider"
+	},
+	"aiStatusCheckProviderConnected": {
+		"message": "Provider connected"
+	},
+	"aiStatusCheckProvidersConnected": {
+		"message": "$1 providers connected"
+	},
+	"aiStatusCheckProviderAdded": {
+		"message": "Provider added, not tested yet"
+	},
+	"aiStatusCheckNoModel": {
+		"message": "Add a model"
+	},
+	"aiStatusCheckDefaultModel": {
+		"message": "Default model: $1"
+	},
+	"aiStatusCheckDefaultModelNotSet": {
+		"message": "Choose a default model"
+	},
+	"aiStatusCheckDefaultModelUnavailable": {
+		"message": "Default model unavailable"
+	},
+	"aiStatusCheckNotTested": {
+		"message": "Not tested yet"
+	},
+	"aiStatusCheckTested": {
+		"message": "Tested $1"
+	},
+	"aiStatusCheckTestFailed": {
+		"message": "Last Test failed $1"
 	},
 	"aiErrorTechnicalDetails": {
 		"message": "Technical details"
@@ -547,6 +601,18 @@
 	},
 	"aiDiagnosticsEmpty": {
 		"message": "No AI requests yet."
+	},
+	"aiDiagnosticsOverview": {
+		"message": "$1 recent runs"
+	},
+	"aiDiagnosticsOverviewFailed": {
+		"message": "$1 recent runs, $2 failed"
+	},
+	"aiDiagnosticsOverviewOne": {
+		"message": "1 recent run"
+	},
+	"aiDiagnosticsOverviewOneFailed": {
+		"message": "1 recent run, failed"
 	},
 	"aiDiagnosticsUnavailable": {
 		"message": "Diagnostics need session storage, which this browser does not provide."

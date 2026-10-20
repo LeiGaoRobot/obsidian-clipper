@@ -57,6 +57,10 @@ describe('Add local CLI', () => {
 		await section({ nativeMessaging });
 		expect(control().hidden).toBe(false);
 		expect(guide('native-cli-install-command')?.textContent).toBe(INSTALL_COMMAND);
+		// The command is needed once per computer, so it waits behind a closed disclosure.
+		const setup = document.getElementById('ai-native-cli-setup') as HTMLDetailsElement;
+		expect(setup.open).toBe(false);
+		expect(setup.contains(guide('native-cli-install-command'))).toBe(true);
 	});
 
 	test('allows one connection per CLI kind', async () => {
@@ -76,7 +80,7 @@ describe('Add local CLI', () => {
 		]);
 		expect(sync.data.ai_profiles).toEqual({ v: 1, items: [{ id: 'profile-2', connectionId: 'cli-1', label: '', enabled: true }] });
 		expect(document.querySelector('[data-connection-id="cli-1"] .ai-connection-name')?.textContent).toBe('Grok CLI');
-		expect(document.querySelector('.ai-profile-group[data-connection-id="cli-1"] .ai-profile-name')?.textContent).toBe('CLI default model');
+		expect(document.querySelector('[data-connection-id="cli-1"] .ai-profile-name-text')?.textContent).toBe('CLI default model');
 	});
 
 	test('an existing CLI connection disables its kind on load', async () => {

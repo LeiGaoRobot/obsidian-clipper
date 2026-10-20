@@ -10,11 +10,14 @@ import { routingRowLabel } from './routing';
 
 // Diagnostics panel (decision 12): the redacted log the background keeps in `storage.session`,
 // read directly (extension pages are trusted contexts), newest first, with Clear and Copy as JSON.
+// It sits in a collapsed disclosure whose summary counts the runs and failures.
 
 export interface DiagnosticsPanelOptions {
 	doc: Document;
 	/** `#ai-diagnostics`. */
 	container: HTMLElement;
+	/** `#ai-diagnostics-overview`, in the disclosure's summary. */
+	overview?: HTMLElement;
 	/** `storage.session`; absent on browsers without it, where the panel says so. */
 	session?: StorageAreaLike;
 	/** Connection names for the entries. */
@@ -36,6 +39,16 @@ function outcomeLabel(entry: AiDiagnosticEntry): string {
 	}
 }
 
+/** The disclosure summary: how many runs are logged and how many failed. */
+export function diagnosticsOverview(entries: readonly AiDiagnosticEntry[]): string {
+	if (entries.length === 0) return getMessage('aiDiagnosticsEmpty');
+	const failed = entries.filter(entry => entry.outcome === 'error').length;
+	if (entries.length === 1) return failed ? getMessage('aiDiagnosticsOverviewOneFailed') : getMessage('aiDiagnosticsOverviewOne');
+	return failed > 0
+		? getMessage('aiDiagnosticsOverviewFailed', [String(entries.length), String(failed)])
+		: getMessage('aiDiagnosticsOverview', String(entries.length));
+}
+
 function durationLabel(ms: number): string {
 	return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
@@ -49,6 +62,7 @@ export function createDiagnosticsPanel(options: DiagnosticsPanelOptions): Diagno
 	let entries: AiDiagnosticEntry[] = [];
 
 	if (!session) {
+		if (options.overview) options.overview.textContent = '';
 		container.replaceChildren(createElement(doc, 'div', 'setting-item-description ai-empty-state', getMessage('aiDiagnosticsUnavailable')));
 		return { refresh: async () => undefined, get entries() { return entries; } };
 	}
@@ -86,6 +100,7 @@ export function createDiagnosticsPanel(options: DiagnosticsPanelOptions): Diagno
 	}
 
 	function render(): void {
+		if (options.overview) options.overview.textContent = diagnosticsOverview(entries);
 		list.replaceChildren();
 		copy.disabled = entries.length === 0;
 		clear.disabled = entries.length === 0;

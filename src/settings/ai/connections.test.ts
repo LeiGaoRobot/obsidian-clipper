@@ -113,6 +113,56 @@ describe('Connection cards', () => {
 	});
 });
 
+describe('Local CLI setup in the card', () => {
+	const INSTALL_COMMAND = "npm --prefix '/Users/example/obsidian-clipper' run install:native-host -- --extension-id abcdefghijklmnopabcdefghijklmnop";
+	const setup = (id: string) => document.querySelector<HTMLElement>(`[data-connection-id="${id}"] .ai-connection-setup`);
+
+	test('a CLI whose Host was never checked needs setup and offers the install command', async () => {
+		const copyText = vi.fn(async () => undefined);
+		await section({ connections: [CODEX_CONNECTION] }, () => true, { installGuide: installGuideEnvironment({ copyText }) });
+		expect(badge('codex')?.textContent).toBe('Needs setup');
+		expect(badge('codex')?.className).toContain('is-needs-setup');
+		const block = setup('codex')!;
+		expect(block.querySelector('.native-cli-install-command')?.textContent).toBe(INSTALL_COMMAND);
+		// The ids stay on the shared guide in "Add local CLI".
+		expect(block.querySelector('[id]')).toBeNull();
+
+		(block.querySelector('.native-cli-install-copy') as HTMLButtonElement).click();
+		await settle();
+		expect(copyText).toHaveBeenCalledWith(INSTALL_COMMAND);
+		expect(block.querySelector('.native-cli-install-status')?.className).toContain('is-success');
+	});
+
+	test('a missing Host after a Test still needs setup; a passing Test or a CLI error does not', async () => {
+		await section({
+			connections: [CODEX_CONNECTION, { id: 'grok', kind: 'cli-grok', label: '' }],
+			status: {
+				codex: { state: 'failing', code: 'host-missing', testedAt: 1 },
+				grok: { state: 'ok', testedAt: 1 }
+			}
+		});
+		expect(badge('codex')?.textContent).toBe('Needs setup');
+		expect(setup('codex')).not.toBeNull();
+		expect(badge('grok')?.textContent).toBe('OK');
+		expect(setup('grok')).toBeNull();
+
+		loadSettingsDocument();
+		await section({ connections: [CODEX_CONNECTION], status: { codex: { state: 'failing', code: 'cli-not-authenticated', testedAt: 1 } } });
+		expect(badge('codex')?.className).toContain('is-failing');
+		expect(setup('codex')).toBeNull();
+	});
+
+	test('a browser without Native Messaging shows no setup, and a packaged build explains it', async () => {
+		await section({ connections: [CODEX_CONNECTION], nativeMessaging: 'none' });
+		expect(setup('codex')).toBeNull();
+
+		loadSettingsDocument();
+		await section({ connections: [CODEX_CONNECTION] }, () => true, { installGuide: installGuideEnvironment({ workspaceRoot: undefined }) });
+		expect(setup('codex')?.textContent).toContain('packaged build');
+		expect((setup('codex')!.querySelector('.native-cli-install-copy') as HTMLButtonElement).hidden).toBe(true);
+	});
+});
+
 describe('Catalog picker and connection dialog', () => {
 	test('the picker lists every catalog entry plus Custom', async () => {
 		await section({});
@@ -434,7 +484,7 @@ describe('Deleting a connection', () => {
 		expect(sync.data.ai_routing).toEqual({ v: 1, taskProfiles: {} });
 		expect(local.data.ai_credentials).toEqual({});
 		expect(document.querySelector('[data-connection-id="openai"]')).toBeNull();
-		expect(document.querySelector('#ai-profiles .ai-empty-state')).not.toBeNull();
+		expect(document.querySelector('#ai-connections .ai-empty-state')).not.toBeNull();
 	});
 });
 

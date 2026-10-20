@@ -15,8 +15,10 @@ import { createElement, createSettingItem } from './dom';
 import type { AiSettingsPanel } from './panel';
 import { profileDisplayName } from './profiles';
 
-// Task routing (decision 8): Default on top, then one row per task. Each row's badge follows the
-// profile the resolver would pick, which is what the old readiness assistant answered.
+// Tasks group (decision 8): the Default model row on top (the response language row follows it,
+// see language.ts), then the per-task rows inside a collapsed "Customize per task" disclosure. A
+// row shows a badge only when its route has a problem; the badge follows the profile the resolver
+// would pick, which is what the old readiness assistant answered.
 
 export type RoutingRowKey = 'default' | AiTask;
 
@@ -63,6 +65,30 @@ export function routingBadge(state: AiSettingsState, row: RoutingRowKey): Connec
 	return { state: 'unavailable', label: getMessage('aiRoutingUnavailable') };
 }
 
+/** Badge states that mean the route cannot run as configured. Untested and OK show nothing. */
+const PROBLEM_STATES: ReadonlySet<ConnectionBadge['state']> = new Set(['failing', 'key-missing', 'unsupported', 'unavailable']);
+
+/**
+ * The badge a row shows, if any: only a problem. A task row that follows the default shows the
+ * default's problem only once, on the Default row, unless the task resolves differently.
+ */
+export function routingProblem(state: AiSettingsState, row: RoutingRowKey): ConnectionBadge | undefined {
+	const badge = routingBadge(state, row);
+	if (!PROBLEM_STATES.has(badge.state)) return undefined;
+	if (row === 'default' || state.view.routing.taskProfiles[row]) return badge;
+	const fallback = routingBadge(state, 'default');
+	return fallback.state === badge.state && fallback.label === badge.label ? undefined : badge;
+}
+
+/** Tasks whose stored route differs from Use default. */
+export function customizedTaskCount(state: AiSettingsState): number {
+	const { routing } = state.view;
+	return AI_TASKS.filter(task => {
+		const profileId = routing.taskProfiles[task];
+		return profileId !== undefined && profileId !== routing.defaultProfileId;
+	}).length;
+}
+
 interface RoutingOption {
 	value: string;
 	label: string;
@@ -106,9 +132,10 @@ export function routingPanelState(state: AiSettingsState): unknown {
 	const groups = optionGroups(state);
 	return {
 		groups,
+		customized: customizedTaskCount(state),
 		rows: ROUTING_ROWS.map(row => {
 			const value = selectedValue(state, row);
-			return { row, value, unavailable: unavailableOption(state, value, groups) ?? null, badge: routingBadge(state, row) };
+			return { row, value, unavailable: unavailableOption(state, value, groups) ?? null, badge: routingProblem(state, row) ?? null };
 		})
 	};
 }
@@ -116,8 +143,12 @@ export function routingPanelState(state: AiSettingsState): unknown {
 export interface RoutingPanelOptions {
 	doc: Document;
 	controller: AiSettingsController;
-	/** `#ai-routing`. */
+	/** `#ai-routing`: the Default model row. */
 	container: HTMLElement;
+	/** `#ai-routing-tasks`, inside the "Customize per task" disclosure (kept open across renders). */
+	tasksContainer: HTMLElement;
+	/** `#ai-routing-customize-count`, in the disclosure's summary. */
+	summaryCount: HTMLElement;
 }
 
 export interface RoutingPanel extends AiSettingsPanel {
@@ -126,7 +157,7 @@ export interface RoutingPanel extends AiSettingsPanel {
 }
 
 export function createRoutingPanel(options: RoutingPanelOptions): RoutingPanel {
-	const { doc, controller, container } = options;
+	const { doc, controller, container, tasksContainer, summaryCount } = options;
 
 	function createSelect(row: RoutingRowKey, state: AiSettingsState, groups: RoutingOptionGroup[]): HTMLSelectElement {
 		const select = createElement(doc, 'select', 'ai-routing-select');
@@ -165,22 +196,32 @@ export function createRoutingPanel(options: RoutingPanelOptions): RoutingPanel {
 		return select;
 	}
 
+	function createRow(row: RoutingRowKey, state: AiSettingsState, groups: RoutingOptionGroup[]): HTMLElement {
+		const { item, control } = createSettingItem(doc, {
+			label: routingRowLabel(row),
+			description: rowDescription(row),
+			forId: routingSelectId(row)
+		});
+		item.classList.add('ai-routing-row');
+		item.dataset.row = row;
+		if (row === 'default') item.classList.add('mod-default');
+		const problem = routingProblem(state, row);
+		if (problem) control.appendChild(createBadgeElement(doc, problem));
+		control.appendChild(createSelect(row, state, groups));
+		return item;
+	}
+
 	function render(state: AiSettingsState): void {
 		const groups = optionGroups(state);
-		const items = createElement(doc, 'div', 'setting-items ai-routing-table');
-		for (const row of ROUTING_ROWS) {
-			const { item, control } = createSettingItem(doc, {
-				label: routingRowLabel(row),
-				description: rowDescription(row),
-				forId: routingSelectId(row)
-			});
-			item.classList.add('ai-routing-row');
-			item.dataset.row = row;
-			if (row === 'default') item.classList.add('mod-default');
-			control.append(createBadgeElement(doc, routingBadge(state, row)), createSelect(row, state, groups));
-			items.appendChild(item);
+		container.replaceChildren(createRow('default', state, groups));
+		tasksContainer.replaceChildren(...AI_TASKS.map(task => createRow(task, state, groups)));
+		const customized = customizedTaskCount(state);
+		summaryCount.textContent = customized > 0 ? getMessage('aiRoutingCustomizeChanged', String(customized)) : '';
+		const problems = AI_TASKS.filter(task => routingProblem(state, task)).length;
+		summaryCount.nextElementSibling?.remove();
+		if (problems > 0) {
+			summaryCount.after(createBadgeElement(doc, { state: 'failing', label: getMessage('aiRoutingNeedsAttention', String(problems)) }));
 		}
-		container.replaceChildren(items);
 	}
 
 	return {

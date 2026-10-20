@@ -10,9 +10,10 @@ import {
 	AI_CONNECTION_STATUS_KEY,
 	AI_CREDENTIALS_KEY,
 	AI_PROFILES_KEY,
+	AI_ROUTING_KEY,
 	type AiStorageKey
 } from '../../ai/settings';
-import type { AiTestResult, AiTestStep, Connection, StructuredOutputSupport } from '../../ai/types';
+import type { AiTestResult, AiTestStep, Connection, ModelProfile, StructuredOutputSupport } from '../../ai/types';
 import { getMessage } from '../../utils/i18n';
 import { hideModal, showModal } from '../../utils/modal-utils';
 import { AiSettingsItemMissingError, type AiSettingsController, type AiSettingsState, type ConnectionDraft } from './controller';
@@ -26,10 +27,14 @@ import {
 	syncToggle
 } from './dom';
 import { renderErrorCard, type ErrorCardHandlers } from './error-card';
+import { createInstallGuide, type NativeCliInstallEnvironment } from './native-cli';
 import type { AiSettingsPanel } from './panel';
+import type { Profiles } from './profiles';
 
-// Connections panel (decision 8): one card per connection with its status badge, the catalog
-// picker, and the connection dialog. The API key is written to device-local storage only.
+// "Providers and models" (decision 8): one card per connection with its status badge, Test, and
+// its models nested inside (profiles.ts), plus the catalog picker and the connection dialog. A
+// local CLI whose Host check failed or never ran shows "Needs setup" with the install command.
+// The API key is written to device-local storage only.
 
 /** Upper bound of the Advanced "Max concurrent requests" field. */
 export const MAX_CONNECTION_CONCURRENCY = 32;
@@ -40,6 +45,8 @@ export type ConnectionBadgeState =
 	| 'failing'
 	| 'key-missing'
 	| 'unsupported'
+	// Connection cards only: a local CLI whose Native Messaging Host check failed or never ran.
+	| 'needs-setup'
 	// Routing rows only: nothing routed, or the routed profile cannot run.
 	| 'unset'
 	| 'unavailable';
@@ -91,6 +98,38 @@ export function connectionBadge(connection: Connection, state: AiSettingsState):
 		return { state: 'failing', label, ...(detail ? { title: `${label} (${detail})` } : {}) };
 	}
 	return { state: 'untested', label: getMessage('aiStatusUntested') };
+}
+
+/**
+ * Whether a local CLI card offers the Host install command: its Host check failed (Host missing or
+ * outdated) or has not run on this device. A passing Test, or a CLI failure after the Host
+ * answered, means the Host is set up.
+ */
+export function cliNeedsSetup(connection: Connection, state: AiSettingsState): boolean {
+	if (!isCliKind(connection.kind) || state.view.nativeMessaging === 'none') return false;
+	const status = state.connectionStatus[connection.id];
+	if (status?.state === 'ok') return false;
+	if (status?.state === 'failing') return status.code === 'host-missing' || status.code === 'host-outdated';
+	return true;
+}
+
+/** The badge on a connection card: "Needs setup" for a CLI without a working Host, else the status. */
+export function connectionCardBadge(connection: Connection, state: AiSettingsState): ConnectionBadge {
+	return cliNeedsSetup(connection, state)
+		? { state: 'needs-setup', label: getMessage('aiStatusNeedsSetup') }
+		: connectionBadge(connection, state);
+}
+
+/** Whether the connection's last Test did not find this profile's current model in its listing. */
+export function isModelNotListed(state: AiSettingsState, profile: ModelProfile): boolean {
+	const checks = state.connectionStatus[profile.connectionId]?.models ?? [];
+	return checks.some(check => check.profileId === profile.id && !check.listed && check.model === profile.model);
+}
+
+/** Profiles whose connection no longer exists; they can only be deleted. */
+export function orphanProfiles(state: AiSettingsState): ModelProfile[] {
+	const known = new Set(state.view.connections.map(connection => connection.id));
+	return state.view.profiles.filter(profile => !known.has(profile.connectionId));
 }
 
 export function createBadgeElement(doc: Document, badge: ConnectionBadge): HTMLElement {
@@ -207,6 +246,10 @@ export interface ConnectionsPanelOptions {
 	isTrusted?: (event: Event) => boolean;
 	/** The section's install-guide and routing actions for a failing Test's error card. */
 	errorHandlers?: () => ErrorCardHandlers;
+	/** The model rows and dialog nested in each card. */
+	profiles: Profiles;
+	/** For the install command in a CLI card that needs setup. */
+	installGuide?: NativeCliInstallEnvironment;
 }
 
 export interface ConnectionsPanel extends AiSettingsPanel {
@@ -215,15 +258,19 @@ export interface ConnectionsPanel extends AiSettingsPanel {
 }
 
 export function connectionsPanelState(state: AiSettingsState): unknown {
-	return state.view.connections.map(connection => ({
-		connection,
-		name: connectionDisplayName(connection),
-		badge: connectionBadge(connection, state),
-		billable: testPlanFor(connection, state).billable,
-		profiles: state.view.profiles
-			.filter(profile => profile.connectionId === connection.id)
-			.map(profile => [profile.id, profile.label, profile.model, profile.enabled])
-	}));
+	return {
+		defaultProfileId: state.view.routing.defaultProfileId ?? null,
+		cards: state.view.connections.map(connection => ({
+			connection,
+			name: connectionDisplayName(connection),
+			badge: connectionCardBadge(connection, state),
+			billable: testPlanFor(connection, state).billable,
+			profiles: state.view.profiles
+				.filter(profile => profile.connectionId === connection.id)
+				.map(profile => [profile, isModelNotListed(state, profile)])
+		})),
+		orphans: orphanProfiles(state)
+	};
 }
 
 export function createConnectionsPanel(options: ConnectionsPanelOptions): ConnectionsPanel {
@@ -236,6 +283,7 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 	const list = createElement(doc, 'div', 'ai-connection-list');
 	list.id = 'ai-connection-list';
 	const { container: addContainer, link: addLink } = createAddLink(doc, getMessage('aiAddApiProvider'), 'ai-add-api-provider');
+	addContainer.classList.add('ai-add-api-provider');
 	container.replaceChildren(list, addContainer);
 
 	const catalogModal = doc.getElementById('ai-catalog-modal');
@@ -496,11 +544,13 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 			render(controller.state);
 			return;
 		}
-		const active = doc.activeElement;
-		const hadFocus = active instanceof HTMLElement && elements.panel.contains(active);
+		// Test sits in the card header, the rest of the controls under it.
+		const owns = (element: Element | null): element is HTMLElement => element instanceof HTMLElement
+			&& (element === elements.button || elements.panel.contains(element));
+		const hadFocus = owns(doc.activeElement);
 		syncTestPanel(elements);
 		const now = doc.activeElement;
-		if (hadFocus && (!(now instanceof HTMLElement) || !elements.panel.contains(now) || (now as HTMLButtonElement).disabled)) {
+		if (hadFocus && (!owns(now) || (now as HTMLButtonElement).disabled)) {
 			(elements.cancel ?? elements.button).focus();
 		}
 	}
@@ -627,30 +677,37 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		if (element) elements.panel.appendChild(element);
 	}
 
-	function createTestPanel(connection: Connection, state: AiSettingsState): HTMLElement {
+	/**
+	 * The Test controls of a card: Test in the header (`button`), and under it the cost note, the
+	 * running step with Cancel, and the outcome (`panel`).
+	 */
+	function createTestPanel(connection: Connection, state: AiSettingsState): { button: HTMLButtonElement; panel: HTMLElement } {
 		const panel = createElement(doc, 'div', 'ai-connection-test-panel');
-		// The cost note sits above Test whenever the plan has a billable step.
+		const button = createTextButton(doc, getMessage('aiConnectionTest'), 'ai-connection-test');
+		button.addEventListener('click', onTrustedClick(() => void startTest(connection.id)));
+		// The cost note is shown before Test runs whenever the plan has a billable step.
 		const plan = testPlanFor(connection, state);
 		if (plan.billable) {
-			panel.appendChild(createElement(
+			const note = createElement(
 				doc,
 				'div',
 				'ai-connection-cost-note',
 				isCliKind(connection.kind) ? getMessage('aiConnectionTestCostNoteCli') : getMessage('aiConnectionTestCostNote')
-			));
+			);
+			note.id = `ai-connection-cost-note-${connection.id}`;
+			button.setAttribute('aria-describedby', note.id);
+			panel.appendChild(note);
 		}
 		const bar = createElement(doc, 'div', 'ai-connection-test-bar');
-		const button = createTextButton(doc, getMessage('aiConnectionTest'), 'ai-connection-test');
-		button.addEventListener('click', onTrustedClick(() => void startTest(connection.id)));
 		// One live region per card for the whole Test, so each step is announced.
 		const progress = createElement(doc, 'span', 'ai-connection-test-progress');
 		progress.setAttribute('role', 'status');
-		bar.append(button, progress);
+		bar.appendChild(progress);
 		panel.appendChild(bar);
 		const elements: TestPanelElements = { connection, panel, bar, button, progress };
 		syncTestPanel(elements);
 		panels.set(connection.id, elements);
-		return panel;
+		return { button, panel };
 	}
 
 	function createCard(connection: Connection, state: AiSettingsState): HTMLElement {
@@ -658,11 +715,15 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		item.dataset.connectionId = connection.id;
 		const card = createElement(doc, 'div', 'ai-connection-card');
 		const info = createElement(doc, 'div', 'ai-connection-info');
-		info.append(
+		const title = createElement(doc, 'div', 'ai-connection-title');
+		title.append(
 			createElement(doc, 'div', 'ai-connection-name', connectionDisplayName(connection)),
-			createElement(doc, 'div', 'ai-connection-host', connectionHost(connection))
+			createBadgeElement(doc, connectionCardBadge(connection, state))
 		);
+		info.append(title, createElement(doc, 'div', 'ai-connection-host', connectionHost(connection)));
+		const test = createTestPanel(connection, state);
 		const actions = createElement(doc, 'div', 'ai-connection-actions');
+		actions.appendChild(test.button);
 		if (!isCliKind(connection.kind)) {
 			const edit = createIconButton(doc, 'pen-line', getMessage('edit'), 'ai-connection-edit');
 			edit.addEventListener('click', () => openConnectionDialog({ connection }));
@@ -671,8 +732,26 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		const remove = createIconButton(doc, 'trash-2', getMessage('delete'), 'ai-connection-delete');
 		remove.addEventListener('click', () => deleteConnection(connection));
 		actions.appendChild(remove);
-		card.append(createKindIcon(doc, connection), info, createBadgeElement(doc, connectionBadge(connection, state)), actions);
-		item.append(card, createTestPanel(connection, state));
+		card.append(createKindIcon(doc, connection), info, actions);
+		item.append(card, test.panel);
+		// A Test after installing the Host clears this; an untested CLI may already be set up.
+		if (cliNeedsSetup(connection, state)) item.appendChild(createInstallGuide(doc, options.installGuide, false, 'ai-connection-setup').element);
+		const profiles = state.view.profiles.filter(profile => profile.connectionId === connection.id);
+		item.appendChild(options.profiles.createModelList(connection, profiles, state));
+		return item;
+	}
+
+	/** Models whose connection is gone, so they can still be deleted. */
+	function createOrphanCard(state: AiSettingsState): HTMLElement | undefined {
+		const orphans = orphanProfiles(state);
+		if (orphans.length === 0) return undefined;
+		const item = createElement(doc, 'div', 'ai-connection-item mod-orphan');
+		item.dataset.connectionId = '';
+		const card = createElement(doc, 'div', 'ai-connection-card');
+		const info = createElement(doc, 'div', 'ai-connection-info');
+		info.appendChild(createElement(doc, 'div', 'ai-connection-name', getMessage('aiProfileOrphanGroup')));
+		card.appendChild(info);
+		item.append(card, options.profiles.createModelList(undefined, orphans, state));
 		return item;
 	}
 
@@ -696,9 +775,10 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		}
 		if (state.view.connections.length === 0) {
 			list.appendChild(createElement(doc, 'div', 'setting-item-description ai-empty-state', getMessage('aiConnectionsEmpty')));
-			return;
 		}
 		for (const connection of state.view.connections) list.appendChild(createCard(connection, state));
+		const orphans = createOrphanCard(state);
+		if (orphans) list.appendChild(orphans);
 		finishRender(list);
 		if (focus) {
 			// A running Test's Cancel, else Test.
@@ -717,8 +797,9 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 	});
 
 	return {
-		// Profiles change the Test plan (models to check, cost note) and the exec step labels.
-		keys: [AI_CONNECTIONS_KEY, AI_PROFILES_KEY, AI_CREDENTIALS_KEY, AI_CONNECTION_STATUS_KEY] as readonly AiStorageKey[],
+		// Profiles change the Test plan (models to check, cost note), the exec step labels, and the
+		// nested model rows; routing marks the default model.
+		keys: [AI_CONNECTIONS_KEY, AI_PROFILES_KEY, AI_CREDENTIALS_KEY, AI_CONNECTION_STATUS_KEY, AI_ROUTING_KEY] as readonly AiStorageKey[],
 		stateOf(state) {
 			return {
 				cards: connectionsPanelState(state),
