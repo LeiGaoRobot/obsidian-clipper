@@ -31,8 +31,9 @@ const chunkBudgets = {
 	'reader-markdown.js': 10_000,
 	'reader-syntax-highlighting.js': 250_000,
 	// The AI settings section: about 103 KB in Phase 5b; 124 KB measured in Phase 5c after the
-	// connection Test panel, the Diagnostics panel, and the model-listing badges. About 17% headroom.
-	'settings-ai.js': 145_000,
+	// connection Test panel, the Diagnostics panel, and the model-listing badges; 145,714 bytes after
+	// the guided single-page layout and the compact error card. Budget is that plus about 4%.
+	'settings-ai.js': 152_000,
 	// The runtime the Popup and Reader chunks share: 33,469 bytes measured at the end of Phase 7
 	// (33,958 at the end of Phase 6). Budget is the measured size plus about 10%.
 	'language-learning-runtime.js': 37_000,
