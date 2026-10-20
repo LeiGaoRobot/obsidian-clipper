@@ -137,6 +137,8 @@ Applying, cancelling, undoing, hiding, or showing an existing result does not ma
 > [!warning] Transcript jobs can create several billable requests
 > One transcript action can send several batch requests to a hosted API provider at the same time. Each automatic retry after a rate limit or temporary provider error is a separate request that the provider may bill, and a job that resumes after an extension background restart sends its remaining batches without another click. Use **AI range** to limit the work, and select **Cancel** to stop further requests.
 
+In the popup Interpreter, **Retry** resends the failed request's context, prompt variables, and model choice. To use edited context or another model, dismiss the error and select **Run**. After **Cancel**, **Run** also uses your current inputs.
+
 The task bar shows **Cancel** while a transcript task or an explanation runs, and selecting it stops both. Closing a loading explanation card, or selecting its **Cancel**, stops only that explanation. Cancelling a Reader request stops the extension from waiting for or applying that result. For a transcript job, it also stops further batches and any retry wait; completed batches stay saved. In API mode it aborts the provider fetch. In local CLI mode, protocol version 5 sends cancellation over the same Native Messaging port; the Host terminates the selected CLI process and force-kills it if it does not exit promptly.
 
 ## Troubleshoot language learning

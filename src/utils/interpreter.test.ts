@@ -432,14 +432,16 @@ describe('Interpreter', () => {
 		error.mockRestore();
 	});
 
-	test('Retry sends the context and model the popup shows by then', async () => {
+	test('Retry preserves the failed context, prompts, and profile after popup edits', async () => {
 		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		mocks.runAiTask.mockRejectedValueOnce(new AiError('model-unavailable'));
 		populatePopupModelSelect(modelSelect(), storedView());
-		await handleInterpreterUI(template, {}, 1, 'https://example.com', modelSelect().value);
+		const editedTemplate = { ...template };
+		await handleInterpreterUI(editedTemplate, {}, 1, 'https://example.com', modelSelect().value);
 		expect(mocks.runAiTask.mock.calls[0][2]).toMatchObject({ profileId: 'gpt' });
 
-		// The user shortens the context and picks another model before retrying.
+		// Edits belong to the next Run, not to Retry.
+		editedTemplate.noteContentFormat = '{{"Tags"}}';
 		(document.getElementById('prompt-context') as HTMLTextAreaElement).value = 'Shorter context';
 		modelSelect().value = 'mini';
 		cardAction('retry').click();
@@ -447,11 +449,74 @@ describe('Interpreter', () => {
 
 		expect(mocks.runAiTask).toHaveBeenCalledTimes(2);
 		expect(mocks.runAiTask.mock.calls[1][1]).toEqual({
-			context: 'Shorter context',
+			context: 'Page context',
 			prompts: [{ key: 'prompt_1', prompt: 'Summarize', filters: '' }]
 		});
-		expect(mocks.runAiTask.mock.calls[1][2]).toEqual({ profileId: 'mini', signal: expect.any(AbortSignal) });
+		expect(mocks.runAiTask.mock.calls[1][2]).toEqual({ profileId: 'gpt', signal: expect.any(AbortSignal) });
+		expect(mocks.runAiTask.mock.calls[1][2].signal).not.toBe(mocks.runAiTask.mock.calls[0][2].signal);
 		error.mockRestore();
+	});
+
+	test('cancelling Retry sends no further request; a new Run captures edits and ignores the late result', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		await initializeInterpreter({ ...template }, {}, 1, 'https://example.com', storedView());
+		(document.getElementById('prompt-context') as HTMLTextAreaElement).value = 'Page context';
+		mocks.runAiTask.mockRejectedValueOnce(new AiError('network'));
+		interpretButton().click();
+		await vi.waitFor(() => expect(interpretButton().classList.contains('error')).toBe(true));
+
+		let finishRetry!: (value: unknown) => void;
+		mocks.runAiTask.mockImplementationOnce(() => new Promise(resolve => { finishRetry = resolve; }));
+		(document.getElementById('prompt-context') as HTMLTextAreaElement).value = 'New context';
+		modelSelect().value = 'mini';
+		cardAction('retry').click();
+		const retrySignal = mocks.runAiTask.mock.calls[1][2].signal as AbortSignal;
+		expect(mocks.runAiTask.mock.calls[1][1].context).toBe('Page context');
+		expect(mocks.runAiTask.mock.calls[1][2].profileId).toBe('gpt');
+		cancelButton().click();
+		await vi.waitFor(() => expect(interpretButton().classList.contains('cancelled')).toBe(true));
+		expect(retrySignal.aborted).toBe(true);
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(2);
+		expect(document.querySelector('#interpreter-error .ai-error-card')).toBeNull();
+
+		interpretButton().click();
+		await vi.waitFor(() => expect(interpretButton().classList.contains('done')).toBe(true));
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(3);
+		expect(mocks.runAiTask.mock.calls[2][1].context).toBe('New context');
+		expect(mocks.runAiTask.mock.calls[2][2].profileId).toBe('mini');
+		expect(mocks.runAiTask.mock.calls[2][2].signal.aborted).toBe(false);
+
+		finishRetry({ output: { responses: {}, missing: ['prompt_1'] }, connectionKind: 'cli-codex' });
+		await new Promise(resolve => setTimeout(resolve, 0));
+		expect(interpretButton().classList.contains('done')).toBe(true);
+		expect(interpretButton().classList.contains('partial')).toBe(false);
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(3);
+	});
+
+	test('a new Run supersedes Retry and owns the next failure and retry snapshot', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		mocks.runAiTask.mockRejectedValueOnce(new AiError('network'));
+		await handleInterpreterUI(template, {}, 1, 'https://example.com', 'gpt');
+		let rejectRetry!: (error: unknown) => void;
+		mocks.runAiTask.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRetry = reject; }));
+		cardAction('retry').click();
+		const oldSignal = mocks.runAiTask.mock.calls[1][2].signal as AbortSignal;
+
+		(document.getElementById('prompt-context') as HTMLTextAreaElement).value = 'New run';
+		mocks.runAiTask.mockRejectedValueOnce(new AiError('timeout'));
+		await handleInterpreterUI({ ...template, noteContentFormat: '{{"Tags"}}' }, {}, 1, 'https://example.com', 'mini');
+		expect(oldSignal.aborted).toBe(true);
+		rejectRetry(new AiError('auth'));
+		await new Promise(resolve => setTimeout(resolve, 0));
+		expect(document.querySelector('.ai-error-card-title')?.textContent).toBe('aiErrorTimeoutTitle');
+
+		cardAction('retry').click();
+		await vi.waitFor(() => expect(interpretButton().classList.contains('done')).toBe(true));
+		expect(mocks.runAiTask).toHaveBeenCalledTimes(4);
+		expect(mocks.runAiTask.mock.calls[3][1]).toEqual({
+			context: 'New run', prompts: [{ key: 'prompt_1', prompt: 'Tags', filters: '' }]
+		});
+		expect(mocks.runAiTask.mock.calls[3][2].profileId).toBe('mini');
 	});
 
 	test('a Clip after an error runs the Interpreter again, and a second failure keeps the card', async () => {

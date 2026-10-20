@@ -136,7 +136,7 @@ On supported Chrome/macOS and Chrome/Linux source builds, Webpack emits local-on
 
 `src/ai/adapters/http.ts` must remain DOM-free. The background imports the gateway and adapters synchronously. Do not dynamically import them from the background or generate a runtime-loaded network chunk: Chrome MV3 service workers cannot depend on a new chunk being imported after installation.
 
-The Interpreter uses the same gateway through `runAiTask('interpret', …)`, passing the model selected in the popup as the profile. Choosing a model in the popup writes the interpret row of task routing; before the AI settings exist on the device, the choice is used for that popup only and a warning is logged.
+The Interpreter uses the same gateway through `runAiTask('interpret', …)`, passing the model selected in the popup as the profile. Each Run captures the context, prompt variables, and profile ID; Retry reuses that snapshot through `createAiAction.retry()` with a fresh abort signal. Cancel stops the attempt; a subsequent Run captures new inputs. Choosing a model in the popup writes the interpret row of task routing; before the AI settings exist on the device, the choice is used for that popup only and a warning is logged.
 
 ### Transcript alignment
 
