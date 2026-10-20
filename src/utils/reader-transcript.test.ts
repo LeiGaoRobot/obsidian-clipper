@@ -201,10 +201,14 @@ describe('Transcript layout integration', () => {
 			bottom: 380,
 			height: 80
 		} as DOMRect);
-		toggleBar.getBoundingClientRect = () => ({ bottom: 420 } as DOMRect);
+		toggleBar.getBoundingClientRect = () => ({ bottom: 420, height: 96 } as DOMRect);
 		morePanel.getBoundingClientRect = () => ({ top: 760 } as DOMRect);
 
 		expect(primaryActions).toBeTruthy();
+		// The toggles and More are one group, so More wraps with them instead of alone.
+		const controlActions = toggleBar.querySelector(':scope > .player-controls-actions') as HTMLElement;
+		expect(Array.from(controlActions.children)).toEqual([primaryActions, moreControls]);
+		expect(toggleBar.firstElementChild?.classList.contains('transcript-layout-switcher')).toBe(true);
 		expect(moreControls.open).toBe(false);
 		expect(morePanel.querySelectorAll('.player-toggle')).toHaveLength(3);
 		expect(morePanel.querySelectorAll('.player-control-section')).toHaveLength(2);
@@ -218,6 +222,7 @@ describe('Transcript layout integration', () => {
 		expect(compactButton.getAttribute('aria-pressed')).toBe('true');
 		expect(compactButton.textContent).toBe('Show player');
 		expect(layoutRoot.style.getPropertyValue('--transcript-player-height')).toBe('44px');
+		expect(layoutRoot.style.getPropertyValue('--transcript-controls-height')).toBe('96px');
 		expect(playerContainer.querySelector('a[href*="youtube.com/watch"]')?.isConnected).toBe(true);
 
 		compactButton.click();

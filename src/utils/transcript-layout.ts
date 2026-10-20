@@ -13,11 +13,46 @@ export function normalizeTranscriptLayoutMode(value: unknown): TranscriptLayoutM
 		: 'reading';
 }
 
-export function updateTranscriptPlayerHeight(root: HTMLElement, player: HTMLElement): void {
+/**
+ * Publishes the player's height and, when given, the controls' height on `root`, so sticky offsets
+ * and the segments' `scroll-margin-top` clear what is pinned above the transcript.
+ */
+export function updateTranscriptPlayerHeight(root: HTMLElement, player: HTMLElement, controls?: HTMLElement): void {
 	root.style.setProperty(
 		'--transcript-player-height',
 		`${Math.ceil(player.getBoundingClientRect().height)}px`
 	);
+	if (controls) {
+		root.style.setProperty(
+			'--transcript-controls-height',
+			`${Math.ceil(controls.getBoundingClientRect().height)}px`
+		);
+	}
+}
+
+/**
+ * Stacks the transcript controls in two rows (the layout switcher and More, then the toggles) when
+ * the switcher and the toggles group do not fit on one line, so More never wraps alone. Measured
+ * on the one-row layout, so it follows the labels' real widths in every language. Layouts that
+ * lay the group out as `display: contents` (phones, the Study tools rail, More open) are left as
+ * they are.
+ */
+export function syncTranscriptControlsRows(controls: HTMLElement): void {
+	const switcher = controls.querySelector<HTMLElement>(':scope > .transcript-layout-switcher');
+	const actions = controls.querySelector<HTMLElement>(':scope > .player-controls-actions');
+	const view = controls.ownerDocument.defaultView;
+	if (!switcher || !actions || !view) return;
+	const wasStacked = controls.classList.contains('is-controls-stacked');
+	controls.classList.remove('is-controls-stacked');
+	if (view.getComputedStyle(actions).display === 'contents') return;
+	const switcherRect = switcher.getBoundingClientRect();
+	const actionsRect = actions.getBoundingClientRect();
+	// Not laid out (hidden, or a test document): keep what was there.
+	if (switcherRect.height === 0 || actionsRect.height === 0) {
+		controls.classList.toggle('is-controls-stacked', wasStacked);
+		return;
+	}
+	controls.classList.toggle('is-controls-stacked', actionsRect.top >= switcherRect.bottom - 1);
 }
 
 interface TranscriptControlsPanelOptions {

@@ -170,10 +170,12 @@ export function createTranslationsFeature(ctx: TranscriptFeatureContext): Transl
 					render(merge(taskIndexes, progress.translations), false);
 				}
 				report({ completed: progress.completed, total: progress.total });
-				taskBar.setProgress(progress.completed, progress.total, getMessage('readerTranslationProgress', [
-					String(progress.completed),
-					String(progress.total)
-				]), progress.retry);
+				taskBar.setProgress(
+					progress.completedSegments,
+					progress.totalSegments,
+					getMessage('readerTaskPhaseTranslate'),
+					progress.retry
+				);
 			}, runSignal);
 			throwIfRequestAborted(runSignal);
 			if (!isCompleteTranscriptTranslations(translations, taskTexts)) {

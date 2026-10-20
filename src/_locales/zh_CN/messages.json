@@ -1378,12 +1378,6 @@
 	"readerTranscriptLayoutFocus": {
 		"message": "分屏"
 	},
-	"readerJapaneseReadingsProgress": {
-		"message": "正在生成读音（$1/$2）…"
-	},
-	"readerJapaneseTranslationProgress": {
-		"message": "正在翻译为日语（$1/$2）…"
-	},
 	"readerTranscriptTranslationBatchFailed": {
 		"message": "部分字幕批次未能完成，请重试以继续。"
 	},
@@ -1525,17 +1519,20 @@
 	"readerSwitchAndRetry": {
 		"message": "切换并重试"
 	},
-	"readerTaskBatches": {
-		"message": "预计约 $1 批"
-	},
-	"readerTaskBatchesOne": {
-		"message": "预计约 $1 批"
-	},
 	"readerTaskElapsed": {
 		"message": "$1 秒"
 	},
 	"readerTaskEstimate": {
 		"message": "$1 · $2"
+	},
+	"readerTaskPhaseJapaneseTranslation": {
+		"message": "正在翻译为日语"
+	},
+	"readerTaskPhaseReadings": {
+		"message": "正在生成读音"
+	},
+	"readerTaskPhaseTranslate": {
+		"message": "正在翻译字幕"
 	},
 	"readerTaskRange": {
 		"message": "AI 范围"
@@ -1548,6 +1545,12 @@
 	},
 	"readerTaskRangeNextFiveMinutes": {
 		"message": "接下来 5 分钟"
+	},
+	"readerTaskSegmentProgress": {
+		"message": "$1 / $2 段"
+	},
+	"readerTaskSegmentProgressOne": {
+		"message": "$1 / $2 段"
 	},
 	"readerTaskSegments": {
 		"message": "$1 段"
@@ -1566,9 +1569,6 @@
 	},
 	"readerTranscripts": {
 		"message": "字幕稿"
-	},
-	"readerTranslationProgress": {
-		"message": "正在翻译字幕（$1/$2）…"
 	},
 	"readerTranslationIncomplete": {
 		"message": "模型遗漏了一个或多个字幕片段，请重试。"

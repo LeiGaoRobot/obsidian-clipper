@@ -57,7 +57,6 @@ vi.mock('./i18n', () => ({ getMessage: (key: string) => key }));
 
 import { withJobAttempts } from '../ai/job-client';
 import { deriveAiSettings } from '../ai/settings-view';
-import { TRANSCRIPT_GROUP_BUDGETS } from '../ai/job-limits';
 import type { AiSettingsView } from '../ai/types';
 import { configuredLanguageLearning } from './language-learning-runtime';
 import type { TranscriptReadingProgress } from './language-learning';
@@ -286,17 +285,13 @@ describe('Configured language learning runtime', () => {
 		));
 	});
 
-	test('reports the profile routed to a transcript task with its kind budget (derived mode)', async () => {
+	test('reports the profile routed to a transcript task (derived mode)', async () => {
 		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterExecutionMode: 'grok' });
 
 		await expect(configuredLanguageLearning.getExecutionInfo('reading')).resolves.toEqual({
 			profileId: 'legacy-cli-grok-default',
 			kind: 'cli-grok',
-			label: 'interpreterExecutionModeGrok',
-			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS['cli-grok'].reading
-		});
-		await expect(configuredLanguageLearning.getExecutionInfo('translate')).resolves.toMatchObject({
-			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS['cli-grok'].translate
+			label: 'interpreterExecutionModeGrok'
 		});
 	});
 
@@ -306,23 +301,40 @@ describe('Configured language learning runtime', () => {
 		await expect(configuredLanguageLearning.getExecutionInfo('reading')).resolves.toEqual({
 			profileId: 'codex-default',
 			kind: 'cli-codex',
-			label: 'interpreterExecutionModeCodex · gpt-5-codex',
-			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS['cli-codex'].reading
+			label: 'interpreterExecutionModeCodex · gpt-5-codex'
 		});
 		await expect(configuredLanguageLearning.getExecutionInfo('translate')).resolves.toEqual({
 			profileId: 'gpt',
 			kind: 'openai-compatible',
-			label: 'OpenAI · gpt-5',
-			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS.api.translate
+			label: 'OpenAI · gpt-5'
 		});
+	});
+
+	test('names a named profile by its name, not its model id, after its connection', async () => {
+		const view = storedView();
+		view.connections = [...view.connections, { id: 'anthropic', kind: 'anthropic', label: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1/messages', apiKeyRequired: true }];
+		view.profiles = [...view.profiles, { id: 'sonnet', connectionId: 'anthropic', model: 'claude-sonnet-5-5', label: 'Claude Sonnet', enabled: true }];
+		view.routing = { ...view.routing, taskProfiles: { translate: 'sonnet' } };
+		mocks.loadAiSettings.mockResolvedValue(view);
+
+		await expect(configuredLanguageLearning.getExecutionInfo('translate')).resolves.toEqual({
+			profileId: 'sonnet',
+			kind: 'anthropic',
+			label: 'Anthropic · Claude Sonnet'
+		});
+		// The error card's switch lists the same name under the same connection.
+		await expect(configuredLanguageLearning.listProfiles()).resolves.toContainEqual(expect.objectContaining({
+			id: 'sonnet',
+			name: 'Claude Sonnet',
+			group: 'Anthropic'
+		}));
 	});
 
 	test('reports no profile when routing names none or a disabled one', async () => {
 		mocks.loadAiSettings.mockResolvedValue(storedView({ defaultProfileId: undefined, taskProfiles: { reading: 'gpt-off' } }));
 
 		await expect(configuredLanguageLearning.getExecutionInfo('reading')).resolves.toEqual({
-			label: 'aiErrorNotConfiguredTitle',
-			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS.api.reading
+			label: 'aiErrorNotConfiguredTitle'
 		});
 	});
 
@@ -542,8 +554,8 @@ describe('Configured language learning runtime', () => {
 			expect.objectContaining({ onProgress: expect.any(Function), onRetry: expect.any(Function) })
 		);
 		expect(progress).toEqual([
-			{ completed: 0, total: 1, translations: ['', ''] },
-			{ completed: 1, total: 1, translations: ['T0', 'T1'] }
+			{ completed: 0, total: 1, completedSegments: 0, totalSegments: 2, translations: ['', ''] },
+			{ completed: 1, total: 1, completedSegments: 2, totalSegments: 2, translations: ['T0', 'T1'] }
 		]);
 		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});

@@ -684,7 +684,7 @@ describe('Transcript language learning controls', () => {
 		expect(segments[1].querySelector('rt')).toBeNull();
 	});
 
-	test('shows progress while generating readings in multiple batches', async () => {
+	test('shows segment progress while generating readings in multiple groups', async () => {
 		const { controls, transcript, segments } = createTranscript(['私は日本語を勉強します。']);
 		let readingButton: HTMLButtonElement;
 		const progressStates: Array<{ button: string; status: string }> = [];
@@ -701,12 +701,12 @@ describe('Transcript language learning controls', () => {
 			onProgress?.({ completed: 0, total: 2, completedSegments: 0, totalSegments: 3, readings: [[]] });
 			progressStates.push({
 				button: readingButton.textContent || '',
-				status: controls.querySelector('.player-learning-progress')?.textContent || ''
+				status: controls.querySelector('.player-learning-task-estimate')?.textContent || ''
 			});
 			onProgress?.({ completed: 1, total: 2, completedSegments: 2, totalSegments: 3, readings: [[]] });
 			progressStates.push({
 				button: readingButton.textContent || '',
-				status: controls.querySelector('.player-learning-progress')?.textContent || ''
+				status: controls.querySelector('.player-learning-task-estimate')?.textContent || ''
 			});
 			return [[
 				{ text: '私', reading: 'わたし' },
@@ -735,8 +735,8 @@ describe('Transcript language learning controls', () => {
 		await controller.toggleJapaneseReadings();
 
 		expect(progressStates).toEqual([
-			{ button: 'thinking', status: 'readerJapaneseReadingsProgress:0,3' },
-			{ button: 'thinking', status: 'readerJapaneseReadingsProgress:2,3' }
+			{ button: 'thinking', status: 'readerTaskEstimate:readerTaskPhaseReadings,readerTaskSegmentProgress:0,3' },
+			{ button: 'thinking', status: 'readerTaskEstimate:readerTaskPhaseReadings,readerTaskSegmentProgress:2,3' }
 		]);
 	});
 
@@ -794,9 +794,15 @@ describe('Transcript language learning controls', () => {
 		const partialState: Array<string | undefined> = [];
 		const translateTranscript = vi.fn(async (
 			_segments: string[],
-			onProgress?: (progress: { completed: number; total: number; translations: string[] }) => void
+			onProgress?: (progress: {
+				completed: number;
+				total: number;
+				completedSegments: number;
+				totalSegments: number;
+				translations: string[];
+			}) => void
 		) => {
-			onProgress?.({ completed: 1, total: 2, translations: ['第一段', ''] });
+			onProgress?.({ completed: 1, total: 2, completedSegments: 1, totalSegments: 2, translations: ['第一段', ''] });
 			partialState.push(
 				segments[0].querySelector('.transcript-segment-translation')?.textContent || undefined,
 				segments[1].querySelector('.transcript-segment-translation')?.textContent || undefined
@@ -826,21 +832,26 @@ describe('Transcript language learning controls', () => {
 	test('shows a provider retry countdown while a group backs off and clears it on the next progress', async () => {
 		const { controls, transcript, segments } = createTranscript(['First.', 'Second.']);
 		const statuses: string[] = [];
-		const status = () => controls.querySelector('.player-learning-progress')?.textContent || '';
+		const status = () => [
+			controls.querySelector('.player-learning-task-estimate')?.textContent || '',
+			controls.querySelector('.player-learning-progress')?.textContent || ''
+		].join(' | ');
 		const translateTranscript = vi.fn(async (
 			_segments: string[],
 			onProgress?: (progress: {
 				completed: number;
 				total: number;
+				completedSegments: number;
+				totalSegments: number;
 				translations: string[];
 				retry?: { delayMs: number; attempt: number };
 			}) => void
 		) => {
-			onProgress?.({ completed: 1, total: 2, translations: ['第一段', ''] });
+			onProgress?.({ completed: 1, total: 2, completedSegments: 1, totalSegments: 2, translations: ['第一段', ''] });
 			statuses.push(status());
-			onProgress?.({ completed: 1, total: 2, translations: ['第一段', ''], retry: { delayMs: 2200, attempt: 1 } });
+			onProgress?.({ completed: 1, total: 2, completedSegments: 1, totalSegments: 2, translations: ['第一段', ''], retry: { delayMs: 2200, attempt: 1 } });
 			statuses.push(status());
-			onProgress?.({ completed: 2, total: 2, translations: ['第一段', '第二段'] });
+			onProgress?.({ completed: 2, total: 2, completedSegments: 2, totalSegments: 2, translations: ['第一段', '第二段'] });
 			statuses.push(status());
 			return ['第一段', '第二段'];
 		});
@@ -861,9 +872,9 @@ describe('Transcript language learning controls', () => {
 		await controller.toggleBilingual();
 
 		expect(statuses).toEqual([
-			'readerTranslationProgress:1,2',
-			'readerTranscriptRetrying:3',
-			'readerTranslationProgress:2,2'
+			'readerTaskEstimate:readerTaskPhaseTranslate,readerTaskSegmentProgress:1,2 | ',
+			'readerTaskEstimate:readerTaskPhaseTranslate,readerTaskSegmentProgress:1,2 | readerTranscriptRetrying:3',
+			'readerTaskEstimate:readerTaskPhaseTranslate,readerTaskSegmentProgress:2,2 | '
 		]);
 		expect(segments[1].querySelector('.transcript-segment-translation')?.textContent).toBe('第二段');
 	});
@@ -1109,7 +1120,7 @@ describe('Transcript language learning controls', () => {
 		{ id: 'legacy-cli-codex-default', label: 'interpreterExecutionModeCodex', kind: 'cli-codex' as const }
 	];
 
-	test('estimates batches from the task budget and lists profiles in the recovery switch', async () => {
+	test('names the engine, counts the segments, and lists profiles in the recovery switch', async () => {
 		const { controls, transcript, segments } = createTranscript(['First.', 'Second.']);
 		const timeout = new AiError('timeout', {
 			nativeCode: 'timeout',
@@ -1121,8 +1132,7 @@ describe('Transcript language learning controls', () => {
 		const getExecutionInfo = vi.fn().mockResolvedValue({
 			profileId: 'legacy-cli-grok-default',
 			kind: 'cli-grok',
-			label: 'Grok CLI',
-			promptCharLimit: 8
+			label: 'Grok CLI'
 		});
 		const controller = wireTranscriptLanguageLearning({
 			doc: document,
@@ -1147,7 +1157,7 @@ describe('Transcript language learning controls', () => {
 		expect(getExecutionInfo).toHaveBeenCalledWith('translate');
 		expect(controls.querySelector('.player-learning-task-engine')?.textContent).toBe('Grok CLI');
 		expect(controls.querySelector('.player-learning-task-estimate')?.textContent)
-			.toBe('readerTaskEstimate:readerTaskSegments:2,readerTaskBatches:2');
+			.toBe('readerTaskSegments:2');
 		const select = document.querySelector('.language-learning-card .ai-error-card-profile-select') as HTMLSelectElement;
 		expect(Array.from(select.options, option => [option.value, option.textContent])).toEqual(
 			PROFILES.map(profile => [profile.id, profile.label])
@@ -1160,9 +1170,9 @@ describe('Transcript language learning controls', () => {
 		expect(document.querySelector('.ai-error-card-body')?.textContent).toBe('aiErrorTimeoutBody');
 	});
 
-	test('the readings budget comes from getExecutionInfo for the reading task', async () => {
+	test('the readings engine comes from getExecutionInfo for the reading task', async () => {
 		const { controls, transcript, segments } = createTranscript(['東京です。', '大阪です。']);
-		const getExecutionInfo = vi.fn().mockResolvedValue({ label: 'Codex CLI', kind: 'cli-codex', promptCharLimit: 5 });
+		const getExecutionInfo = vi.fn().mockResolvedValue({ label: 'Codex CLI', kind: 'cli-codex' });
 		const controller = wireTranscriptLanguageLearning({
 			doc: document,
 			transcript,
@@ -1182,7 +1192,7 @@ describe('Transcript language learning controls', () => {
 
 		expect(getExecutionInfo).toHaveBeenCalledWith('reading');
 		expect(controls.querySelector('.player-learning-task-estimate')?.textContent)
-			.toBe('readerTaskEstimate:readerTaskSegments:2,readerTaskBatches:2');
+			.toBe('readerTaskSegments:2');
 	});
 
 	test('Switch and retry routes the failed task to the chosen profile, then retries', async () => {
@@ -1246,9 +1256,15 @@ describe('Transcript language learning controls', () => {
 		});
 		const translateTranscript = vi.fn(async (
 			_texts: string[],
-			onProgress?: (progress: { completed: number; total: number; translations: string[] }) => void
+			onProgress?: (progress: {
+				completed: number;
+				total: number;
+				completedSegments: number;
+				totalSegments: number;
+				translations: string[];
+			}) => void
 		) => {
-			onProgress?.({ completed: 1, total: 2, translations: ['第一段', ''] });
+			onProgress?.({ completed: 1, total: 2, completedSegments: 1, totalSegments: 2, translations: ['第一段', ''] });
 			throw failure;
 		});
 		const controller = wireTranscriptLanguageLearning({
@@ -1562,6 +1578,59 @@ describe('Transcript language learning controls', () => {
 		expect(taskBar.getAttribute('aria-busy')).toBe('false');
 	});
 
+	test('a running task shows Cancel on the bar; a finished one leaves no bar that looks running', async () => {
+		const { controls, transcript, segments } = createTranscript(['First.', 'Second.']);
+		let finishTranslation!: (translations: string[]) => void;
+		const translateTranscript = vi.fn(() => new Promise<string[]>(resolve => {
+			finishTranslation = resolve;
+		}));
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: {
+				translateTranscript,
+				explainSelection: vi.fn(),
+				annotateJapaneseTranscript: vi.fn(),
+				getExecutionInfo: vi.fn().mockResolvedValue({ profileId: 'sonnet', kind: 'anthropic', label: 'Anthropic · Claude Sonnet' })
+			},
+			responseLanguage: 'English',
+			cancelPendingSeek: vi.fn()
+		});
+		const taskBar = controls.querySelector('.player-learning-task') as HTMLElement;
+		const cancel = taskBar.querySelector('.player-learning-cancel') as HTMLButtonElement;
+		const bilingual = controls.querySelector('.player-learning-bilingual') as HTMLButtonElement;
+
+		// Running: the bar names the engine, counts the segments, and offers Cancel to a trusted click.
+		const cancelled = controller.toggleBilingual();
+		await flushPromises();
+		expect(taskBar.hidden).toBe(false);
+		expect(taskBar.querySelector('.player-learning-task-engine')?.textContent).toBe('Anthropic · Claude Sonnet');
+		expect(taskBar.querySelector('.player-learning-task-estimate')?.textContent).toBe('readerTaskSegments:2');
+		expect(cancel.hidden).toBe(false);
+		cancel.click();
+		expect(taskBar.getAttribute('aria-busy')).toBe('true');
+		await clicks.click(cancel);
+		await cancelled;
+		expect(taskBar.getAttribute('aria-busy')).toBe('false');
+		expect(cancel.hidden).toBe(true);
+		expect(taskBar.querySelector('.player-learning-progress')?.textContent).toBe('readerAiCancelled');
+
+		// Run again to the end: Cancel is back while it runs.
+		const done = controller.toggleBilingual();
+		await flushPromises();
+		expect(taskBar.hidden).toBe(false);
+		expect(cancel.hidden).toBe(false);
+		finishTranslation(['第一段', '第二段']);
+		await done;
+
+		// The reported screenshot: subtitles shown and the button idle, yet a bar with the engine,
+		// the count and a frozen elapsed time and no Cancel. A finished run now hides the bar.
+		expect(bilingual.classList.contains('is-enabled')).toBe(true);
+		expect(taskBar.hidden).toBe(true);
+	});
+
 	test('can limit an explicit AI task to the current or next five minutes', async () => {
 		const { controls, transcript, segments } = createTranscript(['Zero.', 'Current.', 'Next.', 'Later.']);
 		segments[1].classList.add('is-active');
@@ -1577,8 +1646,7 @@ describe('Transcript language learning controls', () => {
 				annotateJapaneseTranscript: vi.fn(),
 				getExecutionInfo: vi.fn().mockResolvedValue({
 					kind: 'cli-grok',
-					label: 'Grok CLI',
-					promptCharLimit: 1600
+					label: 'Grok CLI'
 				})
 			},
 			responseLanguage: 'English',
@@ -1608,9 +1676,15 @@ describe('Transcript language learning controls', () => {
 		});
 		const translateTranscript = vi.fn(async (
 			_texts: string[],
-			onProgress?: (progress: { completed: number; total: number; translations: string[] }) => void
+			onProgress?: (progress: {
+				completed: number;
+				total: number;
+				completedSegments: number;
+				totalSegments: number;
+				translations: string[];
+			}) => void
 		) => {
-			onProgress?.({ completed: 1, total: 2, translations: ['第一段', ''] });
+			onProgress?.({ completed: 1, total: 2, completedSegments: 1, totalSegments: 2, translations: ['第一段', ''] });
 			throw timeout;
 		});
 		const controller = wireTranscriptLanguageLearning({
@@ -1840,11 +1914,17 @@ describe('Transcript language learning controls', () => {
 		const progressLabels: string[] = [];
 		const translateTranscript = vi.fn(async (
 			_segments: string[],
-			onProgress?: (progress: { completed: number; total: number; translations: string[] }) => void
+			onProgress?: (progress: {
+				completed: number;
+				total: number;
+				completedSegments: number;
+				totalSegments: number;
+				translations: string[];
+			}) => void
 		) => {
-			onProgress?.({ completed: 0, total: 1, translations: [''] });
-			progressLabels.push(first.controls.querySelector('.player-learning-progress')?.textContent || '');
-			onProgress?.({ completed: 1, total: 1, translations: ['你好，世界。'] });
+			onProgress?.({ completed: 0, total: 1, completedSegments: 0, totalSegments: 1, translations: [''] });
+			progressLabels.push(first.controls.querySelector('.player-learning-task-estimate')?.textContent || '');
+			onProgress?.({ completed: 1, total: 1, completedSegments: 1, totalSegments: 1, translations: ['你好，世界。'] });
 			return ['你好，世界。'];
 		});
 		const firstController = wireTranscriptLanguageLearning({
@@ -1861,7 +1941,7 @@ describe('Transcript language learning controls', () => {
 			cancelPendingSeek: vi.fn()
 		});
 		await firstController.toggleBilingual();
-		expect(progressLabels).toEqual(['readerTranslationProgress:0,1']);
+		expect(progressLabels).toEqual(['readerTaskEstimate:readerTaskPhaseTranslate,readerTaskSegmentProgressOne:0,1']);
 
 		const second = createTranscript(['Hello world.']);
 		const secondTranslate = vi.fn();

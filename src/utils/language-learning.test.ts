@@ -233,10 +233,10 @@ describe('Language learning assistant', () => {
 		await assistant.translateTranscript(['A', 'B', 'C'], 'Simplified Chinese', next => progress.push(next));
 
 		expect(progress).toEqual([
-			{ completed: 0, total: 2, translations: ['', '', ''] },
-			{ completed: 1, total: 2, translations: ['T0', 'T1', ''] },
-			{ completed: 1, total: 2, translations: ['T0', 'T1', ''], retry: { delayMs: 2500, attempt: 1 } },
-			{ completed: 2, total: 2, translations: ['T0', 'T1', 'T2'] }
+			{ completed: 0, total: 2, completedSegments: 0, totalSegments: 3, translations: ['', '', ''] },
+			{ completed: 1, total: 2, completedSegments: 2, totalSegments: 3, translations: ['T0', 'T1', ''] },
+			{ completed: 1, total: 2, completedSegments: 2, totalSegments: 3, translations: ['T0', 'T1', ''], retry: { delayMs: 2500, attempt: 1 } },
+			{ completed: 2, total: 2, completedSegments: 3, totalSegments: 3, translations: ['T0', 'T1', 'T2'] }
 		]);
 	});
 

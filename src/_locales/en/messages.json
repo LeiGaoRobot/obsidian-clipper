@@ -1378,12 +1378,6 @@
 	"readerTranscriptLayoutFocus": {
 		"message": "Split view"
 	},
-	"readerJapaneseReadingsProgress": {
-		"message": "Generating readings ($1/$2)…"
-	},
-	"readerJapaneseTranslationProgress": {
-		"message": "Translating to Japanese ($1/$2)…"
-	},
 	"readerTranscriptTranslationBatchFailed": {
 		"message": "Some transcript batches could not be completed. Retry to continue."
 	},
@@ -1525,17 +1519,20 @@
 	"readerSwitchAndRetry": {
 		"message": "Switch and retry"
 	},
-	"readerTaskBatches": {
-		"message": "about $1 batches"
-	},
-	"readerTaskBatchesOne": {
-		"message": "about $1 batch"
-	},
 	"readerTaskElapsed": {
 		"message": "$1s"
 	},
 	"readerTaskEstimate": {
 		"message": "$1 · $2"
+	},
+	"readerTaskPhaseJapaneseTranslation": {
+		"message": "Translating to Japanese"
+	},
+	"readerTaskPhaseReadings": {
+		"message": "Generating readings"
+	},
+	"readerTaskPhaseTranslate": {
+		"message": "Translating subtitles"
 	},
 	"readerTaskRange": {
 		"message": "AI range"
@@ -1548,6 +1545,12 @@
 	},
 	"readerTaskRangeNextFiveMinutes": {
 		"message": "Next 5 minutes"
+	},
+	"readerTaskSegmentProgress": {
+		"message": "$1 of $2 segments"
+	},
+	"readerTaskSegmentProgressOne": {
+		"message": "$1 of $2 segment"
 	},
 	"readerTaskSegments": {
 		"message": "$1 segments"
@@ -1566,9 +1569,6 @@
 	},
 	"readerTranscripts": {
 		"message": "Transcripts"
-	},
-	"readerTranslationProgress": {
-		"message": "Translating subtitles ($1/$2)…"
 	},
 	"readerTranslationIncomplete": {
 		"message": "The model missed one or more transcript segments. Try again."

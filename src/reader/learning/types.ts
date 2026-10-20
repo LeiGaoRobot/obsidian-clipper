@@ -78,9 +78,8 @@ export type TranscriptTaskRange = 'current' | 'next-five-minutes' | 'all';
 export interface TranscriptExecutionInfo {
 	profileId?: string;
 	kind?: ConnectionKind;
+	/** `<connection> · <profile name>`, the task bar's engine label. */
 	label: string;
-	/** `TRANSCRIPT_GROUP_BUDGETS[kind][task]`, which drives the batch estimate. */
-	promptCharLimit: number;
 }
 
 export interface TranscriptLanguageLearningController {

@@ -2,6 +2,7 @@ import type { TranscriptLayoutMode } from '../types/types';
 import {
 	TRANSCRIPT_LAYOUT_MODES,
 	syncTranscriptControlsPanel,
+	syncTranscriptControlsRows,
 	updateTranscriptPlayerHeight
 } from '../utils/transcript-layout';
 
@@ -27,7 +28,8 @@ export function setTranscriptPreviewLayout(doc: Document, mode: TranscriptLayout
 	doc.documentElement.dataset.previewLayout = mode;
 	if (mode === 'reading') player.appendChild(controls);
 	else root.insertBefore(controls, transcript);
-	updateTranscriptPlayerHeight(root, player);
+	syncTranscriptControlsRows(controls);
+	updateTranscriptPlayerHeight(root, player, controls);
 }
 
 function initializeTranscriptLayoutPreview(doc: Document): void {
@@ -130,6 +132,12 @@ function initializeTranscriptLayoutPreview(doc: Document): void {
 
 	moreControls?.addEventListener('toggle', updateMoreControls);
 	doc.defaultView?.addEventListener('resize', updateMoreControls);
+	const syncControlsRows = () => {
+		const controls = root.querySelector<HTMLElement>('.player-toggles');
+		if (controls) syncTranscriptControlsRows(controls);
+	};
+	doc.defaultView?.addEventListener('resize', syncControlsRows);
+	void doc.fonts?.ready.then(syncControlsRows);
 
 	const previewUrl = new URL(doc.defaultView?.location.href || 'http://localhost');
 	const requestedLayout = previewUrl.searchParams.get('layout');

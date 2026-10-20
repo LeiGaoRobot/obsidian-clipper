@@ -10,6 +10,7 @@ import {
 	createTranscriptLayoutSwitcher,
 	normalizeTranscriptLayoutMode,
 	syncTranscriptControlsPanel,
+	syncTranscriptControlsRows,
 	updateTranscriptPlayerHeight
 } from './transcript-layout';
 import { TranscriptStudyController, wireTranscriptStudy } from './transcript-study';
@@ -409,20 +410,44 @@ export function wireTranscript(
 		onChange: mode => {
 			closeMoreControls();
 			placeToggleBar(mode);
+			updateControlsLayout();
 			onSettingChange?.('transcriptLayout', mode);
 			window.dispatchEvent(new CustomEvent('reader-show-nav'));
 		}
 	});
+	// The toggles and More wrap as one group, so More never sits alone on a line.
+	const controlActions = doc.createElement('div');
+	controlActions.className = 'player-controls-actions';
+	controlActions.append(primaryActions, moreControls);
 	toggleBar.appendChild(layoutSwitcher.element);
-	toggleBar.appendChild(primaryActions);
-	toggleBar.appendChild(moreControls);
+	toggleBar.appendChild(controlActions);
 	placeToggleBar(initialLayout);
 
-	const updatePlayerHeight = () => updateTranscriptPlayerHeight(layoutRoot, playerContainer);
-	updatePlayerHeight();
+	const updatePlayerHeight = () => updateTranscriptPlayerHeight(layoutRoot, playerContainer, toggleBar);
+	const updateControlsLayout = () => {
+		syncTranscriptControlsRows(toggleBar);
+		updatePlayerHeight();
+	};
+	// Restacking changes the observed sizes, so it waits for the next frame rather than changing
+	// them inside the observer's callback.
+	let controlsFrame: number | undefined;
+	const scheduleControlsLayout = () => {
+		updatePlayerHeight();
+		if (controlsFrame !== undefined || typeof requestAnimationFrame === 'undefined') return;
+		controlsFrame = requestAnimationFrame(() => {
+			controlsFrame = undefined;
+			if (!eventController.signal.aborted) updateControlsLayout();
+		});
+	};
+	updateControlsLayout();
 	if (typeof ResizeObserver !== 'undefined') {
-		const resizeObserver = new ResizeObserver(updatePlayerHeight);
+		const resizeObserver = new ResizeObserver(scheduleControlsLayout);
 		resizeObserver.observe(playerContainer);
+		// The controls grow when the task bar appears or the row wraps, and the toggles change
+		// width with their labels (Thinking…, Show player).
+		resizeObserver.observe(toggleBar);
+		resizeObserver.observe(layoutSwitcher.element);
+		resizeObserver.observe(primaryActions);
 		transcriptLayoutResizeObservers.set(doc, resizeObserver);
 	}
 

@@ -8,9 +8,11 @@ import type {
 	TranscriptTaskRange
 } from './types';
 
-// The transcript task controls: the AI range select and the task bar (engine, estimate, elapsed
-// time, progress, Cancel, status line). The bar is a view of the transcript action's state; it
-// starts no model work. The estimate and engine stay empty until `getExecutionInfo` answers.
+// The transcript task controls: the AI range select and the task bar (engine, segment count or
+// progress, elapsed time, progress bar, Cancel, status line). The bar is a view of the transcript
+// action's state; it starts no model work. The engine and segment count stay empty until
+// `getExecutionInfo` answers. The bar shows only while a run is running, or says that it was
+// cancelled: a finished run hides it, so a bar on screen with no Cancel never looks like a run.
 
 export interface TaskBar {
 	/** The AI range control, appended before the bilingual button. */
@@ -22,14 +24,15 @@ export interface TaskBar {
 	getTaskIndexes(): number[];
 	/** The latest answer of `getExecutionInfo`, if any. */
 	readonly executionInfo: TranscriptExecutionInfo | undefined;
-	/** Asks `getExecutionInfo` for `task` and shows its engine and batch estimate for `taskTexts`. */
+	/** Asks `getExecutionInfo` for `task` and shows its engine and the segment count of `taskTexts`. */
 	loadExecutionInfo(task: TranscriptJobTask, taskTexts: string[]): Promise<void>;
-	/** Records the profile Switch and retry routed the task to; the retry refreshes the budget. */
+	/** Records the profile Switch and retry routed the task to; the retry refreshes the engine. */
 	useProfile(option: TranscriptProfileOption): void;
 	/** A transcript run started: busy, elapsed timer, empty progress, Cancel shown. */
 	begin(startedAt: number): void;
-	setProgress(value: number, max: number, label: string, retry?: { delayMs: number }): void;
-	/** A transcript run ended: the timer stops, and a cancelled run says so. */
+	/** `completed` of `total` segments are done in `phase` (e.g. Translating subtitles). */
+	setProgress(completed: number, total: number, phase: string, retry?: { delayMs: number }): void;
+	/** A transcript run ended: the timer stops and Cancel hides; a cancelled run says so, any other run hides the bar. */
 	finish(status: AiActionStatus): void;
 	setStatus(message: string): void;
 	clearStatus(): void;
@@ -51,6 +54,19 @@ function getSegmentTimestamp(segment: HTMLElement): number | null {
 	if (timestamp == null) return null;
 	const parsed = Number(timestamp);
 	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function segmentCount(total: number): string {
+	return total === 1
+		? getMessage('readerTaskSegmentsOne', '1')
+		: getMessage('readerTaskSegments', String(total));
+}
+
+function segmentProgress(completed: number, total: number): string {
+	const counts = [String(completed), String(total)];
+	return total === 1
+		? getMessage('readerTaskSegmentProgressOne', counts)
+		: getMessage('readerTaskSegmentProgress', counts);
 }
 
 export function createTaskBar({ doc, segments, tools, onCancel, now = Date.now }: TaskBarOptions): TaskBar {
@@ -127,11 +143,13 @@ export function createTaskBar({ doc, segments, tools, onCancel, now = Date.now }
 	bar.append(engine, estimate, elapsed, progress, cancelButton, status);
 
 	let executionInfo: TranscriptExecutionInfo | undefined;
+	let hasProgress = false;
 	let elapsedTimer: number | undefined;
 	const stopTimer = () => {
 		if (elapsedTimer !== undefined) view.clearInterval(elapsedTimer);
 		elapsedTimer = undefined;
 	};
+	const runParts = [estimate, elapsed, progress];
 	const setStatus = (message: string) => {
 		status.textContent = message;
 		status.hidden = false;
@@ -163,15 +181,8 @@ export function createTaskBar({ doc, segments, tools, onCancel, now = Date.now }
 			}
 			executionInfo = info;
 			engine.textContent = info.label;
-			const sourceChars = taskTexts.reduce((total, text) => total + text.length, 0);
-			const batches = Math.max(1, Math.ceil(sourceChars / Math.max(1, info.promptCharLimit)));
-			const segmentCount = taskTexts.length === 1
-				? getMessage('readerTaskSegmentsOne', '1')
-				: getMessage('readerTaskSegments', String(taskTexts.length));
-			const batchCount = batches === 1
-				? getMessage('readerTaskBatchesOne', '1')
-				: getMessage('readerTaskBatches', String(batches));
-			estimate.textContent = getMessage('readerTaskEstimate', [segmentCount, batchCount]);
+			// Progress that already arrived says more than the count.
+			if (!hasProgress) estimate.textContent = segmentCount(taskTexts.length);
 		},
 		useProfile(option) {
 			executionInfo = executionInfo
@@ -181,7 +192,10 @@ export function createTaskBar({ doc, segments, tools, onCancel, now = Date.now }
 		begin(startedAt) {
 			bar.hidden = false;
 			bar.setAttribute('aria-busy', 'true');
+			runParts.forEach(part => { part.hidden = false; });
+			hasProgress = false;
 			estimate.textContent = '';
+			progress.removeAttribute('aria-label');
 			progress.max = 1;
 			progress.value = 0;
 			const updateElapsed = () => {
@@ -193,20 +207,29 @@ export function createTaskBar({ doc, segments, tools, onCancel, now = Date.now }
 			cancelButton.hidden = false;
 			clearStatus();
 		},
-		setProgress(value, max, label, retry) {
-			progress.max = Math.max(1, max);
-			progress.value = value;
-			// A group backing off after a rate limit shows the wait; the next progress replaces it.
-			setStatus(retry
-				? getMessage('readerTranscriptRetrying', String(Math.max(1, Math.ceil(retry.delayMs / 1000))))
-				: label);
+		setProgress(completed, total, phase, retry) {
+			hasProgress = true;
+			progress.max = Math.max(1, total);
+			progress.value = Math.min(completed, progress.max);
+			estimate.textContent = getMessage('readerTaskEstimate', [phase, segmentProgress(completed, total)]);
+			progress.setAttribute('aria-label', estimate.textContent);
+			// A group backing off after a rate limit shows the wait; the next progress clears it.
+			if (retry) setStatus(getMessage('readerTranscriptRetrying', String(Math.max(1, Math.ceil(retry.delayMs / 1000)))));
+			else clearStatus();
 		},
 		finish(endStatus) {
 			stopTimer();
 			bar.setAttribute('aria-busy', 'false');
 			cancelButton.hidden = true;
-			if (endStatus === 'cancelled') setStatus(getMessage('readerAiCancelled'));
-			else clearStatus();
+			if (endStatus === 'cancelled') {
+				// Only the engine and the status stay: nothing on the bar suggests the run goes on.
+				runParts.forEach(part => { part.hidden = true; });
+				setStatus(getMessage('readerAiCancelled'));
+				return;
+			}
+			// The result (or the error card) speaks for a finished run.
+			clearStatus();
+			bar.hidden = true;
 		},
 		setStatus,
 		clearStatus,

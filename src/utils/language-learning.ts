@@ -68,6 +68,8 @@ export interface TranscriptReadingProgress extends TranscriptBatchProgress {
 
 export type TranscriptReadingProgressHandler = (progress: TranscriptReadingProgress) => void;
 export interface TranscriptTranslationProgress extends TranscriptBatchProgress {
+	completedSegments: number;
+	totalSegments: number;
 	translations: string[];
 }
 export type TranscriptTranslationProgressHandler = (progress: TranscriptTranslationProgress) => void;
@@ -266,6 +268,8 @@ export function createLanguageLearningAssistant(
 				onProgress && ((progress, retry) => onProgress({
 					completed: progress.completedGroups,
 					total: progress.totalGroups,
+					completedSegments: progress.completedSegments,
+					totalSegments: progress.totalSegments,
 					translations: [...progress.values],
 					...(retry ? { retry } : {})
 				}))

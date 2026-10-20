@@ -421,10 +421,7 @@ export class Reader {
 					triggerGroup.style.visibility = '';
 					triggerGroup.style.pointerEvents = '';
 				}
-				const floatingToggles = getPlayerToggles();
-				if (floatingToggles) {
-					floatingToggles.style.opacity = '';
-				}
+				getPlayerToggles()?.classList.remove('is-scroll-hidden');
 				scrollHidden = false;
 			}
 		};
@@ -447,10 +444,9 @@ export class Reader {
 						triggerGroup.style.visibility = 'hidden';
 						triggerGroup.style.pointerEvents = 'none';
 					}
-					const floatingToggles = getPlayerToggles();
-					if (floatingToggles) {
-						floatingToggles.style.opacity = '0';
-					}
+					// The controls fade, not their background: what is pinned stays opaque over the
+					// transcript, and a running task keeps them shown (transcripts.scss).
+					getPlayerToggles()?.classList.add('is-scroll-hidden');
 					scrollHidden = true;
 				}
 			} else if (delta < 0) {

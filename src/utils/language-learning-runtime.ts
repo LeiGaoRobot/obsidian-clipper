@@ -9,8 +9,6 @@ import {
 	type TranscriptJobValues
 } from '../ai/job-client';
 import type { TranscriptJobIdentity, TranscriptJobTask } from '../ai/job-identity';
-import { isCliKind } from '../ai/connection-kind';
-import { TRANSCRIPT_GROUP_BUDGETS } from '../ai/job-limits';
 import {
 	JAPANESE_READING_JOB_IDENTITY,
 	LearningSelection,
@@ -234,18 +232,18 @@ async function translateConfiguredTranscript(
 export const configuredLanguageLearning = {
 	...configuredLanguageLearningVocabulary,
 	...configuredJapaneseReadingDictionary,
-	/** The profile routing names for a transcript task, its kind, and the kind's group budget. */
+	/**
+	 * The profile routing names for a transcript task and its kind. The label names the profile as
+	 * the error card's switch does (`profileDisplayName`), after its connection.
+	 */
 	async getExecutionInfo(task: TranscriptJobTask): Promise<TranscriptExecutionInfo> {
 		const view = await loadAiSettings();
 		const routed = routedProfile(view, task);
-		const kind = routed?.connection.kind;
-		const budgetKind = kind && isCliKind(kind) ? kind : 'api';
 		return {
-			...(routed ? { profileId: routed.profile.id, kind } : {}),
+			...(routed ? { profileId: routed.profile.id, kind: routed.connection.kind } : {}),
 			label: routed
 				? profileDisplayLabel(routed.profile, routed.connection)
-				: getMessage('aiErrorNotConfiguredTitle'),
-			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS[budgetKind][task]
+				: getMessage('aiErrorNotConfiguredTitle')
 		};
 	},
 

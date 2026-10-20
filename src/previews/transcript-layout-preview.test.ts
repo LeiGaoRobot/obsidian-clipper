@@ -25,10 +25,13 @@ describe('transcript layout preview', () => {
 		(mode) => {
 			const player = document.querySelector('.player-container') as HTMLElement;
 			player.getBoundingClientRect = () => ({ height: 321.2 } as DOMRect);
+			const controlsBar = document.querySelector('.player-toggles') as HTMLElement;
+			controlsBar.getBoundingClientRect = () => ({ height: 52.4 } as DOMRect);
 			setTranscriptPreviewLayout(document, mode);
 
 			const root = document.querySelector('.transcript-study-layout') as HTMLElement;
 			const controls = root.querySelector('.player-toggles') as HTMLElement;
+			expect(root.style.getPropertyValue('--transcript-controls-height')).toBe('53px');
 
 			expect(root.classList.contains(`transcript-layout-${mode}`)).toBe(true);
 			expect(document.documentElement.classList.contains(`transcript-layout-${mode}`)).toBe(true);

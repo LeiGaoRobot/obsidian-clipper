@@ -1,7 +1,29 @@
+// A pinned region fades the transcript that scrolls beneath it, so a line cut at its bottom edge
+// never reads as text inside the controls.
+@mixin transcript-sticky-fade {
+	content: '';
+	position: absolute;
+	inset-inline: 0;
+	top: 100%;
+	height: 16px;
+	background: linear-gradient(to bottom, var(--background-primary), transparent);
+	pointer-events: none;
+}
+
 .transcript-study-layout {
 	position: relative;
 	width: 100%;
 	margin: 0 auto;
+	// What is pinned above the transcript, for the segments' scroll-margin-top.
+	--transcript-sticky-offset: 16px;
+	&.is-player-pinned {
+		--transcript-sticky-offset: calc(var(--transcript-player-height, 0px) + 16px);
+	}
+	// Split view pins the controls over the transcript column; the player has its own column.
+	&.transcript-layout-focus,
+	&.transcript-layout-focus.is-player-pinned {
+		--transcript-sticky-offset: calc(var(--transcript-controls-height, 0px) + 16px);
+	}
 }
 .player-container {
 	background: var(--background-primary);
@@ -10,6 +32,9 @@
 		top: 0;
 		position: sticky;
 		z-index: var(--layer-popover);
+		&::after {
+			@include transcript-sticky-fade;
+		}
 	}
 	.reader-video-wrapper,
 	iframe {
@@ -29,11 +54,66 @@
 	gap: 10px 14px;
 	padding: 10px 12px;
 	user-select: none;
-	transition: opacity 0.15s ease;
 	background: var(--background-primary);
 	border-bottom: 1px solid var(--background-modifier-border);
-	&:hover {
-		opacity: 1 !important;
+	// The controls, including the group's items when it lays out as `display: contents`.
+	> *,
+	> .player-controls-actions > * {
+		transition: opacity 0.15s ease;
+	}
+	// The Reader fades the controls while scrolling down. Only the controls fade: the bar's
+	// background stays opaque over the transcript, and hover, focus, or a running task (whose
+	// Cancel must stay in view) shows them again.
+	&.is-scroll-hidden {
+		> *,
+		> .player-controls-actions > * {
+			opacity: 0;
+		}
+		&:hover,
+		&:focus-within,
+		&:has(.player-learning-task[aria-busy="true"]) {
+			> *,
+			> .player-controls-actions > * {
+				opacity: 1;
+			}
+		}
+	}
+}
+// The toggles and More wrap together, so More never sits alone on a line.
+.player-controls-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: nowrap;
+	gap: 4px 6px;
+	min-width: 0;
+	margin-inline-start: auto;
+	> .player-controls-more {
+		flex-shrink: 0;
+	}
+	// Open, More's panel takes a row of its own, as the bar's direct child.
+	&:has(> .player-controls-more[open]) {
+		display: contents;
+	}
+}
+// Too narrow for one row (`is-controls-stacked`, set by syncTranscriptControlsRows): More ends the
+// first row, after the layout switcher, and the toggles take the second.
+@mixin transcript-controls-two-rows {
+	.player-controls-actions {
+		display: contents;
+	}
+	.player-primary-actions {
+		order: 1;
+		flex-basis: 100%;
+	}
+	.player-controls-more {
+		margin-inline-start: auto;
+		&[open] {
+			order: 1;
+			margin-inline-start: 0;
+		}
+	}
+	.player-learning-task {
+		order: 2;
 	}
 }
 .transcript-layout-switcher {
@@ -392,7 +472,9 @@
 }
 .player-learning-task {
 	display: grid;
-	grid-template-columns: auto minmax(120px, 1fr) auto auto auto;
+	grid-template-columns: minmax(0, max-content) minmax(120px, 1fr) auto auto auto;
+	// The status line takes a row of its own only while it shows.
+	grid-template-areas: "engine estimate elapsed progress cancel";
 	align-items: center;
 	gap: 6px 10px;
 	flex-basis: 100%;
@@ -402,32 +484,63 @@
 	// The Reader defines no smaller UI size; outside More the bar would inherit the article's.
 	font-size: var(--font-ui-small);
 	color: var(--text-muted);
-	background: color-mix(in srgb, var(--background-primary-alt) 82%, transparent);
+	// Opaque: it sits in the sticky controls, over the transcript scrolling beneath.
+	background: color-mix(in srgb, var(--background-primary-alt) 82%, var(--background-primary));
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-s);
 	&[hidden] {
 		display: none;
 	}
+	> [hidden] {
+		display: none;
+	}
 }
 .player-learning-task-engine {
+	grid-area: engine;
+	overflow: hidden;
 	color: var(--text-accent-hover);
 	font-weight: 600;
+	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 .player-learning-task-estimate {
+	grid-area: estimate;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 .player-learning-task-elapsed {
+	grid-area: elapsed;
 	min-width: 3ch;
 	font-variant: tabular-nums;
 	text-align: end;
 }
 .player-learning-task-progress {
+	grid-area: progress;
 	width: 72px;
 	height: 4px;
 	accent-color: var(--text-accent-hover);
+}
+.player-learning-task > .player-learning-cancel {
+	grid-area: cancel;
+}
+.player-learning-task > .player-learning-progress {
+	grid-column: 1 / -1;
+}
+// Narrow bars: engine and progress text on their own rows, then the progress bar, time and Cancel.
+@mixin player-learning-task-stacked {
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	grid-template-areas:
+		"engine engine engine"
+		"estimate estimate estimate"
+		"progress elapsed cancel";
+	.player-learning-task-estimate,
+	.player-learning-progress {
+		white-space: normal;
+	}
+	.player-learning-task-progress {
+		width: 100%;
+	}
 }
 @keyframes player-learning-spin {
 	to { transform: rotate(360deg); }
@@ -436,7 +549,8 @@
 	.player-learning-action.is-loading::before {
 		animation: none;
 	}
-	.player-toggles,
+	.player-toggles > *,
+	.player-toggles > .player-controls-actions > *,
 	.player-toggle-switch,
 	.player-toggle-switch::after,
 	.player-current-pos,
@@ -494,6 +608,8 @@
 }
 .transcript-segment {
 	box-sizing: border-box;
+	// Jumps to a segment (scrollIntoView, focus) clear the pinned player and controls.
+	scroll-margin-top: var(--transcript-sticky-offset, 16px);
 	border-radius: 0;
 	corner-shape: var(--corner-shape);
 	display: flex;
@@ -883,6 +999,9 @@ html.transcript-layout-focus .obsidian-reader-content {
 		grid-row: 2;
 		padding-top: 18px;
 	}
+	.player-controls-actions {
+		display: contents;
+	}
 	.transcript-layout-switcher,
 	.player-primary-actions,
 	.player-controls-more {
@@ -902,12 +1021,7 @@ html.transcript-layout-focus .obsidian-reader-content {
 		box-sizing: border-box;
 	}
 	.player-learning-task {
-		grid-template-columns: 1fr auto;
-		.player-learning-task-estimate,
-		.player-learning-progress {
-			grid-column: 1 / -1;
-			white-space: normal;
-		}
+		@include player-learning-task-stacked;
 	}
 	.player-toggle {
 		width: 100%;
@@ -940,6 +1054,9 @@ html.transcript-layout-focus .obsidian-reader-content {
 		top: 0;
 		z-index: var(--layer-popover);
 		padding-inline: 0;
+		&::after {
+			@include transcript-sticky-fade;
+		}
 	}
 	> .youtube.transcript,
 	> .bilibili.transcript {
@@ -1003,6 +1120,10 @@ html.transcript-layout-focus .language-learning-card {
 		> .player-container {
 			width: 100%;
 			margin: 0;
+			// Stacked above the transcript, a pinned player leaves no gap for text to show through.
+			&.pin-player {
+				top: 0;
+			}
 		}
 		> .player-toggles {
 			position: sticky;
@@ -1017,16 +1138,29 @@ html.transcript-layout-focus .language-learning-card {
 			border-bottom: 1px solid var(--background-modifier-border);
 			border-radius: 0;
 			box-shadow: none;
+			&::after {
+				@include transcript-sticky-fade;
+			}
 		}
 		&.is-player-pinned > .player-toggles {
 			top: var(--transcript-player-height, 0px);
+		}
+		&.transcript-study-layout {
+			--transcript-sticky-offset: calc(var(--transcript-controls-height, 0px) + 16px);
+		}
+		&.transcript-study-layout.is-player-pinned {
+			--transcript-sticky-offset: calc(var(--transcript-player-height, 0px) + var(--transcript-controls-height, 0px) + 16px);
 		}
 		> .youtube.transcript,
 		> .bilibili.transcript {
 			padding-top: 14px;
 		}
+		.player-controls-actions {
+			display: flex;
+		}
 		.transcript-layout-switcher,
-		.player-primary-actions {
+		.player-primary-actions,
+		.player-controls-more {
 			width: auto;
 			flex-direction: row;
 			align-items: center;
@@ -1081,6 +1215,10 @@ html.transcript-layout-focus .language-learning-card {
 	.player-control-section-items {
 		align-items: stretch;
 		flex-direction: column;
+	}
+	// Phones keep the toggles and More as the bar's own items, wrapping as space allows.
+	.transcript-study-layout .player-controls-actions {
+		display: contents;
 	}
 	.player-primary-actions {
 		flex: 1 1 240px;
@@ -1168,15 +1306,7 @@ html.transcript-layout-focus .language-learning-card {
 		min-height: 44px;
 	}
 	.player-learning-task {
-		grid-template-columns: 1fr auto;
-		.player-learning-task-estimate,
-		.player-learning-progress {
-			grid-column: 1 / -1;
-			white-space: normal;
-		}
-		.player-learning-task-progress {
-			width: 100%;
-		}
+		@include player-learning-task-stacked;
 	}
 	.player-toggle { min-height: 44px; }
 	.transcript-segment {
@@ -1234,5 +1364,36 @@ html.transcript-layout-focus .language-learning-card {
 	.language-learning-card,
 	.player-controls-panel {
 		border-color: Highlight;
+	}
+}
+
+// After the layout rules above, which this overrides when the controls are narrow. As one group,
+// the toggles stay on one line and shorten before they would push More away.
+@media (min-width: 769px) {
+	.transcript-layout-reading,
+	.transcript-layout-focus {
+		.player-controls-actions > .player-primary-actions {
+			flex-wrap: nowrap;
+			min-width: 0;
+			> .player-learning-action {
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+		}
+	}
+}
+@media (min-width: 769px) {
+	.transcript-layout-reading,
+	.transcript-layout-focus {
+		.player-toggles.is-controls-stacked {
+			@include transcript-controls-two-rows;
+		}
+	}
+}
+@media (min-width: 769px) and (max-width: 1050px) {
+	.transcript-layout-notebook .player-toggles.is-controls-stacked {
+		@include transcript-controls-two-rows;
 	}
 }

@@ -172,10 +172,12 @@ export function createReadingsFeature(ctx: TranscriptFeatureContext): ReadingsFe
 		const translations = await tools.translateTranscriptToJapanese(sourceTexts, progress => {
 			if (runSignal.aborted) return;
 			report({ completed: progress.completed, total: progress.total });
-			taskBar.setProgress(progress.completed, progress.total, getMessage('readerJapaneseTranslationProgress', [
-				String(progress.completed),
-				String(progress.total)
-			]), progress.retry);
+			taskBar.setProgress(
+				progress.completedSegments,
+				progress.totalSegments,
+				getMessage('readerTaskPhaseJapaneseTranslation'),
+				progress.retry
+			);
 		}, runSignal);
 		throwIfRequestAborted(runSignal);
 		if (!isCompleteTranscriptTranslations(translations, sourceTexts)) {
@@ -208,10 +210,12 @@ export function createReadingsFeature(ctx: TranscriptFeatureContext): ReadingsFe
 						render(true);
 					}
 					report({ completed: progress.completedSegments, total: progress.totalSegments });
-					taskBar.setProgress(progress.completed, progress.total, getMessage('readerJapaneseReadingsProgress', [
-						String(progress.completedSegments),
-						String(progress.totalSegments)
-					]), progress.retry);
+					taskBar.setProgress(
+						progress.completedSegments,
+						progress.totalSegments,
+						getMessage('readerTaskPhaseReadings'),
+						progress.retry
+					);
 				}, runSignal);
 				throwIfRequestAborted(runSignal);
 				if (!isCompleteTranscriptReadings(annotated, taskTexts)) {
