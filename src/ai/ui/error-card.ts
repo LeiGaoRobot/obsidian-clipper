@@ -30,6 +30,17 @@ export interface AiErrorCardOptions {
 	onDismiss?: () => void;
 	/** An element for the icon slots, e.g. Settings' Lucide placeholders; the Reader passes none. */
 	icon?: (name: AiErrorCardIcon) => HTMLElement;
+	/**
+	 * `compact` fits a short bar, e.g. the popup's AI bar: Retry leads, and the explanation and any
+	 * raw detail move behind a Details toggle. Without it the card renders as the Reader and
+	 * Settings show it.
+	 */
+	variant?: 'default' | 'compact';
+	/**
+	 * Compact only: one line naming what failed, e.g. the connection and model, shown in place of
+	 * the body, which then moves behind Details.
+	 */
+	source?: string;
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(
@@ -144,6 +155,52 @@ function actionControls(doc: Document, description: AiErrorDescription, options:
 	return controls;
 }
 
+let compactDetailIds = 0;
+
+/**
+ * The compact card's content: title, one line (the source, else the body), then a row with Retry
+ * first, the other actions, and a Details toggle for what did not fit: the body when the source
+ * replaced it, and the raw detail.
+ */
+function compactContent(
+	doc: Document,
+	content: HTMLElement,
+	description: AiErrorDescription,
+	options: AiErrorCardOptions
+): void {
+	const source = options.source?.trim();
+	const line = element(doc, 'div', 'ai-error-card-body', source || description.body);
+	line.title = line.textContent ?? '';
+	content.append(element(doc, 'div', 'ai-error-card-title', description.title), line);
+
+	const controls = actionControls(doc, description, options);
+	// Retry leads: the bar sits where the run was started, so running it again comes first.
+	controls.sort((a, b) => Number(b.dataset.action === 'retry') - Number(a.dataset.action === 'retry'));
+	const actions = element(doc, 'div', 'ai-error-card-actions');
+	actions.append(...controls);
+
+	const hiddenBody = source ? description.body : '';
+	if (hiddenBody || description.detail) {
+		const panel = element(doc, 'div', 'ai-error-card-detail');
+		panel.id = `ai-error-card-detail-${++compactDetailIds}`;
+		panel.hidden = true;
+		if (hiddenBody) panel.appendChild(element(doc, 'p', 'ai-error-card-explanation', hiddenBody));
+		if (description.detail) panel.appendChild(element(doc, 'code', undefined, description.detail));
+		const toggle = element(doc, 'button', 'ai-error-card-details-toggle', getMessage('aiErrorDetails'));
+		toggle.type = 'button';
+		toggle.setAttribute('aria-expanded', 'false');
+		toggle.setAttribute('aria-controls', panel.id);
+		toggle.addEventListener('click', () => {
+			panel.hidden = !panel.hidden;
+			toggle.setAttribute('aria-expanded', String(!panel.hidden));
+		});
+		actions.appendChild(toggle);
+		content.append(actions, panel);
+	} else if (actions.childElementCount > 0) {
+		content.appendChild(actions);
+	}
+}
+
 /** Renders `description` into `container`, replacing what it held, and shows it. Returns the card. */
 export function renderAiErrorCard(
 	container: HTMLElement,
@@ -151,7 +208,8 @@ export function renderAiErrorCard(
 	options: AiErrorCardOptions = {}
 ): HTMLElement {
 	const doc = options.doc ?? container.ownerDocument;
-	const card = element(doc, 'div', 'ai-error-card');
+	const compact = options.variant === 'compact';
+	const card = element(doc, 'div', compact ? 'ai-error-card is-compact' : 'ai-error-card');
 	card.setAttribute('role', 'alert');
 	if (options.icon) {
 		const iconSlot = element(doc, 'div', 'ai-error-card-icon');
@@ -159,23 +217,27 @@ export function renderAiErrorCard(
 		card.appendChild(iconSlot);
 	}
 	const content = element(doc, 'div', 'ai-error-card-content');
-	content.append(
-		element(doc, 'div', 'ai-error-card-title', description.title),
-		element(doc, 'div', 'ai-error-card-body', description.body)
-	);
-	if (description.detail) {
-		const details = element(doc, 'details', 'ai-error-card-detail');
-		details.append(
-			element(doc, 'summary', undefined, getMessage('aiErrorTechnicalDetails')),
-			element(doc, 'code', undefined, description.detail)
+	if (compact) {
+		compactContent(doc, content, description, options);
+	} else {
+		content.append(
+			element(doc, 'div', 'ai-error-card-title', description.title),
+			element(doc, 'div', 'ai-error-card-body', description.body)
 		);
-		content.appendChild(details);
-	}
-	const controls = actionControls(doc, description, options);
-	if (controls.length > 0) {
-		const actions = element(doc, 'div', 'ai-error-card-actions');
-		actions.append(...controls);
-		content.appendChild(actions);
+		if (description.detail) {
+			const details = element(doc, 'details', 'ai-error-card-detail');
+			details.append(
+				element(doc, 'summary', undefined, getMessage('aiErrorTechnicalDetails')),
+				element(doc, 'code', undefined, description.detail)
+			);
+			content.appendChild(details);
+		}
+		const controls = actionControls(doc, description, options);
+		if (controls.length > 0) {
+			const actions = element(doc, 'div', 'ai-error-card-actions');
+			actions.append(...controls);
+			content.appendChild(actions);
+		}
 	}
 	card.appendChild(content);
 	if (options.onDismiss) {

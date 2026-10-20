@@ -375,9 +375,6 @@
 	"importTemplate": {
 		"message": "Importuj szablon"
 	},
-	"interpret": {
-		"message": "wyślij zapytanie"
-	},
 	"interpreter": {
 		"message": "Tłumacz"
 	},

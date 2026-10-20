@@ -39,6 +39,8 @@ function v1View(overrides: Partial<V1AiSettings> = {}, nativeMessaging: NativeMe
 function createPopupFixture() {
 	document.body.innerHTML = `
 		<section id="language-learning-tools" style="display:none">
+			<button id="ai-edit-toggle" type="button" aria-expanded="false">Edit with AI</button>
+			<div id="ai-edit-panel">
 			<select id="ai-edit-preset"><option value="bilingual" selected>Bilingual</option></select>
 			<textarea id="ai-edit-instruction"></textarea>
 			<button id="ai-edit-preview-btn">Preview</button>
@@ -51,6 +53,7 @@ function createPopupFixture() {
 			<button id="ai-edit-cancel-request-btn" hidden>Cancel request</button>
 			<div id="ai-edit-status"></div>
 			<div id="ai-edit-error" hidden></div>
+			</div>
 		</section>
 		<textarea id="note-content-field">Before difficult after.</textarea>
 	`;
@@ -112,6 +115,36 @@ describe('Language learning popup', () => {
 		const view = v1View();
 		view.routing.taskProfiles.edit = 'missing-profile';
 		expect(isLanguageLearningPopupAvailable(view)).toBe(false);
+	});
+
+	test('starts collapsed behind Edit with AI, which expands and collapses the tools', () => {
+		createPopupFixture();
+		const toggle = document.getElementById('ai-edit-toggle') as HTMLButtonElement;
+		const panel = document.getElementById('ai-edit-panel') as HTMLElement;
+		const transformContent = vi.fn();
+		initializeLanguageLearningPopup({ enabled: true, transformContent, getMessage: key => key });
+
+		expect(document.getElementById('language-learning-tools')?.style.display).toBe('block');
+		expect(panel.hidden).toBe(true);
+		expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+		toggle.click();
+		expect(panel.hidden).toBe(false);
+		expect(toggle.getAttribute('aria-expanded')).toBe('true');
+		expect(toggle.classList.contains('is-expanded')).toBe(true);
+
+		toggle.click();
+		expect(panel.hidden).toBe(true);
+		expect(toggle.getAttribute('aria-expanded')).toBe('false');
+		// Expanding sends nothing: a request needs Preview.
+		expect(transformContent).not.toHaveBeenCalled();
+	});
+
+	test('stays hidden, toggle included, when AI edits are unavailable', () => {
+		createPopupFixture();
+		initializeLanguageLearningPopup({ enabled: false, transformContent: vi.fn(), getMessage: key => key });
+
+		expect(document.getElementById('language-learning-tools')?.style.display).toBe('none');
 	});
 
 	test('previews, applies, undoes, and cancels a selected-text AI edit', async () => {

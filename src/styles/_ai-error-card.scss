@@ -77,3 +77,84 @@
 		margin-inline-end: -0.5rem;
 	}
 }
+
+// The compact variant, for a short bar such as the popup's AI bar: one line under the title, a row
+// with Retry first, and a Details toggle whose panel opens below with a bounded height.
+.ai-error-card.is-compact {
+	gap: 0.5rem;
+	padding: 0.625rem 0.75rem;
+	font-size: var(--font-ui-smaller, 13px);
+	line-height: 1.35;
+
+	.ai-error-card-icon {
+		padding-top: 0.0625rem;
+		svg {
+			width: 16px;
+			height: 16px;
+		}
+	}
+	.ai-error-card-title {
+		color: var(--text-error, var(--color-red));
+	}
+	.ai-error-card-body {
+		margin-top: 0.0625rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: var(--font-ui-smallest, 12px);
+	}
+	.ai-error-card-actions {
+		flex-wrap: nowrap;
+		gap: 0.25rem;
+		margin-top: 0.5rem;
+		button {
+			flex: 0 0 auto;
+			height: 1.75rem;
+			padding: 0 0.75rem;
+		}
+		// Retry is the one bordered button; the others read as links.
+		.ai-error-card-action:not([data-action="retry"]),
+		.ai-error-card-details-toggle {
+			background-color: transparent;
+			box-shadow: none;
+			padding: 0 0.5rem;
+			@media (hover: hover) {
+				&:hover {
+					background-color: var(--background-modifier-hover, transparent);
+					box-shadow: none;
+				}
+			}
+		}
+		.ai-error-card-action:not([data-action="retry"]) {
+			color: var(--text-accent);
+		}
+		.ai-error-card-details-toggle {
+			margin-inline-start: auto;
+			color: var(--text-muted);
+			font-size: var(--font-ui-smallest, 12px);
+			text-decoration: underline;
+			text-underline-offset: 2px;
+		}
+	}
+	.ai-error-card-detail {
+		margin-top: 0.5rem;
+		max-height: 7.5rem;
+		overflow-y: auto;
+		&[hidden] {
+			display: none;
+		}
+		.ai-error-card-explanation {
+			margin: 0;
+		}
+		code:first-child {
+			margin-top: 0;
+		}
+	}
+	.ai-error-card-dismiss {
+		align-self: flex-start;
+		width: 1.5rem;
+		height: 1.5rem;
+		margin-top: -0.25rem;
+		margin-inline-end: -0.375rem;
+	}
+}

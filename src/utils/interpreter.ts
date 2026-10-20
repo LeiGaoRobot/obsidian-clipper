@@ -14,6 +14,7 @@ import { toAiError, type AiError } from '../ai/errors';
 import type { AiSettingsView } from '../ai/types';
 import { createAiAction, type AiAction, type AiActionStatus } from '../ai/ui/action';
 import { renderAiErrorCard } from '../ai/ui/error-card';
+import { refreshPromptChips, type PromptChipState } from './prompt-chips';
 import {
 	listEnabledProfileGroups,
 	profileDisplayName,
@@ -96,6 +97,31 @@ export function populatePopupModelSelect(select: HTMLSelectElement, view: AiSett
 	select.style.display = groups.length > 0 ? 'inline-block' : 'none';
 }
 
+/** The idle line of the AI bar: how many prompts the template has. */
+export function interpreterPromptCountText(count: number): string {
+	return count === 1
+		? getMessage('interpreterPromptCount', [String(count)])
+		: getMessage('interpreterPromptCountPlural', [String(count)]);
+}
+
+/**
+ * Puts the AI bar's line in its idle state for a template with `count` prompts. The popup calls it
+ * when it builds the fields, before the Interpreter starts. While a run is showing its state
+ * (running, done, partial, or an error), only the count is kept, for a later return to idle.
+ */
+export function showInterpreterIdle(count: number, doc: Document = document): void {
+	const container = doc.getElementById('interpreter');
+	const summary = doc.getElementById('interpreter-summary');
+	const button = doc.getElementById('interpret-btn');
+	if (container) container.dataset.promptCount = String(count);
+	const showingRun = ['processing', 'done', 'partial', 'error'].some(state => button?.classList.contains(state));
+	if (summary && !showingRun) summary.textContent = interpreterPromptCountText(count);
+}
+
+function syncPromptChips(state: PromptChipState): void {
+	refreshPromptChips(document, { getMessage, state });
+}
+
 /**
  * Persists the popup's model choice as `routing.taskProfiles.interpret` (cleared when it equals the
  * default) and returns the view with that routing, for the popup to keep in memory. The popup's
@@ -147,12 +173,12 @@ export async function initializeInterpreter(
 	// Hide interpreter if it's disabled or there are no prompt variables
 	if (!view.enabled || promptVariables.length === 0) {
 		if (interpreterContainer) interpreterContainer.style.display = 'none';
-		if (interpretBtn) interpretBtn.style.display = 'none';
 		return;
 	}
 
 	if (interpreterContainer) interpreterContainer.style.display = 'flex';
-	if (interpretBtn) interpretBtn.style.display = 'inline-block';
+	showInterpreterIdle(promptVariables.length);
+	if (modelSelect) modelSelect.setAttribute('aria-label', getMessage('interpreterModelLabel'));
 	
 	if (promptContextTextarea) {
 		const tokenCounter = document.getElementById('token-counter');
@@ -226,8 +252,20 @@ interface InterpreterElements {
 	cancelBtn: HTMLButtonElement | null;
 	message: HTMLDivElement;
 	timer: HTMLSpanElement;
+	summary: HTMLElement | null;
+	modelSelect: HTMLSelectElement | null;
 	clipButton: HTMLButtonElement;
 	moreButton: HTMLButtonElement;
+}
+
+function setSummary(ui: InterpreterElements, text: string): void {
+	if (ui.summary) ui.summary.textContent = text;
+}
+
+/** The idle line for the bar's template, as `showInterpreterIdle` last set it. */
+function idleSummary(ui: InterpreterElements, promptCount: number): string {
+	const stored = Number(ui.container?.dataset.promptCount);
+	return interpreterPromptCountText(Number.isFinite(stored) && stored > 0 ? stored : promptCount);
 }
 
 /**
@@ -243,17 +281,19 @@ export async function handleInterpreterUI(
 	currentUrl: string,
 	profileId?: string
 ): Promise<AiActionStatus> {
+	const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
 	const ui: InterpreterElements = {
 		container: document.getElementById('interpreter'),
 		interpretBtn: document.getElementById('interpret-btn') as HTMLButtonElement,
 		cancelBtn: document.getElementById('interpreter-cancel-btn') as HTMLButtonElement | null,
 		message: document.getElementById('interpreter-error') as HTMLDivElement,
 		timer: document.getElementById('interpreter-timer') as HTMLSpanElement,
+		summary: document.getElementById('interpreter-summary'),
+		modelSelect,
 		clipButton: document.getElementById('clip-btn') as HTMLButtonElement,
 		moreButton: document.getElementById('more-btn') as HTMLButtonElement
 	};
 	const promptContextTextarea = document.getElementById('prompt-context') as HTMLTextAreaElement;
-	const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
 	const action = getInterpreterAction();
 	if (ui.cancelBtn) ui.cancelBtn.onclick = () => action.cancel();
 
@@ -282,17 +322,19 @@ async function runInterpreter(
 ): Promise<AiActionStatus> {
 	const action = getInterpreterAction();
 	retryFailedRun = undefined;
-	const { container, interpretBtn, cancelBtn, message, timer, clipButton, moreButton } = ui;
+	const { container, interpretBtn, cancelBtn, message, timer, modelSelect, clipButton, moreButton } = ui;
 
 	// Everything up to the first await runs synchronously, so a Clip that clicks the button sees
-	// `processing` at once.
+	// `processing` at once. While running, the bar shows progress and Cancel in place of Run.
 	clearInterpreterMessage(message);
-	container?.classList.remove('done', 'partial', 'error');
-	// The error card replaced the button's label; a new run shows the button again.
-	if (interpretBtn.classList.contains('error')) interpretBtn.style.display = 'inline-block';
+	container?.classList.remove('done', 'partial', 'error', 'cancelled');
+	container?.classList.add('running');
 	interpretBtn.classList.remove('done', 'partial', 'error', 'cancelled');
-	interpretBtn.textContent = getMessage('thinking');
+	interpretBtn.textContent = getMessage('interpreterRun');
 	interpretBtn.classList.add('processing');
+	setSummary(ui, getMessage('interpreterRunningSummary'));
+	if (modelSelect) modelSelect.disabled = true;
+	syncPromptChips('running');
 	clipButton.disabled = true;
 	moreButton.disabled = true;
 	if (cancelBtn) cancelBtn.hidden = false;
@@ -316,6 +358,7 @@ async function runInterpreter(
 
 	if (cancelBtn) cancelBtn.hidden = true;
 	interpretBtn.classList.remove('processing');
+	container?.classList.remove('running');
 	clipButton.disabled = false;
 	moreButton.disabled = false;
 
@@ -333,9 +376,12 @@ async function runInterpreter(
 		showInterpreterFailure(ui, promptVariables, state.error, relaunch);
 		return 'error';
 	}
-	// Cancelled: the button returns to its idle label and can run again.
-	interpretBtn.textContent = getMessage('interpret');
+	// Cancelled: the bar returns to Run, saying the request was cancelled, and can run again.
 	interpretBtn.classList.add('cancelled');
+	container?.classList.add('cancelled');
+	if (modelSelect) modelSelect.disabled = false;
+	setSummary(ui, getMessage('aiRequestCancelled'));
+	syncPromptChips('idle');
 	timer.style.display = 'none';
 	return 'cancelled';
 }
@@ -352,19 +398,21 @@ function applyInterpretResult(ui: InterpreterElements, promptVariables: PromptVa
 		}));
 	debugLog('Interpreter', 'LLM response:', { promptResponses, missing });
 
-	// Update button state; a partial result is never marked done
+	// Update the bar's state; a partial result is never marked done. The bar stays quiet: the
+	// outcome, how long it took, and the model, with no further action.
 	const state = missing.length > 0 ? 'partial' : 'done';
-	ui.interpretBtn.textContent = getMessage(state === 'done' ? 'done' : 'interpreterPartialStatus').toLowerCase();
 	ui.interpretBtn.classList.add(state);
 	ui.interpretBtn.disabled = true;
 	ui.container?.classList.add(state);
+	setSummary(ui, state === 'done' ? getMessage('interpreterDoneSummary') : getMessage('interpreterPartialStatus'));
 	if (state === 'partial') {
 		const unanswered = promptVariables.filter(variable => missing.includes(variable.key));
 		showInterpreterPartial(ui.message, unanswered, promptVariables.length);
 	}
 
-	// Update fields with responses
+	// Update fields with responses; prompts left unanswered keep a chip that says so.
 	replacePromptVariables(promptVariables, promptResponses);
+	syncPromptChips(state === 'partial' ? 'failed' : 'idle');
 
 	// Adjust height for noteNameField after content is replaced
 	const noteNameField = document.getElementById('note-name-field') as HTMLTextAreaElement | null;
@@ -383,13 +431,13 @@ function showInterpreterFailure(
 	relaunch: () => Promise<InterpretResult | undefined>
 ): void {
 	console.error('Error processing LLM:', error);
-	ui.interpretBtn.textContent = getMessage('error');
+	// The bar becomes the compact error card: its title names the error in place of the controls.
 	ui.interpretBtn.classList.add('error');
 	ui.interpretBtn.disabled = true;
-	// The card's title already names the error, so the button's "Error" label is not shown too.
-	ui.interpretBtn.style.display = 'none';
 	ui.container?.classList.add('error');
+	if (ui.modelSelect) ui.modelSelect.disabled = false;
 	ui.timer.style.display = 'none';
+	syncPromptChips('failed');
 
 	const retry = () => {
 		ui.interpretBtn.disabled = false;
@@ -397,17 +445,45 @@ function showInterpreterFailure(
 	};
 	retryFailedRun = retry;
 	renderAiErrorCard(ui.message, describeAiError(error), {
+		variant: 'compact',
+		source: errorSource(ui.modelSelect, error),
 		handlers: {
 			// The same prompts again, with the context and model shown now.
 			retry: () => { void retry(); },
 			openSettings: () => {
 				void browser.runtime.sendMessage({ action: 'openOptionsPage', section: 'ai' });
 			}
+		},
+		// Dismiss returns the bar to idle, where another model can be chosen before running again.
+		onDismiss: () => {
+			retryFailedRun = undefined;
+			clearInterpreterMessage(ui.message);
+			ui.container?.classList.remove('error');
+			ui.interpretBtn.classList.remove('error');
+			ui.interpretBtn.disabled = false;
+			setSummary(ui, idleSummary(ui, promptVariables.length));
+			syncPromptChips('idle');
+			ui.interpretBtn.focus();
 		}
 	});
 	ui.message.style.display = 'block';
-	// The popup has a fixed height: bring the whole card, its actions included, into view.
+	// The footer stays in view; this keeps any scroller around the card showing it whole.
 	ui.message.scrollIntoView?.({ block: 'nearest' });
+}
+
+/**
+ * The compact card's line naming what failed: the connection and model of the failed profile as
+ * the model select lists them, with the HTTP status when there is one.
+ */
+function errorSource(select: HTMLSelectElement | null, error: AiError): string | undefined {
+	const profileId = error.profileId || select?.value;
+	if (!select || !profileId) return undefined;
+	const option = Array.from(select.options).find(candidate => candidate.value === profileId);
+	const model = option?.textContent?.trim();
+	if (!option || !model) return undefined;
+	const group = option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label.trim() : '';
+	const source = group && group !== model ? getMessage('aiErrorSource', [group, model]) : model;
+	return error.status ? getMessage('aiErrorSourceHttp', [source, String(error.status)]) : source;
 }
 
 function clearInterpreterMessage(container: HTMLElement): void {

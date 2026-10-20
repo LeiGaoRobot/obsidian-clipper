@@ -28,14 +28,15 @@ On Firefox, the install or update prompt discloses website-content transmission 
 
 ## Revise clipped content with AI
 
-The AI editing controls appear in the extension popup and side panel when AI features are enabled and **Task routing** names a model for **AI edit** (its own choice or the default model). When that model's key is missing on this device, or it is a local CLI this browser cannot reach, the controls still appear and the error card explains what to set up.
+The AI editing controls appear in the extension popup and side panel when AI features are enabled and **Task routing** names a model for **AI edit** (its own choice or the default model). When that model's key is missing on this device, or it is a local CLI this browser cannot reach, the controls still appear and the error card explains what to set up. They start collapsed behind a dashed **✦ Edit with AI…** button below the note content; select it to show them, and select it again to hide them. Showing the controls sends nothing. They stay as you left them until the window closes.
 
 1. Capture a page normally.
-2. In the note-content field, select the text you want to change. Leave the selection empty to process the entire clipping.
-3. Choose a preset or enter a custom instruction.
-4. Select **Preview AI edit**.
-5. Review the generated Markdown, then select **Apply** or **Cancel**.
-6. After applying an edit, select **Undo** to restore the previous clipping content.
+2. Select **✦ Edit with AI…** to show the AI editing controls.
+3. In the note-content field, select the text you want to change. Leave the selection empty to process the entire clipping.
+4. Choose a preset or enter a custom instruction.
+5. Select **Preview AI edit**.
+6. Review the generated Markdown, then select **Apply** or **Cancel**.
+7. After applying an edit, select **Undo** to restore the previous clipping content.
 
 | Preset | Result |
 | --- | --- |
@@ -142,7 +143,7 @@ The task bar shows **Cancel** while a transcript task or an explanation runs, an
 
 ### AI editing controls are missing
 
-Confirm that **Enable AI features** is on in **Settings → AI**, and that **Task routing** names an enabled model for **AI edit** or as the default model. For a local CLI, confirm that the Native Messaging Host is installed and the CLI is installed and authenticated. Reload the popup after changing AI settings.
+The controls start collapsed: look for **✦ Edit with AI…** below the note content. If it is missing, confirm that **Enable AI features** is on in **Settings → AI**, and that **Task routing** names an enabled model for **AI edit** or as the default model. For a local CLI, confirm that the Native Messaging Host is installed and the CLI is installed and authenticated. Reload the popup after changing AI settings.
 
 For a local CLI, **Local CLI host is out of date** means the extension was rebuilt without reinstalling the Host. **CLI not found** means the CLI's executable was not detected at install time or no longer exists; install the CLI, then run the install command again.
 

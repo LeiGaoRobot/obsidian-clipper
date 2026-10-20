@@ -18,6 +18,7 @@ import {
 	collectPromptVariables,
 	populatePopupModelSelect,
 	prepareInterpreterForClip,
+	showInterpreterIdle,
 	InterpreterCancelledError,
 	InterpreterFailedError,
 	InterpreterPartialError
@@ -25,6 +26,7 @@ import {
 import { loadAiSettingsWithCredentialPresence } from '../utils/ai-settings';
 import type { AiSettingsView } from '../ai/types';
 import { adjustNoteNameHeight } from '../utils/ui-utils';
+import { refreshPromptChips } from '../utils/prompt-chips';
 import { debugLog } from '../utils/debug';
 import { showVariables, initializeVariablesPanel, updateVariablesPanel } from '../managers/inspect-variables';
 import { isBlankPage, isValidUrl, isRestrictedUrl } from '../utils/active-tab-manager';
@@ -666,7 +668,8 @@ function clearError(): void {
 
 	if (errorMessage && clipper) {
 		errorMessage.style.display = 'none';
-		clipper.style.display = 'block';
+		// Back to the stylesheet's layout: a scrolling body above the fixed footer.
+		clipper.style.display = '';
 
 		document.body.classList.remove('has-error');
 	}
@@ -880,12 +883,12 @@ function buildTemplateFieldsSkeleton(template: Template | null) {
 		noteContentField.setAttribute('data-template-value', template.noteContentFormat || '');
 	}
 
-	// Show/hide interpreter section based on template prompt variables
+	// Show/hide the AI bar based on template prompt variables
 	const interpreterContainer = document.getElementById('interpreter');
-	const interpretBtn = document.getElementById('interpret-btn');
-	const hasPromptVars = aiSettings.enabled && collectPromptVariables(template).length > 0;
+	const promptCount = collectPromptVariables(template).length;
+	const hasPromptVars = aiSettings.enabled && promptCount > 0;
 	if (interpreterContainer) interpreterContainer.style.display = hasPromptVars ? 'flex' : 'none';
-	if (interpretBtn) interpretBtn.style.display = hasPromptVars ? 'inline-block' : 'none';
+	if (hasPromptVars) showInterpreterIdle(promptCount);
 
 	// Populate model dropdown immediately (only needs the loaded settings)
 	if (hasPromptVars) {
@@ -950,6 +953,13 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 	if (noteContentField) {
 		noteContentField.value = template.noteContentFormat ? formattedContent : '';
 	}
+
+	// Properties still holding a prompt show a chip in place of the raw prompt (display only).
+	const interpretState = document.getElementById('interpret-btn')?.classList;
+	refreshPromptChips(document, {
+		getMessage,
+		state: interpretState?.contains('processing') ? 'running' : interpretState?.contains('error') ? 'failed' : 'idle'
+	});
 
 	if (aiSettings.enabled) {
 		const view = aiSettings;

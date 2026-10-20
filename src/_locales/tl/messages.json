@@ -375,9 +375,6 @@
 	"importTemplate": {
 		"message": "I-import ang template"
 	},
-	"interpret": {
-		"message": "I-interpret"
-	},
 	"interpreter": {
 		"message": "Interpreter"
 	},

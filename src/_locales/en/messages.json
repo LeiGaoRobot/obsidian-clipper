@@ -47,6 +47,9 @@
 	"aiEditPresetLabel": {
 		"message": "AI edit mode"
 	},
+	"aiEditToggle": {
+		"message": "Edit with AI…"
+	},
 	"aiEditPresetPolish": {
 		"message": "Polish"
 	},
@@ -484,6 +487,24 @@
 	},
 	"aiErrorTechnicalDetails": {
 		"message": "Technical details"
+	},
+	"aiErrorDetails": {
+		"message": "Details"
+	},
+	"aiErrorSource": {
+		"message": "$1 · $2"
+	},
+	"aiErrorSourceHttp": {
+		"message": "$1 · HTTP $2"
+	},
+	"aiPromptChip": {
+		"message": "AI fills this"
+	},
+	"aiPromptChipRunning": {
+		"message": "AI is filling this…"
+	},
+	"aiPromptChipNotFilled": {
+		"message": "Not filled"
 	},
 	"aiErrorActionRetry": {
 		"message": "Try again"
@@ -930,9 +951,6 @@
 	"importTemplate": {
 		"message": "Import template"
 	},
-	"interpret": {
-		"message": "interpret"
-	},
 	"interpreter": {
 		"message": "Interpreter"
 	},
@@ -950,6 +968,24 @@
 	},
 	"interpreterPartialTitle": {
 		"message": "Some prompts were not answered."
+	},
+	"interpreterRun": {
+		"message": "Run"
+	},
+	"interpreterPromptCount": {
+		"message": "$1 AI prompt in this template"
+	},
+	"interpreterPromptCountPlural": {
+		"message": "$1 AI prompts in this template"
+	},
+	"interpreterRunningSummary": {
+		"message": "Running…"
+	},
+	"interpreterDoneSummary": {
+		"message": "AI prompts filled"
+	},
+	"interpreterModelLabel": {
+		"message": "Model"
 	},
 	"interpreterPartialBody": {
 		"message": "The model answered $1 of $2 prompts. The unanswered prompts below stay as placeholders in the note. Fill them in, or add the note to Obsidian as it is. To interpret again, reopen Web Clipper."

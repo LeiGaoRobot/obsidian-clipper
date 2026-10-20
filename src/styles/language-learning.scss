@@ -1,7 +1,41 @@
 #language-learning-tools {
-	padding: 8px var(--popup-padding);
-	border-top: 1px solid var(--divider-color);
+	flex-shrink: 0;
+	padding: 4px var(--popup-padding) 10px;
 	background: var(--background-primary);
+}
+
+// "Edit with AI…": the tools stay collapsed behind this dashed button until it is clicked.
+#ai-edit-toggle {
+	width: auto;
+	height: var(--input-height);
+	gap: 0.375rem;
+	padding: 0 0.75rem;
+	color: var(--text-accent);
+	background-color: transparent;
+	border: 1px dashed hsla(var(--color-accent-hsl), 0.45);
+	box-shadow: none;
+	cursor: default;
+	@media (hover: hover) {
+		&:hover {
+			background-color: hsla(var(--color-accent-hsl), 0.075);
+			box-shadow: none;
+		}
+	}
+	&:focus-visible {
+		box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+	}
+	// Expanded, it heads the tools it opened.
+	&.is-expanded {
+		border-color: transparent;
+		padding-inline-start: 0.25rem;
+	}
+}
+
+#ai-edit-panel {
+	margin-top: 6px;
+	&[hidden] {
+		display: none;
+	}
 }
 
 .ai-edit-controls,

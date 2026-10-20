@@ -375,9 +375,6 @@
 	"importTemplate": {
 		"message": "템플릿 가져오기"
 	},
-	"interpret": {
-		"message": "해석"
-	},
 	"interpreter": {
 		"message": "인터프리터"
 	},
