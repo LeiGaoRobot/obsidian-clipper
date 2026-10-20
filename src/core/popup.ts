@@ -55,15 +55,16 @@ const isSidePanel = window.location.pathname.includes('side-panel.html');
 const urlParams = new URLSearchParams(window.location.search);
 const isIframe = urlParams.get('context') === 'iframe';
 
-// Memoize compileTemplate with a short expiration and URL-sensitive key
+// Memoize compileTemplate with a short expiration and URL-sensitive key. Prompt variables are kept
+// for the Interpreter while AI is on, so that choice is part of the key.
 const memoizedCompileTemplate = memoizeWithExpiration(
-	async (tabId: number, template: string, variables: { [key: string]: string }, currentUrl: string) => {
-		return compileTemplate(tabId, template, variables, currentUrl);
+	async (tabId: number, template: string, variables: { [key: string]: string }, currentUrl: string, keepPromptVariables: boolean) => {
+		return compileTemplate(tabId, template, variables, currentUrl, { keepPromptVariables });
 	},
 	{
 		expirationMs: 5000,
-		keyFn: (tabId: number, template: string, variables: { [key: string]: string }, currentUrl: string) =>
-			`${tabId}-${template}-${currentUrl}`
+		keyFn: (tabId: number, template: string, variables: { [key: string]: string }, currentUrl: string, keepPromptVariables: boolean) =>
+			`${tabId}-${template}-${currentUrl}-${keepPromptVariables}`
 	}
 );
 
@@ -299,14 +300,12 @@ function setupMessageListeners() {
 }
 
 /**
- * Loads the v1 settings and the AI view. The view decides whether AI is on; the template compiler's
- * prompt-variable handling still reads the v1 `interpreterEnabled` field (until Phase 7), so it is
- * mirrored in memory. `saveSettings` no longer writes `interpreter_settings`, so it never persists.
+ * Loads the settings and the AI view. The view decides whether AI is on, which also decides whether
+ * template compilation keeps prompt variables for the Interpreter.
  */
 async function loadPopupSettings(): Promise<void> {
 	// No API keys in the Popup: which connections have one is enough for its readiness checks.
 	[loadedSettings, aiSettings] = await Promise.all([loadSettings(), loadAiSettingsWithCredentialPresence()]);
-	loadedSettings.interpreterEnabled = aiSettings.enabled;
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -904,15 +903,16 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 
 	if (!Array.isArray(template.properties)) return;
 
-	// Compile all templates in parallel
+	// Compile all templates in parallel; prompt variables stay for the Interpreter while AI is on
+	const keepPromptVariables = aiSettings.enabled;
 	const [compiledPropertyValues, formattedNoteName, formattedPath, formattedContent] = await Promise.all([
 		Promise.all(template.properties.map(property =>
-			memoizedCompileTemplate(currentTabId!, unescapeValue(property.value), variables, currentUrl)
+			memoizedCompileTemplate(currentTabId!, unescapeValue(property.value), variables, currentUrl, keepPromptVariables)
 		)),
-		memoizedCompileTemplate(currentTabId!, template.noteNameFormat, variables, currentUrl),
-		memoizedCompileTemplate(currentTabId!, template.path, variables, currentUrl),
+		memoizedCompileTemplate(currentTabId!, template.noteNameFormat, variables, currentUrl, keepPromptVariables),
+		memoizedCompileTemplate(currentTabId!, template.path, variables, currentUrl, keepPromptVariables),
 		template.noteContentFormat
-			? memoizedCompileTemplate(currentTabId!, template.noteContentFormat, variables, currentUrl)
+			? memoizedCompileTemplate(currentTabId!, template.noteContentFormat, variables, currentUrl, keepPromptVariables)
 			: Promise.resolve('')
 	]);
 
@@ -1020,26 +1020,27 @@ function updateMetadataToggleState(isCollapsed: boolean) {
 }
 
 async function getReplacedTemplate(template: Template, variables: { [key: string]: string }, tabId: number, currentUrl: string): Promise<any> {
+	const options = { keepPromptVariables: aiSettings.enabled };
 	const replacedTemplate: any = {
 		schemaVersion: "0.1.0",
 		name: template.name,
 		behavior: template.behavior,
-		noteNameFormat: await compileTemplate(tabId, template.noteNameFormat, variables, currentUrl),
+		noteNameFormat: await compileTemplate(tabId, template.noteNameFormat, variables, currentUrl, options),
 		path: template.path,
-		noteContentFormat: await compileTemplate(tabId, template.noteContentFormat, variables, currentUrl),
+		noteContentFormat: await compileTemplate(tabId, template.noteContentFormat, variables, currentUrl, options),
 		properties: [],
 		triggers: template.triggers
 	};
 
 	if (template.context) {
-		replacedTemplate.context = await compileTemplate(tabId, template.context, variables, currentUrl);
+		replacedTemplate.context = await compileTemplate(tabId, template.context, variables, currentUrl, options);
 	}
 
 	for (const prop of template.properties) {
 		const replacedProp: Property = {
 			id: prop.id,
 			name: prop.name,
-			value: await compileTemplate(tabId, prop.value, variables, currentUrl)
+			value: await compileTemplate(tabId, prop.value, variables, currentUrl, options)
 		};
 		replacedTemplate.properties.push(replacedProp);
 	}

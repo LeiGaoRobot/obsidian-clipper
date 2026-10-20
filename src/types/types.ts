@@ -36,15 +36,6 @@ export interface PropertyType {
 	defaultValue?: string;
 }
 
-export interface Provider {
-	id: string;
-	name: string;
-	baseUrl: string;
-	apiKey: string;
-	apiKeyRequired?: boolean;
-	presetId?: string;
-}
-
 export interface Rating {
 	rating: number;
 	date: string;
@@ -82,6 +73,11 @@ export interface ReaderSettings {
 	compactPlayer?: boolean;
 	bilingualSubtitles?: boolean;
 	japaneseReadings?: boolean;
+	/**
+	 * @deprecated v1, round-tripped until the v1 deletion release. Nothing reads it at runtime (the
+	 * response language is `ai_routing.responseLanguage`); `saveSettings` writes it back so an older
+	 * build on another device keeps its value.
+	 */
 	learningResponseLanguage: string;
 	learningVault?: string;
 	learningFolder?: string;
@@ -98,15 +94,6 @@ export interface Settings {
 	highlighterEnabled: boolean;
 	alwaysShowHighlights: boolean;
 	highlightBehavior: string;
-	interpreterModel?: string;
-	models: ModelConfig[];
-	providers: Provider[];
-	interpreterEnabled: boolean;
-	interpreterAutoRun: boolean;
-	interpreterExecutionMode?: InterpreterExecutionMode;
-	interpreterCodexModel?: string;
-	interpreterCodexReasoningEffort?: CodexReasoningEffort;
-	defaultPromptContext: string;
 	propertyTypes: PropertyType[];
 	readerSettings: ReaderSettings;
 	stats: {
@@ -118,14 +105,6 @@ export interface Settings {
 	history: HistoryEntry[];
 	ratings: Rating[];
 	saveBehavior: 'addToObsidian' | 'saveFile' | 'copyToClipboard';
-}
-
-export interface ModelConfig {
-	id: string;
-	providerId: string;
-	providerModelId: string;
-	name: string;
-	enabled: boolean;
 }
 
 export interface HistoryEntry {

@@ -1,4 +1,4 @@
-import type { ReaderSettings, Settings } from '../types/types';
+import type { V1AiSettings } from './migrate';
 import { normalizeCodexModel } from '../utils/codex-model';
 import { normalizeCodexReasoningEffort } from '../utils/codex-reasoning-effort';
 import { AI_ERROR_CODES } from './errors';
@@ -532,21 +532,8 @@ export function assertSyncItemSize(key: string, value: unknown): void {
 
 // --- v1 for derived mode -------------------------------------------------------------------------
 
-/** The v1 fields `deriveAiSettings` reads. */
-export type V1AiSettings = Pick<Settings,
-	| 'interpreterModel'
-	| 'models'
-	| 'providers'
-	| 'interpreterEnabled'
-	| 'interpreterAutoRun'
-	| 'interpreterExecutionMode'
-	| 'interpreterCodexModel'
-	| 'interpreterCodexReasoningEffort'
-	| 'defaultPromptContext'
-> & { readerSettings: Pick<ReaderSettings, 'learningResponseLanguage'> };
-
 /**
- * Reads the raw v1 `interpreter_settings` and `reader_settings` items the way `loadSettings` does:
+ * Reads the raw v1 `interpreter_settings` and `reader_settings` items the way v1 loaded them:
  * providers and models must be objects with a string id, the mode is `api` unless `grok` / `codex`,
  * and the Codex model and effort are normalized. Values of the wrong type read as their defaults.
  */
@@ -559,8 +546,8 @@ export function sanitizeV1AiSettings(interpreterSettings: unknown, readerSetting
 	const mode = interpreter.interpreterExecutionMode;
 	return {
 		interpreterModel: typeof interpreter.interpreterModel === 'string' ? interpreter.interpreterModel : '',
-		models: withStringId(interpreter.models) as Settings['models'],
-		providers: withStringId(interpreter.providers) as Settings['providers'],
+		models: withStringId(interpreter.models) as V1AiSettings['models'],
+		providers: withStringId(interpreter.providers) as V1AiSettings['providers'],
 		interpreterEnabled: typeof interpreter.interpreterEnabled === 'boolean' ? interpreter.interpreterEnabled : false,
 		interpreterAutoRun: typeof interpreter.interpreterAutoRun === 'boolean' ? interpreter.interpreterAutoRun : false,
 		interpreterExecutionMode: mode === 'grok' || mode === 'codex' ? mode : 'api',
@@ -782,8 +769,7 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 		}
 		const v1 = sanitizeV1AiSettings(syncState[V1_INTERPRETER_SETTINGS_KEY], syncState[V1_READER_SETTINGS_KEY]);
 		return {
-			// deriveAiSettings reads only the fields in V1AiSettings.
-			view: deriveAiSettings(v1 as Settings, { nativeMessaging: support }),
+			view: deriveAiSettings(v1, { nativeMessaging: support }),
 			mode: 'derived',
 			connectionStatus,
 			...errorField

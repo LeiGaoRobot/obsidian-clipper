@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import type { Settings } from '../types/types';
+import type { V1AiSettings } from './migrate';
 import { createAiDiagnostics } from './diagnostics';
 import { AiError } from './errors';
 import { createAiGateway, type AiGatewayDeps, type AiPortLike } from './gateway';
@@ -17,7 +17,7 @@ import { createConnectionStatusStore } from './settings';
 import { deriveAiSettings } from './settings-view';
 import type { AiSettingsView, NativeMessagingSupport } from './types';
 
-function v1Settings(overrides: Partial<Settings> = {}): Settings {
+function v1Settings(overrides: Partial<V1AiSettings> = {}): V1AiSettings {
 	return {
 		interpreterEnabled: true,
 		interpreterExecutionMode: 'api',
@@ -31,7 +31,7 @@ function v1Settings(overrides: Partial<Settings> = {}): Settings {
 		],
 		readerSettings: {},
 		...overrides
-	} as Settings;
+	} as V1AiSettings;
 }
 
 class FakePort implements AiPortLike {
@@ -315,7 +315,7 @@ describe('AI gateway', () => {
 				interpreterExecutionMode: 'codex',
 				interpreterCodexModel: 'gpt-5-codex',
 				interpreterCodexReasoningEffort: 'high'
-			} as Partial<Settings>)
+			} as Partial<V1AiSettings>)
 		);
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
 		await flush();
@@ -345,7 +345,7 @@ describe('AI gateway', () => {
 		const connectionStatus = createConnectionStatusStore();
 		const { port } = setup(
 			{ executeCli: executeCli as unknown as AiGatewayDeps['executeCli'], connectionStatus },
-			v1Settings({ interpreterExecutionMode: 'codex' } as Partial<Settings>)
+			v1Settings({ interpreterExecutionMode: 'codex' } as Partial<V1AiSettings>)
 		);
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
 		await flush();
@@ -359,7 +359,7 @@ describe('AI gateway', () => {
 	test('uses the effective structured mode: status override, then the connection, then the default', async () => {
 		const deepseek = v1Settings({
 			providers: [{ id: 'provider-openai', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1/chat/completions', apiKey: 'sk', apiKeyRequired: true }]
-		} as Partial<Settings>);
+		} as Partial<V1AiSettings>);
 		const run = async (view: AiSettingsView, status?: Record<string, unknown>) => {
 			const executeApi = vi.fn(async () => envelope);
 			const local = memoryArea(status ? { ai_connection_status: status } : {});
@@ -409,7 +409,7 @@ describe('AI gateway', () => {
 		const executeCli = vi.fn(async () => 'Here you go: {"prompt_1":"From Grok"}');
 		const { port } = setup(
 			{ executeCli: executeCli as unknown as AiGatewayDeps['executeCli'] },
-			v1Settings({ interpreterExecutionMode: 'grok' } as Partial<Settings>)
+			v1Settings({ interpreterExecutionMode: 'grok' } as Partial<V1AiSettings>)
 		);
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
 		await flush();
@@ -420,7 +420,7 @@ describe('AI gateway', () => {
 	test('reports CLI profiles as unsupported without Native Messaging', async () => {
 		const { port } = setup(
 			{},
-			v1Settings({ interpreterExecutionMode: 'grok' } as Partial<Settings>),
+			v1Settings({ interpreterExecutionMode: 'grok' } as Partial<V1AiSettings>),
 			'none'
 		);
 		port.send({ type: 'start', jobId: 'job-1', task: 'interpret', input });
@@ -668,7 +668,7 @@ describe('AI gateway connection Test', () => {
 		const local = memoryArea({ ai_connection_status: { 'provider-openai': { structuredOutput: 'none' } } });
 		const settings = v1Settings({
 			providers: [{ id: 'provider-openai', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1/chat/completions', apiKey: 'sk-test', apiKeyRequired: true }]
-		} as Partial<Settings>);
+		} as Partial<V1AiSettings>);
 		const executeApi = vi.fn(async () => '{"ok":true}');
 		const unauthorized = vi.fn(async () => new Response('{"error":"invalid key sk-test"}', { status: 401 }));
 		const first = setup({
@@ -777,7 +777,7 @@ describe('AI gateway connection Test', () => {
 		const executeCli = vi.fn(async () => 'OK');
 		const { port } = setup(
 			{ checkCliHealth, executeCli: executeCli as unknown as AiGatewayDeps['executeCli'] },
-			v1Settings({ interpreterExecutionMode: 'codex', interpreterCodexModel: 'gpt-5-codex', interpreterCodexReasoningEffort: 'high' } as Partial<Settings>)
+			v1Settings({ interpreterExecutionMode: 'codex', interpreterCodexModel: 'gpt-5-codex', interpreterCodexReasoningEffort: 'high' } as Partial<V1AiSettings>)
 		);
 		port.send({ type: 'test', jobId: 'test-1', connectionId: 'legacy-cli-codex' });
 		await flush();

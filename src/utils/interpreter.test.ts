@@ -4,13 +4,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AiError } from '../ai/errors';
 import { deriveAiSettings } from '../ai/settings-view';
 import type { AiSettingsView } from '../ai/types';
-import type { Settings, Template } from '../types/types';
+import type { V1AiSettings } from '../ai/migrate';
+import type { Template } from '../types/types';
 
 const mocks = vi.hoisted(() => ({
 	runAiTask: vi.fn(),
 	loadAiSettings: vi.fn(),
 	saveRouting: vi.fn(),
-	sendMessage: vi.fn()
+	sendMessage: vi.fn(),
+	compileTemplate: vi.fn()
 }));
 
 vi.mock('./browser-polyfill', () => ({ default: { runtime: { sendMessage: mocks.sendMessage } } }));
@@ -19,7 +21,7 @@ vi.mock('./ai-settings', () => ({
 	loadAiSettings: mocks.loadAiSettings,
 	aiSettingsStore: { load: mocks.loadAiSettings, saveRouting: mocks.saveRouting }
 }));
-vi.mock('./template-compiler', () => ({ compileTemplate: async (_tabId: number, text: string) => text }));
+vi.mock('./template-compiler', () => ({ compileTemplate: mocks.compileTemplate }));
 vi.mock('../ai/client', () => ({ runAiTask: mocks.runAiTask }));
 vi.mock('./i18n', () => ({ getMessage: (key: string) => key }));
 vi.mock('./debug', () => ({ debugLog: vi.fn() }));
@@ -47,7 +49,7 @@ const template: Template = {
 };
 
 // Views are built from v1 settings exactly as the loader derives them until v2 is stored.
-function v1View(overrides: Partial<Settings> = {}): AiSettingsView {
+function v1View(overrides: Partial<V1AiSettings> = {}): AiSettingsView {
 	return deriveAiSettings({
 		interpreterEnabled: true,
 		interpreterAutoRun: false,
@@ -61,7 +63,7 @@ function v1View(overrides: Partial<Settings> = {}): AiSettingsView {
 		],
 		readerSettings: {},
 		...overrides
-	} as Settings, { nativeMessaging: 'port' });
+	} as V1AiSettings, { nativeMessaging: 'port' });
 }
 
 // A stored (v2) view: per-task routing, labelled connections, and a CLI listed even where the
@@ -117,6 +119,7 @@ describe('Interpreter', () => {
 		`;
 		mocks.saveRouting.mockReset().mockResolvedValue(false);
 		mocks.sendMessage.mockReset().mockResolvedValue(undefined);
+		mocks.compileTemplate.mockReset().mockImplementation(async (_tabId: number, text: string) => text);
 		mocks.loadAiSettings.mockReset().mockResolvedValue(v1View());
 		mocks.runAiTask.mockReset().mockResolvedValue({
 			output: { responses: { prompt_1: 'Done' }, missing: [] },
@@ -284,6 +287,24 @@ describe('Interpreter', () => {
 		(document.getElementById('interpret-btn') as HTMLButtonElement).click();
 		await vi.waitFor(() => expect(mocks.runAiTask).toHaveBeenCalledOnce());
 		expect(mocks.runAiTask).toHaveBeenCalledWith('interpret', expect.anything(), { profileId: 'codex-default', signal: expect.any(AbortSignal) });
+	});
+
+	test('compiles the prompt context keeping prompt variables while AI is on', async () => {
+		const withContext = { ...template, context: 'Context {{"Summarize"}}' };
+		await initializeInterpreter(withContext, {}, 1, 'https://example.com', storedView());
+
+		expect(mocks.compileTemplate).toHaveBeenCalledWith(
+			1, 'Context {{"Summarize"}}', {}, 'https://example.com', { keepPromptVariables: true }
+		);
+		expect((document.getElementById('prompt-context') as HTMLTextAreaElement).value).toBe('Context {{"Summarize"}}');
+	});
+
+	test('does not compile the prompt context while AI is off', async () => {
+		const withContext = { ...template, context: 'Context {{"Summarize"}}' };
+		await initializeInterpreter(withContext, {}, 1, 'https://example.com', { ...storedView(), enabled: false });
+
+		expect(mocks.compileTemplate).not.toHaveBeenCalled();
+		expect(document.getElementById('interpreter')?.style.display).toBe('none');
 	});
 
 	test('the interpret button lets routing decide when the select has no choice', async () => {

@@ -1,5 +1,5 @@
-import type { Settings } from '../types/types';
 import { inferConnectionKind } from './connection-kind';
+import type { V1AiSettings } from './migrate';
 import type {
 	AiSettingsView,
 	Connection,
@@ -16,7 +16,7 @@ export interface DeriveAiSettingsOptions {
 	nativeMessaging: NativeMessagingSupport;
 }
 
-function legacyDefaultProfileId(settings: Settings): string | undefined {
+function legacyDefaultProfileId(settings: V1AiSettings): string | undefined {
 	const mode = settings.interpreterExecutionMode ?? 'api';
 	if (mode === 'codex') return LEGACY_CODEX_PROFILE_ID;
 	if (mode === 'grok') return LEGACY_GROK_PROFILE_ID;
@@ -31,7 +31,7 @@ function legacyDefaultProfileId(settings: Settings): string | undefined {
  * Until the v2 Settings section ships, v1 remains the only stored source of truth.
  */
 export function deriveAiSettings(
-	settings: Settings,
+	settings: V1AiSettings,
 	{ nativeMessaging }: DeriveAiSettingsOptions
 ): AiSettingsView {
 	const credentials: Record<string, string> = {};

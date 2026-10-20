@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { Settings } from '../types/types';
+import type { V1AiSettings } from '../ai/migrate';
 import { AiError } from '../ai/errors';
 import { transcriptJobId, type TranscriptJobIdentity, type TranscriptJobTask } from '../ai/job-identity';
 import type { TranscriptSegment } from '../ai/contracts';
@@ -61,7 +62,8 @@ import type { AiSettingsView } from '../ai/types';
 import { configuredLanguageLearning } from './language-learning-runtime';
 import type { TranscriptReadingProgress } from './language-learning';
 
-const settings: Settings = {
+// Both the settings `loadSettings` returns and the v1 fields a derived view is built from.
+const settings: Settings & V1AiSettings = {
 	vaults: [],
 	showMoreActionsButton: false,
 	betaFeatures: false,
@@ -82,6 +84,7 @@ const settings: Settings = {
 	providers: [],
 	interpreterEnabled: true,
 	interpreterAutoRun: false,
+	interpreterExecutionMode: 'api',
 	defaultPromptContext: '',
 	propertyTypes: [],
 	readerSettings: {

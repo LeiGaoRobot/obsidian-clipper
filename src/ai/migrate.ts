@@ -1,10 +1,7 @@
 import type {
 	CodexReasoningEffort,
 	InterpreterExecutionMode,
-	ModelConfig,
-	Provider,
-	ReaderSettings,
-	Settings
+	ReaderSettings
 } from '../types/types';
 import { normalizeCodexModel } from '../utils/codex-model';
 import { normalizeCodexReasoningEffort } from '../utils/codex-reasoning-effort';
@@ -61,11 +58,30 @@ export interface AiSettingsWrites {
 	credentials?: Record<string, string>;
 }
 
-/** The v1 fields the migration reads, sanitized the way `loadSettings` does. */
+/** A v1 `interpreter_settings.providers` entry: an API connection with its key. */
+export interface V1Provider {
+	id: string;
+	name: string;
+	baseUrl: string;
+	apiKey: string;
+	apiKeyRequired?: boolean;
+	presetId?: string;
+}
+
+/** A v1 `interpreter_settings.models` entry: a model of a provider. */
+export interface V1ModelConfig {
+	id: string;
+	providerId: string;
+	providerModelId: string;
+	name: string;
+	enabled: boolean;
+}
+
+/** The v1 fields the migration and `deriveAiSettings` read, sanitized the way v1 loaded them. */
 export interface V1AiSettings {
 	interpreterModel: string;
-	models: ModelConfig[];
-	providers: Provider[];
+	models: V1ModelConfig[];
+	providers: V1Provider[];
 	interpreterEnabled: boolean;
 	interpreterAutoRun: boolean;
 	interpreterExecutionMode: InterpreterExecutionMode;
@@ -124,7 +140,7 @@ function readPresetId(provider: Record<string, unknown>): string | undefined {
 }
 
 /**
- * Reads the v1 AI fields from raw sync items. Like `loadSettings`, it keeps only providers and
+ * Reads the v1 AI fields from raw sync items. Like v1's `loadSettings`, it keeps only providers and
  * models with a string id, coerces the mode to `api` unless `grok` / `codex`, and normalizes the
  * Codex model and effort. It also drops duplicate ids (first kept), coerces field types, and
  * sets `presetId` from a matching catalog base URL.
@@ -132,7 +148,7 @@ function readPresetId(provider: Record<string, unknown>): string | undefined {
 export function readV1AiSettings(raw: RawV1Settings): V1AiSettings {
 	const interpreter = isRecord(raw.interpreter_settings) ? raw.interpreter_settings : {};
 	const reader = isRecord(raw.reader_settings) ? raw.reader_settings : {};
-	const providers: Provider[] = uniqueById(interpreter.providers).map(provider => {
+	const providers: V1Provider[] = uniqueById(interpreter.providers).map(provider => {
 		const presetId = readPresetId(provider);
 		return {
 			id: provider.id as string,
@@ -144,7 +160,7 @@ export function readV1AiSettings(raw: RawV1Settings): V1AiSettings {
 			...(presetId ? { presetId } : {})
 		};
 	});
-	const models: ModelConfig[] = uniqueById(interpreter.models).map(model => ({
+	const models: V1ModelConfig[] = uniqueById(interpreter.models).map(model => ({
 		id: model.id as string,
 		providerId: stringOr(model.providerId, ''),
 		providerModelId: stringOr(model.providerModelId, ''),
@@ -208,7 +224,7 @@ export function migrateV1(raw: RawV1Settings): V1MigrationResult {
 	// A model whose provider is gone could not run in v1 and would have no connection to group
 	// under in Settings, so it is not carried over (and cannot become the default).
 	const runnable = { ...v1, models: v1.models.filter(model => providerIds.has(model.providerId)) };
-	const view = deriveAiSettings(runnable as Settings, { nativeMessaging: 'none' });
+	const view = deriveAiSettings(runnable, { nativeMessaging: 'none' });
 
 	// Only the active mode's CLI is carried over; users add another through "Add local CLI".
 	const cliId = activeCliConnectionId(v1.interpreterExecutionMode);

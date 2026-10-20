@@ -276,7 +276,8 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
-	// Call the API (reuse pre-parsed document if available)
+	// Call the API (reuse pre-parsed document if available). An execution mode fills the prompt
+	// variables below, so they must survive compilation.
 	const result = await clip({
 		html,
 		url: args.url,
@@ -284,6 +285,7 @@ async function main(): Promise<void> {
 		documentParser: linkedomParser,
 		propertyTypes,
 		parsedDocument,
+		keepPromptVariables: Boolean(args.executionMode),
 	});
 
 	let fullContent = result.fullContent;

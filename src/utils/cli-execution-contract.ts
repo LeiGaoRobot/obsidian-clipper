@@ -2,20 +2,15 @@ import type { PromptVariable } from '../types/types';
 import { parseOutput, renderCliPrompt, type PromptItem } from '../ai/contracts';
 import { AiError } from '../ai/errors';
 import { applyFilters } from './filters';
+import { createPromptVariableRegex, stringifyValue } from './prompt-variables';
 
 export type CliExecutionMode = 'grok' | 'codex';
-
-const PROMPT_PATTERN = /{{(?:prompt:)?"([\s\S]*?)"(\|.*?)?}}/;
-
-function createPromptRegex(): RegExp {
-	return new RegExp(PROMPT_PATTERN.source, 'g');
-}
 
 export function collectPromptVariables(values: string[]): PromptVariable[] {
 	const promptMap = new Map<string, PromptVariable>();
 
 	for (const value of values) {
-		const promptRegex = createPromptRegex();
+		const promptRegex = createPromptVariableRegex();
 		let match: RegExpExecArray | null;
 		while ((match = promptRegex.exec(value)) !== null) {
 			const prompt = match[1];
@@ -32,29 +27,19 @@ export function collectPromptVariables(values: string[]): PromptVariable[] {
 	return Array.from(promptMap.values());
 }
 
-function stringifyResponse(value: unknown): string {
-	if (typeof value === 'string') return value;
-	if (value === null || value === undefined) return '';
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
-	}
-}
-
 export function replacePromptVariables(
 	value: string,
 	promptVariables: PromptVariable[],
 	responses: Record<string, unknown>,
 	currentUrl: string
 ): string {
-	return value.replace(createPromptRegex(), (match, promptText: string, filters = '') => {
+	return value.replace(createPromptVariableRegex(), (match, promptText: string, filters = '') => {
 		const variable = promptVariables.find(item => item.prompt === promptText);
 		if (!variable || !Object.prototype.hasOwnProperty.call(responses, variable.key)) {
 			return match;
 		}
 
-		const response = stringifyResponse(responses[variable.key]);
+		const response = stringifyValue(responses[variable.key]);
 		return filters ? applyFilters(response, filters.slice(1), currentUrl) : response;
 	});
 }

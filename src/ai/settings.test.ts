@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import type { Settings } from '../types/types';
+import type { V1AiSettings } from './migrate';
 import type { StorageAreaLike } from './job-store';
 import {
 	AI_CONNECTION_STATUS_KEY,
@@ -127,12 +127,12 @@ function v1Interpreter(overrides: Record<string, unknown> = {}): Record<string, 
 	};
 }
 
-function v1Settings(interpreter: Record<string, unknown>, reader: Record<string, unknown> | undefined): Settings {
+function v1Settings(interpreter: Record<string, unknown>, reader: Record<string, unknown> | undefined): V1AiSettings {
 	return {
 		...interpreter,
 		interpreterExecutionMode: interpreter.interpreterExecutionMode ?? 'api',
 		readerSettings: { learningResponseLanguage: reader?.learningResponseLanguage ?? '' }
-	} as unknown as Settings;
+	} as unknown as V1AiSettings;
 }
 
 function derivedStore(sync: Record<string, unknown>, local: Record<string, unknown> = {}) {

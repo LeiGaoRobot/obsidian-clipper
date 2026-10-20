@@ -27,6 +27,11 @@ export interface ClipOptions {
 	propertyTypes?: Record<string, string>;
 	/** Pre-parsed document to skip re-parsing (e.g. when already parsed for trigger matching). */
 	parsedDocument?: any;
+	/**
+	 * Keep `{{"…"}}` prompt variables in the output, for a caller that runs the prompts and fills
+	 * them itself (the CLI's `--execution-mode`). By default they are removed.
+	 */
+	keepPromptVariables?: boolean;
 }
 
 export interface ClipResult {
@@ -174,7 +179,7 @@ export function matchTemplate(templates: Template[], url: string, schemaOrgData?
  * - Writing the output (file, vault API, etc.)
  */
 export async function clip(options: ClipOptions): Promise<ClipResult> {
-	const { html, url, template, documentParser, propertyTypes, parsedDocument } = options;
+	const { html, url, template, documentParser, propertyTypes, parsedDocument, keepPromptVariables = false } = options;
 
 	// Use pre-parsed document if provided, otherwise parse
 	const doc = parsedDocument ?? documentParser.parseFromString(html, 'text/html');
@@ -213,7 +218,7 @@ export async function clip(options: ClipOptions): Promise<ClipResult> {
 	const selectorProcessor = createSelectorProcessor(doc);
 
 	const compile = (text: string) =>
-		compileTemplate(0, text, variables, url, asyncResolver, selectorProcessor);
+		compileTemplate(0, text, variables, url, { asyncResolver, selectorProcessor, keepPromptVariables });
 
 	// Compile note name
 	const compiledNoteName = await compile(template.noteNameFormat);

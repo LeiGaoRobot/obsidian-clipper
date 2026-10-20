@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { Settings } from '../types/types';
+import type { V1AiSettings } from './migrate';
 import { deriveAiSettings, LEGACY_CODEX_PROFILE_ID } from './settings-view';
 import { effectiveStructuredOutput, resolveProfile, resolveResponseLanguage } from './resolve';
 import type { AiSettingsView } from './types';
@@ -104,7 +104,7 @@ describe('resolveResponseLanguage', () => {
 });
 
 describe('v1 parity', () => {
-	function v1(overrides: Partial<Settings>): Settings {
+	function v1(overrides: Partial<V1AiSettings>): V1AiSettings {
 		return {
 			interpreterEnabled: true,
 			interpreterAutoRun: false,
@@ -119,7 +119,7 @@ describe('v1 parity', () => {
 			models: [],
 			readerSettings: { learningResponseLanguage: '' },
 			...overrides
-		} as unknown as Settings;
+		} as unknown as V1AiSettings;
 	}
 
 	test('resolves the Grok profile in Grok mode on Safari-style Native Messaging', () => {

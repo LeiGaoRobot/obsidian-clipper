@@ -1,6 +1,7 @@
 import { PromptVariable, Template } from '../types/types';
 import { compileTemplate } from './template-compiler';
 import { applyFilters } from './filters';
+import { createPromptVariableRegex, stringifyValue } from './prompt-variables';
 import { formatDuration } from './string-utils';
 import { adjustNoteNameHeight } from './ui-utils';
 import { debugLog } from './debug';
@@ -26,7 +27,7 @@ const eventListeners = new WeakMap<HTMLElement, { [key: string]: EventListener }
 
 export function collectPromptVariables(template: Template | null): PromptVariable[] {
 	const promptMap = new Map<string, PromptVariable>();
-	const promptRegex = /{{(?:prompt:)?"([\s\S]*?)"(\|.*?)?}}/g;
+	const promptRegex = createPromptVariableRegex();
 	let match;
 
 	function addPrompt(prompt: string, filters: string) {
@@ -169,7 +170,7 @@ export async function initializeInterpreter(
 			template.context
 			|| view.interpreter.defaultPromptContext
 			|| '{{fullHtml|remove_html:("#navbar,.footer,#footer,header,footer,style,script")|strip_tags:("script,h1,h2,h3,h4,h5,h6,meta,a,ol,ul,li,p,em,strong,i,b,s,strike,u,sup,sub,img,video,audio,math,table,cite,td,th,tr,caption")|strip_attr:("alt,src,href,id,content,property,name,datetime,title")}}';
-		promptToDisplay = await compileTemplate(tabId, promptToDisplay, variables, currentUrl);
+		promptToDisplay = await compileTemplate(tabId, promptToDisplay, variables, currentUrl, { keepPromptVariables: view.enabled });
 		promptContextTextarea.value = promptToDisplay;
 		
 		// Initial token count
@@ -483,23 +484,14 @@ export function replacePromptVariables(promptVariables: PromptVariable[], prompt
 	const allInputs = document.querySelectorAll('input, textarea');
 	allInputs.forEach((input) => {
 		if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) {
-			input.value = input.value.replace(/{{(?:prompt:)?"([\s\S]*?)"(\|[\s\S]*?)?}}/g, (match, promptText, filters) => {
+			input.value = input.value.replace(createPromptVariableRegex(), (match, promptText, filters) => {
 				const variable = promptVariables.find(v => v.prompt === promptText);
 				if (!variable) return match;
 
 				const response = promptResponses.find(r => r.key === variable.key);
 				if (response && response.user_response !== undefined) {
-					let value = response.user_response;
-					
-					// Handle array or object responses
-					if (typeof value === 'object') {
-						try {
-							value = JSON.stringify(value, null, 2);
-						} catch (error) {
-							console.error('Error stringifying object:', error);
-							value = String(value);
-						}
-					}
+					// Array or object responses as indented JSON
+					let value = stringifyValue(response.user_response);
 
 					if (filters) {
 						value = applyFilters(value, filters.slice(1));

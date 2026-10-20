@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { Settings } from '../types/types';
+import type { V1AiSettings } from './migrate';
 import {
 	deriveAiSettings,
 	LEGACY_CODEX_CONNECTION_ID,
@@ -7,7 +7,7 @@ import {
 	LEGACY_GROK_PROFILE_ID
 } from './settings-view';
 
-function v1Settings(overrides: Partial<Settings> = {}): Settings {
+function v1Settings(overrides: Partial<V1AiSettings> = {}): V1AiSettings {
 	return {
 		interpreterEnabled: true,
 		interpreterAutoRun: false,
@@ -37,7 +37,7 @@ function v1Settings(overrides: Partial<Settings> = {}): Settings {
 		],
 		readerSettings: { learningResponseLanguage: ' Japanese ' },
 		...overrides
-	} as Settings;
+	} as V1AiSettings;
 }
 
 describe('deriveAiSettings', () => {
@@ -86,7 +86,7 @@ describe('deriveAiSettings', () => {
 
 	test('tolerates malformed stored providers', () => {
 		const settings = v1Settings();
-		settings.providers = [{ id: 'broken' } as Settings['providers'][number], ...settings.providers];
+		settings.providers = [{ id: 'broken' } as V1AiSettings['providers'][number], ...settings.providers];
 		const view = deriveAiSettings(settings, { nativeMessaging: 'none' });
 		expect(view.connections[0]).toEqual({
 			id: 'broken',
@@ -168,7 +168,7 @@ describe('deriveAiSettings', () => {
 	test('omits a blank response language and treats a missing mode as API', () => {
 		const settings = v1Settings({
 			interpreterExecutionMode: undefined,
-			readerSettings: { learningResponseLanguage: '  ' } as Settings['readerSettings']
+			readerSettings: { learningResponseLanguage: '  ' } as V1AiSettings['readerSettings']
 		});
 		const view = deriveAiSettings(settings, { nativeMessaging: 'port' });
 		expect(view.routing.responseLanguage).toBeUndefined();

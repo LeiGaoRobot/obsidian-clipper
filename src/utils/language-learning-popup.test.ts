@@ -6,23 +6,23 @@ import { AiError } from '../ai/errors';
 import { resolveProfile } from '../ai/resolve';
 import { deriveAiSettings } from '../ai/settings-view';
 import type { NativeMessagingSupport } from '../ai/types';
-import type { ModelConfig, Provider, Settings } from '../types/types';
+import type { V1AiSettings, V1ModelConfig, V1Provider } from '../ai/migrate';
 import {
 	initializeLanguageLearningPopup,
 	isLanguageLearningPopupAvailable
 } from './language-learning-popup';
 
-const apiProvider: Provider = {
+const apiProvider: V1Provider = {
 	id: 'provider-1',
 	name: 'OpenAI',
 	baseUrl: 'https://api.openai.com/v1/chat/completions',
 	apiKey: 'sk-test',
 	apiKeyRequired: true
 };
-const apiModel: ModelConfig = { id: 'model-1', providerId: 'provider-1', providerModelId: 'gpt', name: 'GPT', enabled: true };
+const apiModel: V1ModelConfig = { id: 'model-1', providerId: 'provider-1', providerModelId: 'gpt', name: 'GPT', enabled: true };
 
 // Views are built from v1 settings exactly as the loader derives them until v2 is stored.
-function v1View(overrides: Partial<Settings> = {}, nativeMessaging: NativeMessagingSupport = 'port') {
+function v1View(overrides: Partial<V1AiSettings> = {}, nativeMessaging: NativeMessagingSupport = 'port') {
 	return deriveAiSettings({
 		interpreterEnabled: true,
 		interpreterAutoRun: false,
@@ -33,7 +33,7 @@ function v1View(overrides: Partial<Settings> = {}, nativeMessaging: NativeMessag
 		models: [apiModel],
 		readerSettings: {},
 		...overrides
-	} as Settings, { nativeMessaging });
+	} as V1AiSettings, { nativeMessaging });
 }
 
 function createPopupFixture() {
