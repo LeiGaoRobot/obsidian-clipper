@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AiError } from '../ai/errors';
 import { deriveAiSettings } from '../ai/settings-view';
 import type { AiSettingsView } from '../ai/types';
-import type { V1AiSettings } from '../ai/migrate';
+import type { V1AiSettings } from '../ai/v1-settings';
 import type { Template } from '../types/types';
 
 const mocks = vi.hoisted(() => ({

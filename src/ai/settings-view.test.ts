@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { V1AiSettings } from './migrate';
+import type { V1AiSettings } from './v1-settings';
 import {
 	deriveAiSettings,
 	LEGACY_CODEX_CONNECTION_ID,

@@ -1,6 +1,3 @@
-import type { CodexReasoningEffort, ReaderSettings } from '../types/types';
-import { normalizeCodexModel } from '../utils/codex-model';
-import { normalizeCodexReasoningEffort } from '../utils/codex-reasoning-effort';
 import { findCatalogEntryByBaseUrl, getCatalogEntry } from './catalog';
 import {
 	deriveAiSettings,
@@ -9,6 +6,15 @@ import {
 } from './settings-view';
 import { AI_SYNC_KEYS, type AiSettingsBootstrapper } from './settings';
 import type { AiRouting, Connection, ModelProfile } from './types';
+import {
+	isRecord,
+	readV1AiSettings,
+	readV1ExecutionMode,
+	uniqueById,
+	type RawV1Settings,
+	type V1AiSettings,
+	type V1ExecutionMode
+} from './v1-settings';
 
 // Storage keys, as laid out in Phase 5 decision 1. `settings.ts` owns the codec for them.
 const V1_INTERPRETER_KEY = 'interpreter_settings';
@@ -54,80 +60,10 @@ export interface AiSettingsWrites {
 	credentials?: Record<string, string>;
 }
 
-/** v1 `interpreter_settings.interpreterExecutionMode`: which engine ran every task. v2 routes per task. */
-export type V1ExecutionMode = 'api' | 'grok' | 'codex';
-
-/** A v1 `interpreter_settings.providers` entry: an API connection with its key. */
-export interface V1Provider {
-	id: string;
-	name: string;
-	baseUrl: string;
-	apiKey: string;
-	apiKeyRequired?: boolean;
-	presetId?: string;
-}
-
-/** A v1 `interpreter_settings.models` entry: a model of a provider. */
-export interface V1ModelConfig {
-	id: string;
-	providerId: string;
-	providerModelId: string;
-	name: string;
-	enabled: boolean;
-}
-
-/** The v1 fields the migration and `deriveAiSettings` read, sanitized the way v1 loaded them. */
-export interface V1AiSettings {
-	interpreterModel: string;
-	models: V1ModelConfig[];
-	providers: V1Provider[];
-	interpreterEnabled: boolean;
-	interpreterAutoRun: boolean;
-	interpreterExecutionMode: V1ExecutionMode;
-	interpreterCodexModel?: string;
-	interpreterCodexReasoningEffort?: CodexReasoningEffort;
-	defaultPromptContext: string;
-	readerSettings: Pick<ReaderSettings, 'learningResponseLanguage'>;
-}
-
-export interface RawV1Settings {
-	interpreter_settings?: unknown;
-	reader_settings?: unknown;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function stringOr(value: unknown, fallback: string): string {
-	return typeof value === 'string' ? value : fallback;
-}
-
-function booleanOr(value: unknown, fallback: boolean): boolean {
-	return typeof value === 'boolean' ? value : fallback;
-}
-
-/** Items that are objects with a string id, first occurrence of each id kept. */
-function uniqueById(value: unknown): Record<string, unknown>[] {
-	if (!Array.isArray(value)) return [];
-	const seen = new Set<string>();
-	const items: Record<string, unknown>[] = [];
-	for (const item of value) {
-		if (!isRecord(item) || typeof item.id !== 'string' || seen.has(item.id)) continue;
-		seen.add(item.id);
-		items.push(item);
-	}
-	return items;
-}
-
 function countWithStringId(value: unknown): number {
 	return Array.isArray(value)
 		? value.filter(item => isRecord(item) && typeof item.id === 'string').length
 		: 0;
-}
-
-function readMode(value: unknown): V1ExecutionMode {
-	return value === 'grok' || value === 'codex' ? value : 'api';
 }
 
 function readPresetId(provider: Record<string, unknown>): string | undefined {
@@ -139,47 +75,20 @@ function readPresetId(provider: Record<string, unknown>): string | undefined {
 }
 
 /**
- * Reads the v1 AI fields from raw sync items. Like v1's `loadSettings`, it keeps only providers and
- * models with a string id, coerces the mode to `api` unless `grok` / `codex`, and normalizes the
- * Codex model and effort. It also drops duplicate ids (first kept), coerces field types, and
- * sets `presetId` from a matching catalog base URL.
+ * `readV1AiSettings` with each provider's `presetId` set from the catalog: a bundled preset the
+ * provider names, else the preset whose base URL it matches.
  */
-export function readV1AiSettings(raw: RawV1Settings): V1AiSettings {
+function readV1AiSettingsWithPresets(raw: RawV1Settings): V1AiSettings {
+	const v1 = readV1AiSettings(raw);
 	const interpreter = isRecord(raw.interpreter_settings) ? raw.interpreter_settings : {};
-	const reader = isRecord(raw.reader_settings) ? raw.reader_settings : {};
-	const providers: V1Provider[] = uniqueById(interpreter.providers).map(provider => {
-		const presetId = readPresetId(provider);
-		return {
-			id: provider.id as string,
-			name: stringOr(provider.name, ''),
-			baseUrl: stringOr(provider.baseUrl, ''),
-			apiKey: stringOr(provider.apiKey, ''),
-			// v1 treats a missing flag as "not required" everywhere it is read.
-			apiKeyRequired: provider.apiKeyRequired === true,
-			...(presetId ? { presetId } : {})
-		};
-	});
-	const models: V1ModelConfig[] = uniqueById(interpreter.models).map(model => ({
-		id: model.id as string,
-		providerId: stringOr(model.providerId, ''),
-		providerModelId: stringOr(model.providerModelId, ''),
-		name: stringOr(model.name, ''),
-		// v1 filters enabled models by truthiness.
-		enabled: Boolean(model.enabled)
-	}));
-	const codexModel = normalizeCodexModel(interpreter.interpreterCodexModel);
-	const codexEffort = normalizeCodexReasoningEffort(interpreter.interpreterCodexReasoningEffort);
+	// The same providers, in the same order, as `readV1AiSettings` keeps.
+	const rawProviders = uniqueById(interpreter.providers);
 	return {
-		interpreterModel: stringOr(interpreter.interpreterModel, ''),
-		models,
-		providers,
-		interpreterEnabled: booleanOr(interpreter.interpreterEnabled, false),
-		interpreterAutoRun: booleanOr(interpreter.interpreterAutoRun, false),
-		interpreterExecutionMode: readMode(interpreter.interpreterExecutionMode),
-		...(codexModel ? { interpreterCodexModel: codexModel } : {}),
-		...(codexEffort ? { interpreterCodexReasoningEffort: codexEffort } : {}),
-		defaultPromptContext: stringOr(interpreter.defaultPromptContext, ''),
-		readerSettings: { learningResponseLanguage: stringOr(reader.learningResponseLanguage, '') }
+		...v1,
+		providers: v1.providers.map((provider, index) => {
+			const presetId = readPresetId(rawProviders[index]);
+			return presetId ? { ...provider, presetId } : provider;
+		})
 	};
 }
 
@@ -218,7 +127,7 @@ function toProfile(profile: ModelProfile): ModelProfile {
  * bootstrap concurrently from the same v1 data write identical items.
  */
 export function migrateV1(raw: RawV1Settings): V1MigrationResult {
-	const v1 = readV1AiSettings(raw);
+	const v1 = readV1AiSettingsWithPresets(raw);
 	const providerIds = new Set(v1.providers.map(provider => provider.id));
 	// A model whose provider is gone could not run in v1 and would have no connection to group
 	// under in Settings, so it is not carried over (and cannot become the default).
@@ -393,7 +302,7 @@ export function createAiSettingsBootstrapper(
 					source: {
 						providers: countWithStringId(source.providers),
 						models: countWithStringId(source.models),
-						mode: readMode(source.interpreterExecutionMode)
+						mode: readV1ExecutionMode(source.interpreterExecutionMode)
 					},
 					credentials
 				};

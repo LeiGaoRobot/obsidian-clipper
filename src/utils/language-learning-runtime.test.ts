@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { Settings } from '../types/types';
-import type { V1AiSettings } from '../ai/migrate';
+import type { V1AiSettings } from '../ai/v1-settings';
 import { AiError } from '../ai/errors';
 import { transcriptJobId, type TranscriptJobIdentity, type TranscriptJobTask } from '../ai/job-identity';
 import type { TranscriptSegment } from '../ai/contracts';

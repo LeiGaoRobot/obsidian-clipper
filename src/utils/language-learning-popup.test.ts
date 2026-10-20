@@ -6,7 +6,7 @@ import { AiError } from '../ai/errors';
 import { resolveProfile } from '../ai/resolve';
 import { deriveAiSettings } from '../ai/settings-view';
 import type { NativeMessagingSupport } from '../ai/types';
-import type { V1AiSettings, V1ModelConfig, V1Provider } from '../ai/migrate';
+import type { V1AiSettings, V1ModelConfig, V1Provider } from '../ai/v1-settings';
 import {
 	initializeLanguageLearningPopup,
 	isLanguageLearningPopupAvailable

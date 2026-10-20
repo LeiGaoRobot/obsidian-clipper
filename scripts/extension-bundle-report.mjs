@@ -23,11 +23,10 @@ const entryBudgets = {
 const chunkBudgets = {
 	'popup-language-learning.js': 30_000,
 	'reader-content-extraction.js': 380_000,
-	// Measured at the end of Phase 7: 173,656 bytes (163,908 at the end of Phase 6; the job-limits
-	// move saved nothing because the runner was already tree-shaken, and derived mode's one v1
-	// sanitizer brings migrate.ts and the catalog, about 8.6 KB, until the v1 deletion release).
-	// Budget is the measured size plus about 10%.
-	'reader-language-learning.js': 191_000,
+	// 166,178 bytes measured after the Phase 7 review (173,656 when derived mode read v1 through
+	// migrate.ts, which brought the catalog and providers.json; v1-settings.ts reads it without
+	// them now). Budget is the measured size plus about 10%.
+	'reader-language-learning.js': 183_000,
 	'reader-markdown.js': 10_000,
 	'reader-syntax-highlighting.js': 250_000,
 	// The AI settings section: about 103 KB in Phase 5b; 124 KB measured in Phase 5c after the

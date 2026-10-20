@@ -1,5 +1,5 @@
 import { inferConnectionKind } from './connection-kind';
-import type { V1AiSettings } from './migrate';
+import type { V1AiSettings } from './v1-settings';
 import type {
 	AiSettingsView,
 	Connection,

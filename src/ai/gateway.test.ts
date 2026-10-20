@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import type { V1AiSettings } from './migrate';
+import type { V1AiSettings } from './v1-settings';
 import { createAiDiagnostics } from './diagnostics';
 import { AiError } from './errors';
 import { createAiGateway, type AiGatewayDeps, type AiPortLike } from './gateway';

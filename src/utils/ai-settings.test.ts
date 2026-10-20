@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { deriveAiSettings } from '../ai/settings-view';
-import { readV1AiSettings } from '../ai/migrate';
+import { readV1AiSettings } from '../ai/v1-settings';
 
 const mocks = vi.hoisted(() => ({
 	sync: {} as Record<string, unknown>,

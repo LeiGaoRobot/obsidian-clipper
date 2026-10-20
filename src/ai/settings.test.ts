@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
-import { readV1AiSettings, type V1AiSettings } from './migrate';
+import { migrateV1 } from './migrate';
+import { readV1AiSettings, type V1AiSettings } from './v1-settings';
 import type { StorageAreaLike } from './job-store';
 import {
 	AI_CONNECTION_STATUS_KEY,
@@ -127,7 +128,7 @@ function v1Interpreter(overrides: Record<string, unknown> = {}): Record<string, 
 	};
 }
 
-// Derived mode reads v1 through the migration's one sanitizer.
+// Derived mode reads v1 through the one sanitizer the migration also uses.
 function v1Settings(interpreter: Record<string, unknown>, reader: Record<string, unknown> | undefined): V1AiSettings {
 	return readV1AiSettings({ interpreter_settings: interpreter, reader_settings: reader });
 }
@@ -383,12 +384,27 @@ describe('createAiSettingsStore in derived mode', () => {
 		expect(view.routing.defaultProfileId).toBeUndefined();
 	});
 
-	test('derived connections carry the catalog preset the bootstrap would write', async () => {
-		const { store } = derivedStore({ interpreter_settings: v1Interpreter() });
+	test('derived connections infer the kinds the bootstrap writes, without its catalog preset', async () => {
+		const interpreter = v1Interpreter({
+			providers: [
+				...(v1Interpreter().providers as unknown[]),
+				{ id: 'provider-deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1/chat/completions', apiKey: '' }
+			]
+		});
+		const { store } = derivedStore({ interpreter_settings: interpreter });
 		const view = await store.load();
-		expect(view.connections.slice(0, 2).map(item => [item.id, item.presetId])).toEqual([
-			['provider-anthropic', 'anthropic'],
-			['provider-ollama', 'ollama']
+		const bootstrapped = migrateV1({ interpreter_settings: interpreter }).sync.ai_connections.items;
+
+		// Derived mode does not bundle the catalog, so only the bootstrap sets `presetId`.
+		expect(bootstrapped.slice(0, 3).map(item => [item.id, item.kind, item.presetId])).toEqual([
+			['provider-anthropic', 'anthropic', 'anthropic'],
+			['provider-ollama', 'ollama', 'ollama'],
+			['provider-deepseek', 'openai-compatible', 'deepseek']
+		]);
+		expect(view.connections.slice(0, 3).map(item => [item.id, item.kind, item.presetId])).toEqual([
+			['provider-anthropic', 'anthropic', undefined],
+			['provider-ollama', 'ollama', undefined],
+			['provider-deepseek', 'openai-compatible', undefined]
 		]);
 	});
 

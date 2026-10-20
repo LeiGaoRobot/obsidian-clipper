@@ -1,4 +1,4 @@
-import { readV1AiSettings } from './migrate';
+import { readV1AiSettings } from './v1-settings';
 import { normalizeCodexModel } from '../utils/codex-model';
 import { normalizeCodexReasoningEffort } from '../utils/codex-reasoning-effort';
 import { AI_ERROR_CODES } from './errors';
@@ -509,7 +509,7 @@ export function assertSyncItemSize(key: string, value: unknown): void {
 	}
 }
 
-// --- v1 reads (derived mode and fresh installs; `readV1AiSettings` lives in `migrate.ts`) --------
+// --- v1 reads (derived mode and fresh installs; `readV1AiSettings` lives in `v1-settings.ts`) ----
 
 /** The trimmed v1 Reader response language, as the migration copies it to `ai_routing`. */
 function v1ResponseLanguage(readerSettings: unknown): string | undefined {
