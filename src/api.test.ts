@@ -68,4 +68,25 @@ describe('clip', () => {
 		expect(result.frontmatter).toContain('author: "Ada Example"');
 		expect(result.content).toContain('Words: ');
 	});
+
+	test('formats typed properties, but leaves kept prompt placeholders to the caller', async () => {
+		const typed: Template = {
+			...template,
+			properties: [
+				{ id: 'p1', name: 'count', value: '{{"Top 3 things"}}', type: 'number' },
+				{ id: 'p2', name: 'done', value: '{{"Is it done?"}}', type: 'checkbox' },
+				{ id: 'p3', name: 'words', value: '{{words}} words', type: 'number' },
+				{ id: 'p4', name: 'flag', value: 'true', type: 'checkbox' }
+			]
+		};
+
+		const kept = await clip({ html, url, template: typed, documentParser: parser, keepPromptVariables: true });
+		const removed = await clip({ html, url, template: typed, documentParser: parser });
+
+		const [count, done, words, flag] = kept.properties.map(property => property.value);
+		expect([count, done]).toEqual(['{{"Top 3 things"}}', '{{"Is it done?"}}']);
+		expect(words).toMatch(/^\d+$/);
+		expect(flag).toBe('true');
+		expect(removed.properties.map(property => property.value)).toEqual(['', 'false', words, 'true']);
+	});
 });

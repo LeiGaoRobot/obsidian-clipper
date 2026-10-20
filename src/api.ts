@@ -9,6 +9,7 @@ import { AsyncResolver, RenderContext } from './utils/renderer';
 import { applyFilters } from './utils/filters';
 import { buildVariables, generateFrontmatter, extractContentBySelector, selectorContentToString, formatPropertyValue } from './utils/shared';
 import { sanitizeFileName } from './utils/string-utils';
+import { PROMPT_VARIABLE_PATTERN } from './utils/prompt-variables';
 import { Template, Property } from './types/types';
 
 // ---------------------------------------------------------------------------
@@ -229,7 +230,11 @@ export async function clip(options: ClipOptions): Promise<ClipResult> {
 		template.properties.map(async (prop) => {
 			let value = await compile(prop.value);
 			const propType = prop.type || 'text';
-			value = formatPropertyValue(value, propType, prop.value);
+			// A kept placeholder is formatted by the caller once it is filled: formatting it now would
+			// turn a checkbox into `false` and strip a number down to the digits in the prompt text.
+			if (!(keepPromptVariables && PROMPT_VARIABLE_PATTERN.test(value))) {
+				value = formatPropertyValue(value, propType, prop.value);
+			}
 			return { name: prop.name, value, type: prop.type };
 		})
 	);

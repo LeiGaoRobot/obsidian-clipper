@@ -100,7 +100,7 @@ describe('filling a clip with the CLI answers', () => {
 	const parser: DocumentParser = { parseFromString: html => parseHTML(html).document };
 	const url = 'https://example.com/a';
 	const html = '<html><head><title>Fixture</title></head><body><article><p>Body text for the prompts.</p></article></body></html>';
-	const template: Template = {
+	const baseTemplate: Template = {
 		id: 't',
 		name: 'T',
 		behavior: 'create',
@@ -114,8 +114,10 @@ describe('filling a clip with the CLI answers', () => {
 		]
 	};
 
+	const template = baseTemplate;
+
 	// What `src/cli.ts` does with `--execution-mode`.
-	async function clipAndFill(responses: Record<string, unknown>) {
+	async function clipAndFill(responses: Record<string, unknown>, template: Template = baseTemplate) {
 		const doc = parser.parseFromString(html, 'text/html');
 		const result = await clip({ html, url, template, documentParser: parser, parsedDocument: doc, keepPromptVariables: true });
 		const compiledNoteName = await compileTemplate(0, template.noteNameFormat, result.variables, url, {
@@ -160,6 +162,26 @@ describe('filling a clip with the CLI answers', () => {
 			'Body: Ex'
 		].join('\n'));
 		expect(filled.noteName).toBe('DAILY note');
+	});
+
+	test('formats number and checkbox properties after they are filled', async () => {
+		const typed: Template = {
+			...baseTemplate,
+			noteNameFormat: '{{domain}}',
+			noteContentFormat: 'Body',
+			properties: [
+				{ id: 'p1', name: 'count', value: '{{"Top 3 things"}}', type: 'number' },
+				{ id: 'p2', name: 'done', value: '{{"Is it done?"}}', type: 'checkbox' },
+				{ id: 'p3', name: 'words', value: '{{"Word count"}}', type: 'number' }
+			]
+		};
+
+		const { result, filled } = await clipAndFill({ prompt_1: '7', prompt_2: 'true', prompt_3: 'about 1200 words' }, typed);
+
+		// Kept for the fill, not formatted into `3` and `false` before it.
+		expect(result.properties.map(property => property.value))
+			.toEqual(['{{"Top 3 things"}}', '{{"Is it done?"}}', '{{"Word count"}}']);
+		expect(filled.fullContent).toBe(['---', 'count: 7', 'done: true', 'words: 1200', '---', 'Body'].join('\n'));
 	});
 
 	test('keeps the clip as it is where nothing was asked', async () => {
