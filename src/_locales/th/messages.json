@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "แก้ไข"
 	},
-	"editModel": {
-		"message": "แก้ไขโมเดล"
-	},
-	"editProvider": {
-		"message": "แก้ไขผู้ให้บริการ"
-	},
 	"editTemplate": {
 		"message": "แก้ไขเทมเพลต"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "การประมวลผลตัวแปลล้มเหลว ลองอีกครั้ง"
-	},
-	"failedToResetProviders": {
-		"message": "ไม่สามารถรีเซ็ตผู้ให้บริการและโมเดล"
 	},
 	"failedToResetTemplate": {
 		"message": "ไม่สามารถรีเซ็ตเทมเพลตเริ่มต้น ลองอีกครั้ง"
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "ชื่อที่แสดง"
-	},
-	"modelProvider": {
-		"message": "ผู้ให้บริการ"
-	},
-	"modelProviderPlaceholder": {
-		"message": "ผู้ให้บริการ"
 	},
 	"modelsListFor": {
 		"message": "รายการโมเดลสำหรับ $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "ID โมเดล"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID โมเดล"
-	},
-	"providerPreset": {
-		"message": "ค่าที่ตั้งไว้ล่วงหน้า"
 	},
 	"rateExtensionDescription": {
 		"message": "ชอบ Web Clipper ไหม? ช่วยเราด้วยการให้คะแนน"
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "ลบการเปลี่ยนแปลงทั้งหมดที่คุณทำกับเทมเพลตเริ่มต้น"
-	},
-	"resetProvidersAndModels": {
-		"message": "รีเซ็ตโมเดลเริ่มต้น"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "รีเซ็ตผู้ให้บริการและโมเดลกลับเป็นค่าเริ่มต้น"
 	},
 	"save": {
 		"message": "บันทึก"

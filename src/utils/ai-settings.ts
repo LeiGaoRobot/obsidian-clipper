@@ -1,7 +1,6 @@
 import browser from './browser-polyfill';
 import type { StorageAreaLike } from '../ai/job-store';
 import {
-	AI_V2_BOOTSTRAP,
 	createAiSettingsStore,
 	type AiCredentialsAccess,
 	type AiSettingsBootstrapper,
@@ -73,8 +72,8 @@ export function browserSessionArea(): StorageAreaLike | undefined {
 }
 
 /**
- * A store over `browser.storage`; it bootstraps per `AI_V2_BOOTSTRAP` only when given a
- * bootstrapper. `credentials` defaults to `keys`, which only the Settings page should use.
+ * A store over `browser.storage`; it bootstraps only when given a bootstrapper. `credentials`
+ * defaults to `keys`, which only the Settings page should use.
  */
 export function createBrowserAiSettingsStore(
 	bootstrapper?: AiSettingsBootstrapper,
@@ -88,7 +87,7 @@ export function createBrowserAiSettingsStore(
 		...(session ? { session } : {}),
 		onChanged: lazyOnChanged,
 		nativeMessaging: detectNativeMessaging,
-		bootstrap: AI_V2_BOOTSTRAP && Boolean(bootstrapper),
+		bootstrap: Boolean(bootstrapper),
 		...(bootstrapper ? { bootstrapper } : {}),
 		build: manifestVersion()
 	});

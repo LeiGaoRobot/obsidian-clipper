@@ -24,7 +24,7 @@ import {
 	checkNativeCliHealth,
 	sendNativeCliRequest
 } from './native-cli-service';
-import { buildNativeCliRequest, NATIVE_CLI_PROTOCOL_VERSION } from './native-cli-contract';
+import { buildNativeCliPromptRequest, NATIVE_CLI_PROTOCOL_VERSION } from './native-cli-contract';
 
 function createPort() {
 	const messageListeners: Array<(message: unknown) => void> = [];
@@ -74,7 +74,7 @@ describe('Native CLI service', () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
 		const controller = new AbortController();
-		const request = buildNativeCliRequest('grok', 'Context', [], { requestId: 'request-1' });
+		const request = buildNativeCliPromptRequest('grok', 'Context', { requestId: 'request-1' });
 
 		const response = sendNativeCliRequest(request, controller.signal);
 		controller.abort();
@@ -94,7 +94,7 @@ describe('Native CLI service', () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
 		const heartbeats: unknown[] = [];
-		const request = buildNativeCliRequest('codex', 'Context', [], { requestId: 'request-hb' });
+		const request = buildNativeCliPromptRequest('codex', 'Context', { requestId: 'request-hb' });
 
 		const response = sendNativeCliRequest(request, undefined, heartbeat => heartbeats.push(heartbeat));
 		expect(port.posted[0]).toEqual({ ...request, heartbeat: true });
@@ -113,7 +113,7 @@ describe('Native CLI service', () => {
 		runtime.connectNative = undefined;
 		mocks.sendNativeMessage.mockResolvedValue({ ok: true, requestId: 'request-once', stdout: 'done' });
 		try {
-			const request = buildNativeCliRequest('codex', 'Context', [], { requestId: 'request-once' });
+			const request = buildNativeCliPromptRequest('codex', 'Context', { requestId: 'request-once' });
 			await sendNativeCliRequest({ ...request, heartbeat: true }, undefined, () => {});
 			expect(mocks.sendNativeMessage.mock.calls[0][1]).toEqual(request);
 		} finally {
@@ -124,10 +124,9 @@ describe('Native CLI service', () => {
 	test('forwards canonical Codex model and effort on the Native Messaging request', async () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
-		const response = sendNativeCliRequest(buildNativeCliRequest(
+		const response = sendNativeCliRequest(buildNativeCliPromptRequest(
 			'codex',
 			'Context',
-			[{ key: 'prompt_1', prompt: 'Summarize' }],
 			{ model: '  gpt-5.6-sol  ', effort: 'ultra' }
 		));
 		const request = port.posted[0] as {
@@ -149,10 +148,9 @@ describe('Native CLI service', () => {
 	test('does not put Codex model or effort properties on Grok Native Messaging requests', async () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
-		const response = sendNativeCliRequest(buildNativeCliRequest(
+		const response = sendNativeCliRequest(buildNativeCliPromptRequest(
 			'grok',
-			'Context',
-			[{ key: 'prompt_1', prompt: 'Summarize' }]
+			'Context'
 		));
 		const grokRequest = port.posted[0] as { requestId: string };
 
@@ -174,10 +172,9 @@ describe('Native CLI service', () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
 		const controller = new AbortController();
-		const response = sendNativeCliRequest(buildNativeCliRequest(
+		const response = sendNativeCliRequest(buildNativeCliPromptRequest(
 			'codex',
-			'Context',
-			[{ key: 'prompt_1', prompt: 'Summarize' }]
+			'Context'
 		), controller.signal);
 		const request = port.posted[0] as { requestId: string };
 
@@ -198,7 +195,7 @@ describe('Native CLI service', () => {
 		const port = createPort();
 		mocks.connectNative.mockReturnValue(port);
 		const response = sendNativeCliRequest(
-			buildNativeCliRequest('grok', 'Context', [], { requestId: 'request-2' })
+			buildNativeCliPromptRequest('grok', 'Context', { requestId: 'request-2' })
 		);
 		port.emitMessage({
 			requestId: 'request-2',

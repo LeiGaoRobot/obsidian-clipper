@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Szerkesztés"
 	},
-	"editModel": {
-		"message": "Modell szerkesztése"
-	},
-	"editProvider": {
-		"message": "Szolgáltató szerkesztése"
-	},
 	"editTemplate": {
 		"message": "Sablon szerkesztése"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Az interpreter feldolgozása sikertelen. Kérjük, próbáld újra."
-	},
-	"failedToResetProviders": {
-		"message": "Nem sikerült visszaállítani a szolgáltatókat és modelleket"
 	},
 	"failedToResetTemplate": {
 		"message": "Nem sikerült visszaállítani az alapértelmezett sablont. Kérjük, próbáld újra."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Megjelenített név"
-	},
-	"modelProvider": {
-		"message": "Szolgáltató"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Szolgáltató"
 	},
 	"modelsListFor": {
 		"message": "Modellek listája ehhez: $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "Modellazonosító"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Modellazonosító"
-	},
-	"providerPreset": {
-		"message": "Előbeállítás"
 	},
 	"rateExtensionDescription": {
 		"message": "Tetszik a Web Clipper? Segíts nekünk azzal, hogy értékeled."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Az alapértelmezett sablonon végzett módosításaid eltávolítása."
-	},
-	"resetProvidersAndModels": {
-		"message": "Alapértelmezett modellek visszaállítása"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "A szolgáltatók és modellek visszaállítása az alapértelmezett beállításokra."
 	},
 	"save": {
 		"message": "Mentés"

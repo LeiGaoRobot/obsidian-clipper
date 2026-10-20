@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Modifica"
 	},
-	"editModel": {
-		"message": "Modifica modello"
-	},
-	"editProvider": {
-		"message": "Modifica fornitore"
-	},
 	"editTemplate": {
 		"message": "Modifica modello"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Elaborazione dell'interprete fallita. Per favore, riprova."
-	},
-	"failedToResetProviders": {
-		"message": "Impossibile ripristinare i fornitori e i modelli"
 	},
 	"failedToResetTemplate": {
 		"message": "Impossibile reimpostare il modello predefinito. Per favore, riprova."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Nome del modello"
-	},
-	"modelProvider": {
-		"message": "Fornitore"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Fornitore"
 	},
 	"modelsListFor": {
 		"message": "Elenco dei modelli per $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "ID del modello"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID del modello"
-	},
-	"providerPreset": {
-		"message": "Preset"
 	},
 	"rateExtensionDescription": {
 		"message": "Ti piace Web Clipper? Aiutaci dandogli una valutazione."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Rimuovi tutte le modifiche che hai apportato al modello predefinito."
-	},
-	"resetProvidersAndModels": {
-		"message": "Ripristina i modelli predefiniti"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Ripristina i fornitori e i modelli alle impostazioni predefinite."
 	},
 	"save": {
 		"message": "Salva"

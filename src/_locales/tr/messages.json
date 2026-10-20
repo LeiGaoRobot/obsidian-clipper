@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Düzenle"
 	},
-	"editModel": {
-		"message": "Modeli düzenle"
-	},
-	"editProvider": {
-		"message": "Sağlayıcıyı düzenle"
-	},
 	"editTemplate": {
 		"message": "Şablonu düzenle"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Yorumlayıcı işlemi başarısız oldu. Lütfen tekrar deneyin."
-	},
-	"failedToResetProviders": {
-		"message": "Sağlayıcılar ve modeller sıfırlanamadı"
 	},
 	"failedToResetTemplate": {
 		"message": "Varsayılan şablon sıfırlanamadı. Lütfen tekrar deneyin."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Görünen ad"
-	},
-	"modelProvider": {
-		"message": "Sağlayıcı"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Sağlayıcı"
 	},
 	"modelsListFor": {
 		"message": "$1 için modeller listesi"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "Model ID"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Model ID"
-	},
-	"providerPreset": {
-		"message": "Ön ayar"
 	},
 	"rateExtensionDescription": {
 		"message": "Web Clipper'ı beğeniyor musunuz? Bize bir puan vererek yardımcı olun."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Varsayılan şablonda yapılan tüm değişiklikleri kaldır."
-	},
-	"resetProvidersAndModels": {
-		"message": "Varsayılan modelleri sıfırla"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Sağlayıcıları ve modelleri varsayılan ayarlara sıfırla."
 	},
 	"save": {
 		"message": "Kaydet"

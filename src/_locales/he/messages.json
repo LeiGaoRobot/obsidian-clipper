@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "עריכה"
 	},
-	"editModel": {
-		"message": "ערוך מודל"
-	},
-	"editProvider": {
-		"message": "ערוך ספק"
-	},
 	"editTemplate": {
 		"message": "ערוך תבנית"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "עיבוד המתרגם נכשל. אנא נסה/י שוב."
-	},
-	"failedToResetProviders": {
-		"message": "נכשל באיפוס ספקים ומודלים"
 	},
 	"failedToResetTemplate": {
 		"message": "נכשל באיפוס תבנית ברירת המחדל. אנא נסה/י שוב."
@@ -431,12 +422,6 @@
 	"modelName": {
 		"message": "שם המודל"
 	},
-	"modelProvider": {
-		"message": "ספק"
-	},
-	"modelProviderPlaceholder": {
-		"message": "ספק"
-	},
 	"modelsListFor": {
 		"message": "רשימת דגמים עבור $1"
 	},
@@ -586,12 +571,6 @@
 	},
 	"providerModelId": {
 		"message": "מזהה דגם"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "מזהה דגם"
-	},
-	"providerPreset": {
-		"message": "הגדרה מוכנה מראש"
 	},
 	"rateExtensionDescription": {
 		"message": "אוהב את Web Clipper? עזור לנו על ידי דירוג."
@@ -778,12 +757,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "הסר את כל השינויים שביצעת בתבנית ברירת המחדל."
-	},
-	"resetProvidersAndModels": {
-		"message": "אפס מודלים לברירת מחדל"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "אפס ספקים ומודלים להגדרות ברירת המחדל."
 	},
 	"save": {
 		"message": "שמור"

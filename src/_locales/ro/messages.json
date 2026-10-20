@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Editează"
 	},
-	"editModel": {
-		"message": "Editează model"
-	},
-	"editProvider": {
-		"message": "Editează furnizor"
-	},
 	"editTemplate": {
 		"message": "Editează șablon"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Procesarea interpretorului a eșuat. Te rugăm să încerci din nou."
-	},
-	"failedToResetProviders": {
-		"message": "Nu s-au putut reseta furnizorii și modelele"
 	},
 	"failedToResetTemplate": {
 		"message": "Nu s-a putut reseta șablonul implicit. Te rugăm să încerci din nou."
@@ -431,12 +422,6 @@
 	"modelName": {
 		"message": "Nume model"
 	},
-	"modelProvider": {
-		"message": "Furnizor"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Furnizor"
-	},
 	"modelsListFor": {
 		"message": "Lista de modele pentru $1"
 	},
@@ -586,12 +571,6 @@
 	},
 	"providerModelId": {
 		"message": "ID model"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID model"
-	},
-	"providerPreset": {
-		"message": "Presetare"
 	},
 	"rateExtensionDescription": {
 		"message": "Îți place Web Clipper? Ajută-ne dându-ne o evaluare."
@@ -778,12 +757,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Elimină toate modificările făcute la șablonul implicit."
-	},
-	"resetProvidersAndModels": {
-		"message": "Resetează modelele la implicit"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Resetează furnizorii și modelele la setările implicite."
 	},
 	"save": {
 		"message": "Salvează"

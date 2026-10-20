@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Edit"
 	},
-	"editModel": {
-		"message": "Edit model"
-	},
-	"editProvider": {
-		"message": "Edit penyedia"
-	},
 	"editTemplate": {
 		"message": "Ubah template"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Tidak dapat memuat proses interpreter. Silakan coba lagi."
-	},
-	"failedToResetProviders": {
-		"message": "Gagal mengatur ulang penyedia dan model"
 	},
 	"failedToResetTemplate": {
 		"message": "Gagal mengatur ulang template default. Silakan coba lagi."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Nama model"
-	},
-	"modelProvider": {
-		"message": "Penyedia"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Penyedia"
 	},
 	"modelsListFor": {
 		"message": "Daftar model untuk $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "ID model"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID model"
-	},
-	"providerPreset": {
-		"message": "Preset"
 	},
 	"rateExtensionDescription": {
 		"message": "Apakah Anda menikmati Web Clipper? Bantu kami dengan memberikan penilaian."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Hapus semua perubahan yang telah dibuat pada template default."
-	},
-	"resetProvidersAndModels": {
-		"message": "Atur ulang model default"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Atur ulang penyedia dan model ke pengaturan default."
 	},
 	"save": {
 		"message": "Simpan"

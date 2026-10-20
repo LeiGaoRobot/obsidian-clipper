@@ -1,8 +1,4 @@
-import type {
-	CodexReasoningEffort,
-	InterpreterExecutionMode,
-	ReaderSettings
-} from '../types/types';
+import type { CodexReasoningEffort, ReaderSettings } from '../types/types';
 import { normalizeCodexModel } from '../utils/codex-model';
 import { normalizeCodexReasoningEffort } from '../utils/codex-reasoning-effort';
 import { findCatalogEntryByBaseUrl, getCatalogEntry } from './catalog';
@@ -42,7 +38,7 @@ export interface AiMigrationRecord {
 	at: number;
 	/** Manifest version of the build that wrote the record. */
 	build: string;
-	source: { providers: number; models: number; mode: InterpreterExecutionMode };
+	source: { providers: number; models: number; mode: V1ExecutionMode };
 	/** Connection ids whose v1 key was imported on this device, ever. */
 	credentials: string[];
 }
@@ -57,6 +53,9 @@ export interface AiSettingsWrites {
 	 */
 	credentials?: Record<string, string>;
 }
+
+/** v1 `interpreter_settings.interpreterExecutionMode`: which engine ran every task. v2 routes per task. */
+export type V1ExecutionMode = 'api' | 'grok' | 'codex';
 
 /** A v1 `interpreter_settings.providers` entry: an API connection with its key. */
 export interface V1Provider {
@@ -84,7 +83,7 @@ export interface V1AiSettings {
 	providers: V1Provider[];
 	interpreterEnabled: boolean;
 	interpreterAutoRun: boolean;
-	interpreterExecutionMode: InterpreterExecutionMode;
+	interpreterExecutionMode: V1ExecutionMode;
 	interpreterCodexModel?: string;
 	interpreterCodexReasoningEffort?: CodexReasoningEffort;
 	defaultPromptContext: string;
@@ -127,7 +126,7 @@ function countWithStringId(value: unknown): number {
 		: 0;
 }
 
-function readMode(value: unknown): InterpreterExecutionMode {
+function readMode(value: unknown): V1ExecutionMode {
 	return value === 'grok' || value === 'codex' ? value : 'api';
 }
 
@@ -184,7 +183,7 @@ export function readV1AiSettings(raw: RawV1Settings): V1AiSettings {
 	};
 }
 
-function activeCliConnectionId(mode: InterpreterExecutionMode): string | undefined {
+function activeCliConnectionId(mode: V1ExecutionMode): string | undefined {
 	if (mode === 'codex') return LEGACY_CODEX_CONNECTION_ID;
 	if (mode === 'grok') return LEGACY_GROK_CONNECTION_ID;
 	return undefined;

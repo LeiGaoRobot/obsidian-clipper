@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "تحرير"
 	},
-	"editModel": {
-		"message": "تعديل النموذج"
-	},
-	"editProvider": {
-		"message": "تعديل المزود"
-	},
 	"editTemplate": {
 		"message": "تعديل القالب"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "فشلت معالجة المفسر. يرجى المحاولة مرة أخرى."
-	},
-	"failedToResetProviders": {
-		"message": "فشل في إعادة تعيين المزودين والنماذج"
 	},
 	"failedToResetTemplate": {
 		"message": "فشل إعادة تعيين القالب الافتراضي. يرجى المحاولة مرة أخرى."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "اسم النموذج"
-	},
-	"modelProvider": {
-		"message": "المزود"
-	},
-	"modelProviderPlaceholder": {
-		"message": "المزود"
 	},
 	"modelsListFor": {
 		"message": "قائمة النماذج لـ $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "معرف النموذج"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "معرف النموذج"
-	},
-	"providerPreset": {
-		"message": "الإعداد المسبق"
 	},
 	"rateExtensionDescription": {
 		"message": "هل تستمتع بـ Web Clipper؟ ساعدنا عن طريق تقييمه."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "إزالة أي تغييرات قمت بها على القالب الافتراضي."
-	},
-	"resetProvidersAndModels": {
-		"message": "إعادة تعيين النماذج الافتراضية"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "إعادة تعيين المزودين والنماذج إلى الإعدادات الافتراضية."
 	},
 	"save": {
 		"message": "حفظ"

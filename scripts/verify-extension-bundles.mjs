@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,7 +11,7 @@ const lazyChunks = [
 	'reader-markdown.js',
 	'reader-syntax-highlighting.js',
 	'settings-ai.js',
-	'src_utils_language-learning-runtime_ts.js',
+	'language-learning-runtime.js',
 	'vendors-node_modules_defuddle_dist_index_full_js.js'
 ];
 
@@ -24,13 +24,8 @@ function requireFile(filePath) {
 
 for (const outputDirectory of outputDirectories) {
 	const output = path.join(root, outputDirectory);
-	const chunkFiles = existsSync(path.join(output, 'chunks')) ? readdirSync(path.join(output, 'chunks')) : [];
 	for (const chunk of lazyChunks) {
-		// Webpack names a split chunk after the root modules it holds (`src_a_ts-src_b_ts.js`), so
-		// match the module's own name at either end.
-		const stem = chunk.replace(/\.js$/, '');
-		const file = chunkFiles.find(name => name === chunk || name.endsWith(`-${chunk}`) || name.startsWith(`${stem}-`)) ?? chunk;
-		requireFile(path.join(output, 'chunks', file));
+		requireFile(path.join(output, 'chunks', chunk));
 	}
 
 	for (const entry of ['popup.js', 'settings.js', 'reader-page.js', 'reader-script.js']) {

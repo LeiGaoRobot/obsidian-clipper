@@ -27,8 +27,6 @@ import {
 
 /** Delays before each reconnect attempt after the Port disconnects. */
 export const JOB_RECONNECT_DELAYS_MS: readonly number[] = [250, 500, 1000, 2000, 4000];
-/** Consecutive reconnects without a reply from the gateway before the client gives up. */
-export const MAX_RECONNECTS = JOB_RECONNECT_DELAYS_MS.length;
 
 /** One aligned value per source segment: a translation, or a segment's reading tokens. */
 export interface TranscriptJobValueMap {
@@ -215,9 +213,9 @@ function safeDisconnect(port: AiClientPort | undefined): void {
 /**
  * Runs a translate or reading job over a whole transcript in the background gateway. Resolves
  * `completed` and `incomplete` with values aligned to `input.segments`; rejects `failed` with the
- * job's error, `cancelled` on abort or a background cancel, and `network` once reconnecting fails
- * `MAX_RECONNECTS` times in a row (the job itself keeps running in the background). A rejection
- * from a final `job-state` carries the run's attempts, read with `transcriptJobAttempts`.
+ * job's error, `cancelled` on abort or a background cancel, and `network` once every reconnect in
+ * `JOB_RECONNECT_DELAYS_MS` fails in a row (the job itself keeps running in the background). A
+ * rejection from a final `job-state` carries the run's attempts, read with `transcriptJobAttempts`.
  */
 export function runTranscriptJob<T extends TranscriptJobTask>(
 	task: T,

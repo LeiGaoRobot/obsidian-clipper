@@ -1,4 +1,4 @@
-import type { V1AiSettings } from './migrate';
+import { readV1AiSettings } from './migrate';
 import { normalizeCodexModel } from '../utils/codex-model';
 import { normalizeCodexReasoningEffort } from '../utils/codex-reasoning-effort';
 import { AI_ERROR_CODES } from './errors';
@@ -54,12 +54,6 @@ export type AiLocalKey = typeof AI_LOCAL_KEYS[number];
 export type AiSessionKey = typeof AI_SESSION_KEYS[number];
 export type AiStorageKey = AiSyncKey | AiLocalKey | AiSessionKey;
 export type AiStorageAreaName = 'sync' | 'local' | 'session';
-
-/**
- * Whether `load()` bootstraps v2 from v1 when no `ai_connections` item exists. It was off in 5a, so
- * every reader could move to the store with no behavior change; the 5b switch commit turned it on.
- */
-export const AI_V2_BOOTSTRAP = true;
 
 /** `chrome.storage.sync.QUOTA_BYTES_PER_ITEM`; Firefox enforces the same limit. */
 export const SYNC_QUOTA_BYTES_PER_ITEM = 8192;
@@ -381,10 +375,6 @@ export function encodePromptContext(text: string): StoredPromptContext {
 	return { v: 1, text: typeof text === 'string' ? text : '' };
 }
 
-export function encodeCredentials(credentials: Record<string, string>): Record<string, string> {
-	return decodeCredentials(credentials);
-}
-
 /** The five sync items for a view. Credentials are never part of it. */
 export function encodeAiSettingsSync(view: AiSettingsView): AiSyncItems {
 	return {
@@ -519,35 +509,7 @@ export function assertSyncItemSize(key: string, value: unknown): void {
 	}
 }
 
-// --- v1 for derived mode -------------------------------------------------------------------------
-
-/**
- * Reads the raw v1 `interpreter_settings` and `reader_settings` items the way v1 loaded them:
- * providers and models must be objects with a string id, the mode is `api` unless `grok` / `codex`,
- * and the Codex model and effort are normalized. Values of the wrong type read as their defaults.
- */
-export function sanitizeV1AiSettings(interpreterSettings: unknown, readerSettings: unknown): V1AiSettings {
-	const interpreter = isRecord(interpreterSettings) ? interpreterSettings : {};
-	const reader = isRecord(readerSettings) ? readerSettings : {};
-	const withStringId = (value: unknown) => Array.isArray(value)
-		? value.filter(item => isRecord(item) && typeof item.id === 'string')
-		: [];
-	const mode = interpreter.interpreterExecutionMode;
-	return {
-		interpreterModel: typeof interpreter.interpreterModel === 'string' ? interpreter.interpreterModel : '',
-		models: withStringId(interpreter.models) as V1AiSettings['models'],
-		providers: withStringId(interpreter.providers) as V1AiSettings['providers'],
-		interpreterEnabled: typeof interpreter.interpreterEnabled === 'boolean' ? interpreter.interpreterEnabled : false,
-		interpreterAutoRun: typeof interpreter.interpreterAutoRun === 'boolean' ? interpreter.interpreterAutoRun : false,
-		interpreterExecutionMode: mode === 'grok' || mode === 'codex' ? mode : 'api',
-		interpreterCodexModel: normalizeCodexModel(interpreter.interpreterCodexModel),
-		interpreterCodexReasoningEffort: normalizeCodexReasoningEffort(interpreter.interpreterCodexReasoningEffort),
-		defaultPromptContext: typeof interpreter.defaultPromptContext === 'string' ? interpreter.defaultPromptContext : '',
-		readerSettings: {
-			learningResponseLanguage: typeof reader.learningResponseLanguage === 'string' ? reader.learningResponseLanguage : ''
-		}
-	};
-}
+// --- v1 reads (derived mode and fresh installs; `readV1AiSettings` lives in `migrate.ts`) --------
 
 /** The trimmed v1 Reader response language, as the migration copies it to `ai_routing`. */
 function v1ResponseLanguage(readerSettings: unknown): string | undefined {
@@ -597,7 +559,7 @@ export interface AiSettingsStoreOptions {
 	session?: StorageAreaLike;
 	onChanged?: StorageChangedEventLike;
 	nativeMessaging: NativeMessagingSupport | (() => NativeMessagingSupport);
-	/** Whether `load()` runs the bootstrapper. Pass `AI_V2_BOOTSTRAP`. */
+	/** Whether `load()` runs the bootstrapper: the background and Settings stores, never Popup or Reader. */
 	bootstrap: boolean;
 	bootstrapper?: AiSettingsBootstrapper;
 	/** Manifest version, passed to the bootstrapper. */
@@ -756,7 +718,10 @@ export function createAiSettingsStore(options: AiSettingsStoreOptions): AiSettin
 			// the legacy CLI connections a derived view always lists.
 			return { view: freshView(syncState, localState, support), mode: 'derived', connectionStatus, ...errorField };
 		}
-		const v1 = sanitizeV1AiSettings(syncState[V1_INTERPRETER_SETTINGS_KEY], syncState[V1_READER_SETTINGS_KEY]);
+		const v1 = readV1AiSettings({
+			interpreter_settings: syncState[V1_INTERPRETER_SETTINGS_KEY],
+			reader_settings: syncState[V1_READER_SETTINGS_KEY]
+		});
 		return {
 			view: deriveAiSettings(v1, { nativeMessaging: support }),
 			mode: 'derived',

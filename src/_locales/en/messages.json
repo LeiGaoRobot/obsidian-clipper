@@ -734,12 +734,6 @@
 	"edit": {
 		"message": "Edit"
 	},
-	"editModel": {
-		"message": "Edit model"
-	},
-	"editProvider": {
-		"message": "Edit provider"
-	},
 	"editTemplate": {
 		"message": "Edit template"
 	},
@@ -822,9 +816,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Interpreter processing failed. Please try again."
-	},
-	"failedToResetProviders": {
-		"message": "Failed to reset providers and models"
 	},
 	"failedToResetTemplate": {
 		"message": "Failed to reset default template. Please try again."
@@ -980,9 +971,6 @@
 	"lastUsed": {
 		"message": "Last used"
 	},
-	"nativeCliFailed": {
-		"message": "The local CLI request failed. Check the CLI output and Native Messaging Host installation."
-	},
 	"nativeCliInstallCopied": {
 		"message": "Install command copied. Run it once in Terminal, reload the extension, then check the connection."
 	},
@@ -1001,18 +989,6 @@
 	"nativeCliInstallUnsupported": {
 		"message": "The guided Native Messaging installer currently supports Google Chrome on macOS and Linux."
 	},
-	"nativeCliRunStatusCancelled": {
-		"message": "cancelled"
-	},
-	"nativeCliRunStatusFailed": {
-		"message": "failed"
-	},
-	"nativeCliRunStatusSuccess": {
-		"message": "successful"
-	},
-	"nativeCliUnavailable": {
-		"message": "The local CLI is unavailable. Install the Native Messaging Host and make sure the selected CLI is installed and signed in."
-	},
 	"legacyMode": {
 		"message": "Legacy mode"
 	},
@@ -1027,12 +1003,6 @@
 	},
 	"modelName": {
 		"message": "Display name"
-	},
-	"modelProvider": {
-		"message": "Provider"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Provider"
 	},
 	"modelsListFor": {
 		"message": "Models list for $1"
@@ -1191,12 +1161,6 @@
 	},
 	"providerModelId": {
 		"message": "Model ID"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Model ID"
-	},
-	"providerPreset": {
-		"message": "Preset"
 	},
 	"rateExtensionDescription": {
 		"message": "Are you enjoying Web Clipper? Help us by giving it a rating."
@@ -1545,12 +1509,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Remove any changes you've made to the default template."
-	},
-	"resetProvidersAndModels": {
-		"message": "Reset default models"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Reset providers and models to the default settings."
 	},
 	"save": {
 		"message": "Save"

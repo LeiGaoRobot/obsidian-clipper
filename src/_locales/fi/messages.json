@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Muokkaa"
 	},
-	"editModel": {
-		"message": "Muokkaa mallia"
-	},
-	"editProvider": {
-		"message": "Muokkaa palveluntarjoajaa"
-	},
 	"editTemplate": {
 		"message": "Muokkaa mallia"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Tulkin käsittely epäonnistui. Yritä uudelleen."
-	},
-	"failedToResetProviders": {
-		"message": "Palveluntarjoajien ja mallien nollaus epäonnistui"
 	},
 	"failedToResetTemplate": {
 		"message": "Oletusmallin nollaus epäonnistui. Yritä uudelleen."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Mallin nimi"
-	},
-	"modelProvider": {
-		"message": "Tarjoaja"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Tarjoaja"
 	},
 	"modelsListFor": {
 		"message": "Malliluettelo $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "Mallin tunnus"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Mallin tunnus"
-	},
-	"providerPreset": {
-		"message": "Esiasetus"
 	},
 	"rateExtensionDescription": {
 		"message": "Pidätkö Web Clipperista? Auta meitä antamalla sille arvostelu."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Poista kaikki tekemäsi muutokset oletusmalliin."
-	},
-	"resetProvidersAndModels": {
-		"message": "Nollaa oletusmallit"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Nollaa tarjoajat ja mallit oletusasetuksiin."
 	},
 	"save": {
 		"message": "Tallenna"

@@ -10,7 +10,6 @@ import { createAiGateway } from './ai/gateway';
 import { createAiJobStore, type StorageAreaLike } from './ai/job-store';
 import { aiSettingsBootstrapper } from './ai/migrate';
 import {
-	AI_V2_BOOTSTRAP,
 	createAiSettingsStore,
 	createConnectionStatusStore,
 	type StorageChangedEventLike
@@ -457,14 +456,14 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 const aiJobSession = (browser.storage as unknown as { session?: StorageAreaLike }).session;
 
 // The background's own v2 AI settings store, wired like the UI one in `utils/ai-settings.ts`. It
-// runs the v1 → v2 bootstrap (`AI_V2_BOOTSTRAP`) on load; the Popup and Reader stores never do.
+// runs the v1 → v2 bootstrap on load; the Popup and Reader stores never do.
 const aiSettingsStore = createAiSettingsStore({
 	sync: browser.storage.sync as unknown as StorageAreaLike,
 	local: browser.storage.local as unknown as StorageAreaLike,
 	...(aiJobSession ? { session: aiJobSession } : {}),
 	onChanged: browser.storage.onChanged as unknown as StorageChangedEventLike,
 	nativeMessaging: detectNativeMessaging,
-	bootstrap: AI_V2_BOOTSTRAP,
+	bootstrap: true,
 	bootstrapper: aiSettingsBootstrapper,
 	build: browser.runtime.getManifest().version
 });

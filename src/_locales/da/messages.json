@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Rediger"
 	},
-	"editModel": {
-		"message": "Redigér model"
-	},
-	"editProvider": {
-		"message": "Redigér udbyder"
-	},
 	"editTemplate": {
 		"message": "Redigér skabelon"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Kunne ikke behandle fortolker. Prøv venligst igen."
-	},
-	"failedToResetProviders": {
-		"message": "Kunne ikke nulstille udbydere og modeller"
 	},
 	"failedToResetTemplate": {
 		"message": "Kunne ikke nulstille standardskabelon. Prøv venligst igen."
@@ -431,12 +422,6 @@
 	"modelName": {
 		"message": "Modelnavn"
 	},
-	"modelProvider": {
-		"message": "Udbyder"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Udbyder"
-	},
 	"modelsListFor": {
 		"message": "Modelliste for $1"
 	},
@@ -586,12 +571,6 @@
 	},
 	"providerModelId": {
 		"message": "Model-ID"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Model-ID"
-	},
-	"providerPreset": {
-		"message": "Forudindstilling"
 	},
 	"rateExtensionDescription": {
 		"message": "Kan du lide Web Clipper? Hjælp os ved at give en bedømmelse."
@@ -778,12 +757,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Fjern alle ændringer foretaget i standardskabelonen."
-	},
-	"resetProvidersAndModels": {
-		"message": "Nulstil modeller til standard"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Nulstil udbydere og modeller til standardindstillingerne."
 	},
 	"save": {
 		"message": "Gem"

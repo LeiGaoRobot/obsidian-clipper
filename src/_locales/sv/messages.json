@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Redigera"
 	},
-	"editModel": {
-		"message": "Redigera modell"
-	},
-	"editProvider": {
-		"message": "Redigera leverantör"
-	},
 	"editTemplate": {
 		"message": "Redigera mall"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Tolkbearbetningen misslyckades. Försök igen."
-	},
-	"failedToResetProviders": {
-		"message": "Det gick inte att återställa leverantörer och modeller"
 	},
 	"failedToResetTemplate": {
 		"message": "Det gick inte att återställa standardmallen. Försök igen."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Visningsnamn"
-	},
-	"modelProvider": {
-		"message": "Leverantör"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Leverantör"
 	},
 	"modelsListFor": {
 		"message": "Modellista för $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "Modell-ID"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Modell-ID"
-	},
-	"providerPreset": {
-		"message": "Förinställning"
 	},
 	"rateExtensionDescription": {
 		"message": "Gillar du Web Clipper? Hjälp oss genom att ge det ett betyg."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Ta bort alla ändringar du gjort i standardmallen."
-	},
-	"resetProvidersAndModels": {
-		"message": "Återställ standardmodeller"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Återställ leverantörer och modeller till standardinställningarna."
 	},
 	"save": {
 		"message": "Spara"

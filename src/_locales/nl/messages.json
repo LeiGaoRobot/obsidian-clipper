@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Bewerken"
 	},
-	"editModel": {
-		"message": "Model bewerken"
-	},
-	"editProvider": {
-		"message": "Provider bewerken"
-	},
 	"editTemplate": {
 		"message": "Sjabloon bewerken"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Interpreter verwerking mislukt. Probeer het opnieuw."
-	},
-	"failedToResetProviders": {
-		"message": "Resetten van providers en modellen mislukt"
 	},
 	"failedToResetTemplate": {
 		"message": "Standaard sjabloon resetten mislukt. Probeer het opnieuw."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Modelnaam"
-	},
-	"modelProvider": {
-		"message": "Provider"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Provider"
 	},
 	"modelsListFor": {
 		"message": "Modellenlijst voor $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "Model-ID"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Model-ID"
-	},
-	"providerPreset": {
-		"message": "Voorinstelling"
 	},
 	"rateExtensionDescription": {
 		"message": "Geniet u van Web Clipper? Help ons door het een beoordeling te geven."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Verwijder alle wijzigingen die je hebt aangebracht aan het standaard sjabloon."
-	},
-	"resetProvidersAndModels": {
-		"message": "Standaardmodellen resetten"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Reset providers en modellen naar de standaardinstellingen."
 	},
 	"save": {
 		"message": "Opslaan"

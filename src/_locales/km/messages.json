@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "កែសម្រួល"
 	},
-	"editModel": {
-		"message": "កែសម្រួលម៉ូដែល"
-	},
-	"editProvider": {
-		"message": "កែសម្រួលអ្នកផ្តល់សេវា"
-	},
 	"editTemplate": {
 		"message": "កែសម្រួលគំរូ"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "ការដំណើរការ Interpreter បានបរាជ័យ។ សូមព្យាយាមម្តងទៀត។"
-	},
-	"failedToResetProviders": {
-		"message": "បានបរាជ័យក្នុងការកំណត់អ្នកផ្តល់សេវា និងម៉ូដែលឡើងវិញ"
 	},
 	"failedToResetTemplate": {
 		"message": "បានបរាជ័យក្នុងការកំណត់គំរូលំនាំដើមឡើងវិញ។ សូមព្យាយាមម្តងទៀត។"
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "ឈ្មោះបង្ហាញ"
-	},
-	"modelProvider": {
-		"message": "អ្នកផ្តល់សេវា"
-	},
-	"modelProviderPlaceholder": {
-		"message": "អ្នកផ្តល់សេវា"
 	},
 	"modelsListFor": {
 		"message": "បញ្ជីម៉ូដែលសម្រាប់ $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "Model ID"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Model ID"
-	},
-	"providerPreset": {
-		"message": "ការកំណត់ជាមុន"
 	},
 	"rateExtensionDescription": {
 		"message": "តើអ្នកកំពុងរីករាយជាមួយ Web Clipper មែនទេ? ជួយយើងដោយផ្តល់ការវាយតម្លៃ។"
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "លុបការផ្លាស់ប្តូរណាមួយដែលអ្នកបានធ្វើលើគំរូលំនាំដើម។"
-	},
-	"resetProvidersAndModels": {
-		"message": "កំណត់ម៉ូដែលលំនាំដើមឡើងវិញ"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "កំណត់អ្នកផ្តល់សេវា និងម៉ូដែលទៅការកំណត់លំនាំដើមឡើងវិញ។"
 	},
 	"save": {
 		"message": "រក្សាទុក"

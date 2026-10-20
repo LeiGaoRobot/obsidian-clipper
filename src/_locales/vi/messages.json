@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Chỉnh sửa"
 	},
-	"editModel": {
-		"message": "Chỉnh sửa mô hình"
-	},
-	"editProvider": {
-		"message": "Chỉnh sửa nhà cung cấp"
-	},
 	"editTemplate": {
 		"message": "Chỉnh sửa mẫu"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Xử lý thông dịch thất bại. Vui lòng thử lại."
-	},
-	"failedToResetProviders": {
-		"message": "Không thể đặt lại nhà cung cấp và mô hình"
 	},
 	"failedToResetTemplate": {
 		"message": "Không thể đặt lại mẫu mặc định. Vui lòng thử lại."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Tên hiển thị"
-	},
-	"modelProvider": {
-		"message": "Nhà cung cấp"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Nhà cung cấp"
 	},
 	"modelsListFor": {
 		"message": "Danh sách mô hình cho $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "ID mô hình"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID mô hình"
-	},
-	"providerPreset": {
-		"message": "Cài đặt trước"
 	},
 	"rateExtensionDescription": {
 		"message": "Bạn thích Web Clipper? Hãy giúp chúng tôi bằng cách đánh giá nó."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Xóa mọi thay đổi bạn đã thực hiện đối với mẫu mặc định."
-	},
-	"resetProvidersAndModels": {
-		"message": "Đặt lại mô hình mặc định"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Đặt lại nhà cung cấp và mô hình về cài đặt mặc định."
 	},
 	"save": {
 		"message": "Lưu"

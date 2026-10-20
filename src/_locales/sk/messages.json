@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Upraviť"
 	},
-	"editModel": {
-		"message": "Upraviť model"
-	},
-	"editProvider": {
-		"message": "Upraviť poskytovateľa"
-	},
 	"editTemplate": {
 		"message": "Upraviť šablónu"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Spracovanie tlmočníkom zlyhalo. Skúste to znova."
-	},
-	"failedToResetProviders": {
-		"message": "Nepodarilo sa obnoviť poskytovateľov a modely"
 	},
 	"failedToResetTemplate": {
 		"message": "Nepodarilo sa obnoviť predvolenú šablónu. Skúste to znova."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Zobrazovaný názov"
-	},
-	"modelProvider": {
-		"message": "Poskytovateľ"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Poskytovateľ"
 	},
 	"modelsListFor": {
 		"message": "Zoznam modelov pre $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "ID modelu"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID modelu"
-	},
-	"providerPreset": {
-		"message": "Predvoľba"
 	},
 	"rateExtensionDescription": {
 		"message": "Páči sa vám Web Clipper? Pomôžte nám tým, že mu dáte hodnotenie."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Odstrániť všetky zmeny, ktoré ste vykonali v predvolenej šablóne."
-	},
-	"resetProvidersAndModels": {
-		"message": "Obnoviť predvolené modely"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Obnoviť poskytovateľov a modely na predvolené nastavenia."
 	},
 	"save": {
 		"message": "Uložiť"

@@ -45,7 +45,6 @@ export interface Rating {
 
 export type SaveBehavior = 'addToObsidian' | 'saveFile' | 'copyToClipboard';
 
-export type InterpreterExecutionMode = 'api' | 'grok' | 'codex';
 export type CodexReasoningEffort = typeof CODEX_REASONING_EFFORTS[number];
 export type TranscriptLayoutMode = 'reading' | 'notebook' | 'focus';
 

@@ -1,3 +1,4 @@
+import { stringifyValue } from '../utils/prompt-variables';
 import { AiError, MAX_DETAIL_CHARS } from './errors';
 import type { AiTask } from './types';
 
@@ -70,10 +71,6 @@ export interface StructuredOutputSpec {
 }
 
 const JSON_ONLY = 'Return only the JSON object, with no code fence, explanation, or other text.';
-
-export function isTextTask(task: AiTask): task is 'edit' | 'explain' {
-	return task === 'edit' || task === 'explain';
-}
 
 export function renderMessages<T extends AiTask>(task: T, input: AiTaskInput<T>): RenderedMessages {
 	switch (task) {
@@ -254,16 +251,6 @@ function badResponse(text: string, reason: string): AiError {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-function stringifyValue(value: unknown): string {
-	if (typeof value === 'string') return value;
-	if (value === null || value === undefined) return '';
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
-	}
 }
 
 function parseInterpret(text: string, input: AiTaskInputs['interpret']): InterpretOutput {

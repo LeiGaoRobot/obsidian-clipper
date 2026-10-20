@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Επεξεργασία"
 	},
-	"editModel": {
-		"message": "Επεξεργασία μοντέλου"
-	},
-	"editProvider": {
-		"message": "Επεξεργασία παρόχου"
-	},
 	"editTemplate": {
 		"message": "Επεξεργασία προτύπου"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Αποτυχία επεξεργασίας διερμηνέα. Παρακαλώ δοκιμάστε ξανά."
-	},
-	"failedToResetProviders": {
-		"message": "Αποτυχία επαναφοράς παρόχων και μοντέλων"
 	},
 	"failedToResetTemplate": {
 		"message": "Αποτυχία επαναφοράς προεπιλεγμένου προτύπου. Παρακαλώ δοκιμάστε ξανά."
@@ -431,12 +422,6 @@
 	"modelName": {
 		"message": "Όνομα μοντέλου"
 	},
-	"modelProvider": {
-		"message": "Πάροχος"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Πάροχος"
-	},
 	"modelsListFor": {
 		"message": "Λίστα μοντέλων για $1"
 	},
@@ -586,12 +571,6 @@
 	},
 	"providerModelId": {
 		"message": "Αναγνωριστικό μοντέλου"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Αναγνωριστικό μοντέλου"
-	},
-	"providerPreset": {
-		"message": "Προεπιλογή"
 	},
 	"rateExtensionDescription": {
 		"message": "Σας αρέσει το Web Clipper; Βοηθήστε μας δίνοντάς του μια αξιολόγηση."
@@ -778,12 +757,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Αφαιρέστε όλες τις αλλαγές που έχετε κάνει στο προεπιλεγμένο πρότυπο."
-	},
-	"resetProvidersAndModels": {
-		"message": "Επαναφορά προεπιλεγμένων μοντέλων"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Επαναφέρετε τους παρόχους και τα μοντέλα στις προεπιλεγμένες ρυθμίσεις."
 	},
 	"save": {
 		"message": "Αποθήκευση"

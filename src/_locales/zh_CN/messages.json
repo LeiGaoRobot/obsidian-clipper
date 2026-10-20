@@ -734,12 +734,6 @@
 	"edit": {
 		"message": "编辑"
 	},
-	"editModel": {
-		"message": "编辑模型"
-	},
-	"editProvider": {
-		"message": "编辑提供商"
-	},
 	"editTemplate": {
 		"message": "编辑模板"
 	},
@@ -822,9 +816,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "解释器处理失败。请重试。"
-	},
-	"failedToResetProviders": {
-		"message": "重置提供商和模型失败"
 	},
 	"failedToResetTemplate": {
 		"message": "无法重置默认模板。请再试一次。"
@@ -980,9 +971,6 @@
 	"lastUsed": {
 		"message": "最近使用"
 	},
-	"nativeCliFailed": {
-		"message": "本机 CLI 请求失败。请检查 CLI 输出和 Native Messaging Host 安装。"
-	},
 	"nativeCliInstallCopied": {
 		"message": "安装命令已复制。请在终端运行一次，重新加载扩展，然后检查连接。"
 	},
@@ -1001,18 +989,6 @@
 	"nativeCliInstallUnsupported": {
 		"message": "Native Messaging 引导安装目前仅支持 macOS 和 Linux 上的 Google Chrome。"
 	},
-	"nativeCliRunStatusCancelled": {
-		"message": "已取消"
-	},
-	"nativeCliRunStatusFailed": {
-		"message": "失败"
-	},
-	"nativeCliRunStatusSuccess": {
-		"message": "成功"
-	},
-	"nativeCliUnavailable": {
-		"message": "本机 CLI 不可用。请安装 Native Messaging Host，并确认所选 CLI 已安装且已登录。"
-	},
 	"legacyMode": {
 		"message": "传统模式"
 	},
@@ -1027,12 +1003,6 @@
 	},
 	"modelName": {
 		"message": "模型名称"
-	},
-	"modelProvider": {
-		"message": "提供商"
-	},
-	"modelProviderPlaceholder": {
-		"message": "提供商"
 	},
 	"modelsListFor": {
 		"message": "$1的模型列表"
@@ -1191,12 +1161,6 @@
 	},
 	"providerModelId": {
 		"message": "模型 ID"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "模型 ID"
-	},
-	"providerPreset": {
-		"message": "预设"
 	},
 	"rateExtensionDescription": {
 		"message": "您喜欢使用Web Clipper吗？请帮助我们给它评分。"
@@ -1545,12 +1509,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "移除对默认模板的所有更改。"
-	},
-	"resetProvidersAndModels": {
-		"message": "重置默认模型"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "将提供商和模型重置为默认设置。"
 	},
 	"save": {
 		"message": "保存"

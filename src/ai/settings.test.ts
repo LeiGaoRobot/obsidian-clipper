@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import type { V1AiSettings } from './migrate';
+import { readV1AiSettings, type V1AiSettings } from './migrate';
 import type { StorageAreaLike } from './job-store';
 import {
 	AI_CONNECTION_STATUS_KEY,
@@ -11,7 +11,6 @@ import {
 	AI_PROMPT_CONTEXT_KEY,
 	AI_ROUTING_KEY,
 	AI_SETTINGS_DEFAULTS,
-	AI_V2_BOOTSTRAP,
 	AiSettingsStorageError,
 	assertSyncItemSize,
 	createAiSettingsStore,
@@ -128,12 +127,9 @@ function v1Interpreter(overrides: Record<string, unknown> = {}): Record<string, 
 	};
 }
 
+// Derived mode reads v1 through the migration's one sanitizer.
 function v1Settings(interpreter: Record<string, unknown>, reader: Record<string, unknown> | undefined): V1AiSettings {
-	return {
-		...interpreter,
-		interpreterExecutionMode: interpreter.interpreterExecutionMode ?? 'api',
-		readerSettings: { learningResponseLanguage: reader?.learningResponseLanguage ?? '' }
-	} as unknown as V1AiSettings;
+	return readV1AiSettings({ interpreter_settings: interpreter, reader_settings: reader });
 }
 
 function derivedStore(sync: Record<string, unknown>, local: Record<string, unknown> = {}) {
@@ -346,10 +342,6 @@ describe('toAiSettingsStorageError', () => {
 // --- Store: derived mode -------------------------------------------------------------------------
 
 describe('createAiSettingsStore in derived mode', () => {
-	test('AI_V2_BOOTSTRAP is on since the 5b switch', () => {
-		expect(AI_V2_BOOTSTRAP).toBe(true);
-	});
-
 	test.each([
 		['api', v1Interpreter(), { learningResponseLanguage: ' Japanese ' }],
 		['stale model', v1Interpreter({ interpreterModel: 'model-c' }), { learningResponseLanguage: '' }],
@@ -389,6 +381,15 @@ describe('createAiSettingsStore in derived mode', () => {
 		expect(view.profiles[0].model).toBeUndefined();
 		expect(view.profiles[0].options).toBeUndefined();
 		expect(view.routing.defaultProfileId).toBeUndefined();
+	});
+
+	test('derived connections carry the catalog preset the bootstrap would write', async () => {
+		const { store } = derivedStore({ interpreter_settings: v1Interpreter() });
+		const view = await store.load();
+		expect(view.connections.slice(0, 2).map(item => [item.id, item.presetId])).toEqual([
+			['provider-anthropic', 'anthropic'],
+			['provider-ollama', 'ollama']
+		]);
 	});
 
 	test('loads defaults with no v1 item at all', async () => {

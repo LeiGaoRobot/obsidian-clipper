@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Upravit"
 	},
-	"editModel": {
-		"message": "Upravit model"
-	},
-	"editProvider": {
-		"message": "Upravit poskytovatele"
-	},
 	"editTemplate": {
 		"message": "Upravit šablonu"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Zpracování interpreta selhalo. Zkuste to prosím znovu."
-	},
-	"failedToResetProviders": {
-		"message": "Nepodařilo se resetovat poskytovatele a modely"
 	},
 	"failedToResetTemplate": {
 		"message": "Nepodařilo se resetovat výchozí šablonu. Zkuste to prosím znovu."
@@ -431,12 +422,6 @@
 	"modelName": {
 		"message": "Název modelu"
 	},
-	"modelProvider": {
-		"message": "Poskytovatel"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Poskytovatel"
-	},
 	"modelsListFor": {
 		"message": "Seznam modelů pro $1"
 	},
@@ -586,12 +571,6 @@
 	},
 	"providerModelId": {
 		"message": "ID modelu"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID modelu"
-	},
-	"providerPreset": {
-		"message": "Přednastavení"
 	},
 	"rateExtensionDescription": {
 		"message": "Líbí se vám Web Clipper? Pomozte nám jeho ohodnocením."
@@ -778,12 +757,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Odstraňte všechny změny, které jste provedli ve výchozí šabloně."
-	},
-	"resetProvidersAndModels": {
-		"message": "Resetovat výchozí modely"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Resetujte poskytovatele a modely na výchozí nastavení."
 	},
 	"save": {
 		"message": "Uložit"

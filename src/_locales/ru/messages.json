@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Редактировать"
 	},
-	"editModel": {
-		"message": "Редактировать модель"
-	},
-	"editProvider": {
-		"message": "Редактировать провайдера"
-	},
 	"editTemplate": {
 		"message": "Изменить шаблон"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Обработка переводчика не удалась. Пожалуйста, попробуйте еще раз."
-	},
-	"failedToResetProviders": {
-		"message": "Не удалось сбросить поставщиков и модели"
 	},
 	"failedToResetTemplate": {
 		"message": "Не удалось сбросить шаблон по умолчанию. Пожалуйста, попробуйте еще раз."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Название модели"
-	},
-	"modelProvider": {
-		"message": "Провайдер"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Провайдер"
 	},
 	"modelsListFor": {
 		"message": "Список моделей для $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "ID модели"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID модели"
-	},
-	"providerPreset": {
-		"message": "Предустановка"
 	},
 	"rateExtensionDescription": {
 		"message": "Вам нравится Web Clipper? Помогите нам, оценив его."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Удалить все изменения, внесенные в шаблон по умолчанию."
-	},
-	"resetProvidersAndModels": {
-		"message": "Сбросить модели по умолчанию"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Сбросьте поставщиков и модели до настроек по умолчанию."
 	},
 	"save": {
 		"message": "Сохранить"

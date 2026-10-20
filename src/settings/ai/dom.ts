@@ -1,11 +1,8 @@
-import DOMPurify from 'dompurify';
 import { initializeIcons } from '../../icons/icons';
-import { getMessage } from '../../utils/i18n';
 import { initializeToggles, updateToggleState } from '../../utils/ui-utils';
 
 // Small DOM helpers shared by the AI settings panels. Panels build their content imperatively
-// into static containers in settings.html; text always goes through `textContent`, and the few
-// messages that carry markup are sanitized the same way `translatePage` does.
+// into static containers in settings.html; text always goes through `textContent`.
 
 export function createElement<K extends keyof HTMLElementTagNameMap>(
 	doc: Document,
@@ -57,11 +54,6 @@ export function createAddLink(doc: Document, label: string, id?: string): { cont
 	});
 	container.appendChild(link);
 	return { container, link };
-}
-
-/** Sets a message that may contain markup (links, emphasis), sanitized. */
-export function setMessageHtml(element: HTMLElement, key: string, substitutions?: string | string[]): void {
-	element.replaceChildren(DOMPurify.sanitize(getMessage(key, substitutions), { RETURN_DOM_FRAGMENT: true }));
 }
 
 export interface SettingItemParts {

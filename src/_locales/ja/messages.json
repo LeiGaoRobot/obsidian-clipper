@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "編集"
 	},
-	"editModel": {
-		"message": "モデルを編集"
-	},
-	"editProvider": {
-		"message": "\"プロバイダーを編集\""
-	},
 	"editTemplate": {
 		"message": "テンプレートを編集"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "インタープリターの処理に失敗しました。もう一度お試しください。"
-	},
-	"failedToResetProviders": {
-		"message": "プロバイダーとモデルのリセットに失敗しました"
 	},
 	"failedToResetTemplate": {
 		"message": "\"デフォルトテンプレートのリセットに失敗しました。もう一度お試しください。\""
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "モデル名"
-	},
-	"modelProvider": {
-		"message": "プロバイダー"
-	},
-	"modelProviderPlaceholder": {
-		"message": "プロバイダー"
 	},
 	"modelsListFor": {
 		"message": "$1のモデルリスト"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "モデルID"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "モデルID"
-	},
-	"providerPreset": {
-		"message": "プリセット"
 	},
 	"rateExtensionDescription": {
 		"message": "Web Clipperを楽しんでいますか？評価をつけることで私たちを支えてください。"
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "デフォルトテンプレートへの変更をすべて削除します。"
-	},
-	"resetProvidersAndModels": {
-		"message": "デフォルトモデルをリセット"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "プロバイダーとモデルをデフォルト設定にリセットします。"
 	},
 	"save": {
 		"message": "保存"

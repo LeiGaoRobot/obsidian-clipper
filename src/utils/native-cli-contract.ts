@@ -1,8 +1,6 @@
-import type { PromptVariable } from '../types/types';
 import type { CodexReasoningEffort } from '../types/types';
 import type { CliExecutionMode } from './cli-execution-contract';
-import { buildExecutionPrompt } from './cli-execution-contract';
-import { MAX_CODEX_MODEL_CHARS, normalizeCodexModel } from './codex-model';
+import { normalizeCodexModel } from './codex-model';
 import { normalizeCodexReasoningEffort } from './codex-reasoning-effort';
 import { MAX_OUTPUT_SCHEMA_CHARS, NATIVE_CLI_PROTOCOL_VERSION } from '../../native-host/cli-invocation.mjs';
 
@@ -50,13 +48,10 @@ export function isNativeCliHeartbeat(value: unknown): value is NativeCliHeartbea
 		&& typeof (value as { requestId?: unknown }).requestId === 'string';
 }
 
-export interface NativeCliRequestOptions {
+export interface NativeCliPromptRequestOptions {
 	requestId?: string;
 	model?: string;
 	effort?: CodexReasoningEffort;
-}
-
-export interface NativeCliPromptRequestOptions extends NativeCliRequestOptions {
 	/** Codex only. */
 	outputSchema?: Record<string, unknown>;
 }
@@ -73,8 +68,6 @@ export interface NativeCliHealthRequest {
 	requestId: string;
 	mode: CliExecutionMode;
 }
-
-export type NativeCliHostRequest = NativeCliRequest | NativeCliCancelRequest | NativeCliHealthRequest;
 
 export interface NativeCliHealth {
 	protocolVersion: number;
@@ -98,10 +91,6 @@ export function createNativeCliRequestId(prefix = 'native-cli'): string {
 	return `${prefix}-${Date.now()}-${nativeCliRequestSequence}`;
 }
 
-export function isCliExecutionMode(value: unknown): value is CliExecutionMode {
-	return value === 'grok' || value === 'codex';
-}
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
 	const prototype = Object.getPrototypeOf(value);
@@ -115,36 +104,6 @@ function outputSchemaError(mode: CliExecutionMode, outputSchema: unknown): strin
 		return `Output schema must serialize to at most ${MAX_OUTPUT_SCHEMA_CHARS} characters.`;
 	}
 	return null;
-}
-
-export function isNativeCliRequest(value: unknown): value is NativeCliRequest {
-	if (!value || typeof value !== 'object') return false;
-	const request = value as Partial<NativeCliRequest>;
-	const validModel = request.model === undefined || (
-		request.mode === 'codex'
-		&& typeof request.model === 'string'
-		&& request.model === request.model.trim()
-		&& request.model.length > 0
-		&& request.model.length <= MAX_CODEX_MODEL_CHARS
-	);
-	const validEffort = request.effort === undefined || (
-		request.mode === 'codex'
-		&& normalizeCodexReasoningEffort(request.effort) === request.effort
-	);
-	const validOutputSchema = request.outputSchema === undefined || (
-		isCliExecutionMode(request.mode) && outputSchemaError(request.mode, request.outputSchema) === null
-	);
-	return request.type === 'executeCli'
-		&& request.protocolVersion === NATIVE_CLI_PROTOCOL_VERSION
-		&& typeof request.requestId === 'string'
-		&& request.requestId.length > 0
-		&& isCliExecutionMode(request.mode)
-		&& typeof request.prompt === 'string'
-		&& request.prompt.length > 0
-		&& validModel
-		&& validEffort
-		&& validOutputSchema
-		&& (request.heartbeat === undefined || typeof request.heartbeat === 'boolean');
 }
 
 /** Builds an `executeCli` request from an already rendered prompt. */
@@ -181,15 +140,6 @@ export function buildNativeCliPromptRequest(
 		...(effort ? { effort } : {}),
 		...(options.outputSchema !== undefined ? { outputSchema: options.outputSchema } : {})
 	};
-}
-
-export function buildNativeCliRequest(
-	mode: CliExecutionMode,
-	context: string,
-	promptVariables: PromptVariable[],
-	options: NativeCliRequestOptions = {}
-): NativeCliRequest {
-	return buildNativeCliPromptRequest(mode, buildExecutionPrompt(context, promptVariables), options);
 }
 
 export function buildNativeCliCancelRequest(requestId: string): NativeCliCancelRequest {

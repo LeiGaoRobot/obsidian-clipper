@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Edita"
 	},
-	"editModel": {
-		"message": "Editar model"
-	},
-	"editProvider": {
-		"message": "Editar proveïdor"
-	},
 	"editTemplate": {
 		"message": "Editar plantilla"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Ha fallat el processament de l’intèrpret. Si us plau, torni-ho a intentar."
-	},
-	"failedToResetProviders": {
-		"message": "Error en restablir els proveïdors i els models"
 	},
 	"failedToResetTemplate": {
 		"message": "No s’ha pogut restablir la plantilla predeterminada. Si us plau, torni-ho a intentar."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Nom del model"
-	},
-	"modelProvider": {
-		"message": "Proveïdor"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Proveïdor"
 	},
 	"modelsListFor": {
 		"message": "Llista de models per a $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "ID del model"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID del model"
-	},
-	"providerPreset": {
-		"message": "Preestablert"
 	},
 	"rateExtensionDescription": {
 		"message": "T'està agradant Web Clipper? Ajuda'ns donant-li una valoració."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Eliminar qualsevol canvi que hagi fet a la plantilla predeterminada."
-	},
-	"resetProvidersAndModels": {
-		"message": "Restablir els models predeterminats"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Restablir els proveïdors i models a la configuració predeterminada."
 	},
 	"save": {
 		"message": "Guardar"

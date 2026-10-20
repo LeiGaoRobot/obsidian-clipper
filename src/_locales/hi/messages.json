@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "संपादित करें"
 	},
-	"editModel": {
-		"message": "Model edit karein"
-	},
-	"editProvider": {
-		"message": "Provider edit karein"
-	},
 	"editTemplate": {
 		"message": "Template edit karein"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Interpreter processing fail. Kripya dobara koshish karein."
-	},
-	"failedToResetProviders": {
-		"message": "Providers aur models reset karne mein fail"
 	},
 	"failedToResetTemplate": {
 		"message": "Default template reset karne mein fail. Kripya dobara koshish karein."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Display name"
-	},
-	"modelProvider": {
-		"message": "Provider"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Provider"
 	},
 	"modelsListFor": {
 		"message": "$1 के लिए मॉडल सूची"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "Model ID"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Model ID"
-	},
-	"providerPreset": {
-		"message": "Preset"
 	},
 	"rateExtensionDescription": {
 		"message": "क्या आप वेब क्लिपर का आनंद ले रहे हैं? हमारी मदद करें इसे रेटिंग देकर।"
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Default template mein kiye gaye sabhi changes ko remove karein."
-	},
-	"resetProvidersAndModels": {
-		"message": "Default models reset karein"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Providers aur models ko default settings par reset karein."
 	},
 	"save": {
 		"message": "Save"

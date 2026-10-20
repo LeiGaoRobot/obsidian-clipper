@@ -25,7 +25,8 @@ function kindFromUrl(baseUrl = ''): ConnectionKind | undefined {
 	return undefined;
 }
 
-// The provider-name rules llm-client.ts has always used, in its branch order.
+// v1's provider-name rules, in their branch order. Still the last guess before `openai-compatible`
+// for migrated v1 providers and custom connections without a preset.
 function kindFromLegacyRules({ name = '', baseUrl = '' }: ConnectionKindSource): ConnectionKind | undefined {
 	const lowerName = name.toLowerCase();
 	if (lowerName.includes('hugging')) return 'huggingface';

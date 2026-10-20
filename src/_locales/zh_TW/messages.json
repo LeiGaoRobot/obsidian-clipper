@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "編輯"
 	},
-	"editModel": {
-		"message": "編輯模型"
-	},
-	"editProvider": {
-		"message": "編輯提供者"
-	},
 	"editTemplate": {
 		"message": "編輯範本"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "解譯器處理失敗。請再試一次。"
-	},
-	"failedToResetProviders": {
-		"message": "重設提供者和模型失敗"
 	},
 	"failedToResetTemplate": {
 		"message": "重置預設範本失敗。請再試一次。"
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "模型名稱"
-	},
-	"modelProvider": {
-		"message": "提供者"
-	},
-	"modelProviderPlaceholder": {
-		"message": "提供者"
 	},
 	"modelsListFor": {
 		"message": "$1 的模型列表"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "模型 ID"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "模型 ID"
-	},
-	"providerPreset": {
-		"message": "預設"
 	},
 	"rateExtensionDescription": {
 		"message": "您喜歡Web Clipper嗎？請幫助我們給它評分。"
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "移除您對預設範本所做的任何更改。"
-	},
-	"resetProvidersAndModels": {
-		"message": "重設預設模型"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "將提供者和模型重設為預設設定。"
 	},
 	"save": {
 		"message": "儲存"

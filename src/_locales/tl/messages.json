@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "I-edit"
 	},
-	"editModel": {
-		"message": "I-edit ang modelo"
-	},
-	"editProvider": {
-		"message": "I-edit ang provider"
-	},
 	"editTemplate": {
 		"message": "I-edit ang template"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Hindi maproseso ang interpreter. Pakisubukang muli."
-	},
-	"failedToResetProviders": {
-		"message": "Hindi ma-reset ang mga provider at model"
 	},
 	"failedToResetTemplate": {
 		"message": "Hindi ma-reset ang default template. Pakisubukang muli."
@@ -431,12 +422,6 @@
 	"modelName": {
 		"message": "Pangalan ng model"
 	},
-	"modelProvider": {
-		"message": "Provider"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Provider"
-	},
 	"modelsListFor": {
 		"message": "Listahan ng mga model para sa $1"
 	},
@@ -586,12 +571,6 @@
 	},
 	"providerModelId": {
 		"message": "Model ID"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Model ID"
-	},
-	"providerPreset": {
-		"message": "Preset"
 	},
 	"rateExtensionDescription": {
 		"message": "Nagustuhan mo ba ang Web Clipper? Tulungan mo kami sa pamamagitan ng pagbibigay ng rating."
@@ -778,12 +757,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Tanggalin ang lahat ng pagbabagong ginawa sa default template."
-	},
-	"resetProvidersAndModels": {
-		"message": "I-reset ang mga model sa default"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "I-reset ang mga provider at model sa default na settings."
 	},
 	"save": {
 		"message": "I-save"

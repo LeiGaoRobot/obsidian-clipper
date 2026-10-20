@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { deriveAiSettings } from '../ai/settings-view';
-import { sanitizeV1AiSettings } from '../ai/settings';
+import { readV1AiSettings } from '../ai/migrate';
 
 const mocks = vi.hoisted(() => ({
 	sync: {} as Record<string, unknown>,
@@ -65,7 +65,7 @@ describe('browser AI settings', () => {
 		// The Popup and Reader store never carries keys, not even the v1 ones a derived view has.
 		expect(snapshot.view).toEqual({
 			...deriveAiSettings(
-				sanitizeV1AiSettings(interpreterSettings, mocks.sync.reader_settings),
+				readV1AiSettings({ interpreter_settings: interpreterSettings, reader_settings: mocks.sync.reader_settings }),
 				{ nativeMessaging: 'port' }
 			),
 			credentials: {}

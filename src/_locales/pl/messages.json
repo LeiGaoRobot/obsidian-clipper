@@ -188,12 +188,6 @@
 	"edit": {
 		"message": "Edytuj"
 	},
-	"editModel": {
-		"message": "Edytuj model"
-	},
-	"editProvider": {
-		"message": "Edytuj operatora"
-	},
 	"editTemplate": {
 		"message": "Edytuj szablon"
 	},
@@ -273,9 +267,6 @@
 	},
 	"failedToProcessInterpreter": {
 		"message": "Przetwarzanie zapytania nie powiodło się. Spróbuj ponownie."
-	},
-	"failedToResetProviders": {
-		"message": "Nie udało się zresetować operatorów i modeli"
 	},
 	"failedToResetTemplate": {
 		"message": "Nie udało się zresetować domyślnego szablonu. Spróbuj ponownie."
@@ -430,12 +421,6 @@
 	},
 	"modelName": {
 		"message": "Nazwa modelu"
-	},
-	"modelProvider": {
-		"message": "Operator"
-	},
-	"modelProviderPlaceholder": {
-		"message": "Operator"
 	},
 	"modelsListFor": {
 		"message": "Lista modeli dla $1"
@@ -594,12 +579,6 @@
 	},
 	"providerModelId": {
 		"message": "ID modelu"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID modelu"
-	},
-	"providerPreset": {
-		"message": "Ustawienie wstępne"
 	},
 	"rateExtensionDescription": {
 		"message": "Czy podoba Ci się Web Clipper? Pomóż nam, oceniając go."
@@ -786,12 +765,6 @@
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Usuń wszelkie zmiany wprowadzone w domyślnym szablonie."
-	},
-	"resetProvidersAndModels": {
-		"message": "Zresetuj domyślne modele"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Zresetuj operatorów i modele do ustawień domyślnych."
 	},
 	"save": {
 		"message": "Zapisz"

@@ -141,7 +141,23 @@ module.exports = (env, argv) => {
 				})
 			],
 			moduleIds: 'named',
-			chunkIds: 'named'
+			chunkIds: 'named',
+			splitChunks: {
+				cacheGroups: {
+					// What the Popup and Reader language-learning chunks share (the runtime and the AI
+					// modules it imports) gets a stable file name instead of one webpack derives from
+					// the modules it holds. A `webpackChunkName` on the runtime import would instead
+					// pull every module the Reader entry lacks into it, duplicating them for the Popup.
+					languageLearningRuntime: {
+						name: 'language-learning-runtime',
+						chunks: chunk => chunk.name === 'popup-language-learning' || chunk.name === 'reader-language-learning',
+						minChunks: 2,
+						minSize: 0,
+						priority: -5,
+						reuseExistingChunk: true
+					}
+				}
+			}
 		},
 		experiments: {
 			outputModule: false,

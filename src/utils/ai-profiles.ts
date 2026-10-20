@@ -1,6 +1,4 @@
-import { isCliKind } from '../ai/connection-kind';
-import type { InterpreterExecutionMode } from '../types/types';
-import type { AiRouting, AiSettingsView, AiTask, Connection, ConnectionKind, ModelProfile } from '../ai/types';
+import type { AiRouting, AiSettingsView, AiTask, Connection, ModelProfile } from '../ai/types';
 import { aiSettingsStore } from './ai-settings';
 import { getMessage } from './i18n';
 
@@ -68,18 +66,6 @@ export function findProfileConnection(
 /** The profile id routing names for a task, without availability checks. */
 export function routedProfileId(view: AiSettingsView, task: AiTask): string | undefined {
 	return view.routing.taskProfiles[task] ?? view.routing.defaultProfileId;
-}
-
-/** The v1 execution mode a connection kind stands for; the Reader's CLI error copy still uses it. */
-export function executionModeOfKind(kind: ConnectionKind | undefined): InterpreterExecutionMode {
-	if (kind === 'cli-codex') return 'codex';
-	if (kind === 'cli-grok') return 'grok';
-	return 'api';
-}
-
-export function isCliProfile(view: AiSettingsView, profileId: string): boolean {
-	const kind = findProfileConnection(view, profileId)?.connection.kind;
-	return kind ? isCliKind(kind) : false;
 }
 
 /**
