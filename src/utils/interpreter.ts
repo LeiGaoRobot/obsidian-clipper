@@ -312,8 +312,8 @@ function idleSummary(ui: InterpreterElements, promptCount: number): string {
 /**
  * Runs the template's prompt variables through the `interpret` task and fills the fields with the
  * responses. Resolves with how the run ended: errors are shown in `#interpreter-error`, not thrown.
- * Cancel aborts the request; the error card's Retry sends it again with the context and model the
- * popup shows by then, so a fix made after the error is used.
+ * Cancel aborts the request; Retry replays the captured input and profile with a fresh signal.
+ * A new Run captures the popup's current context and template prompts.
  */
 export async function handleInterpreterUI(
 	template: Template,
@@ -338,20 +338,17 @@ export async function handleInterpreterUI(
 	const action = getInterpreterAction();
 	if (ui.cancelBtn) ui.cancelBtn.onclick = () => action.cancel();
 
-	// The prompts stay those of this template; the context is read when each run starts.
+	// Capture once per Run: edits made after a failure belong to a new Run, not Retry.
 	const promptVariables = collectPromptVariables(template);
-	const launch = (runProfileId: string | undefined) => () => action.start(async signal => {
+	const input = { context: promptContextTextarea.value, prompts: promptVariables };
+	const launch = () => action.start(async signal => {
 		if (promptVariables.length === 0) {
 			throw new Error('No prompt variables found. Please add at least one prompt variable to your template.');
 		}
-		const input = { context: promptContextTextarea.value, prompts: promptVariables };
-		// The model select's profile is an explicit choice for this run; without one, routing picks.
-		return runAiTask('interpret', input, runProfileId ? { profileId: runProfileId, signal } : { signal });
+		// The profile is an explicit choice for this request; without one, routing picks.
+		return runAiTask('interpret', input, profileId ? { profileId, signal } : { signal });
 	});
-	// A retry takes the select's current choice, as the Interpret button does; without a select
-	// offering choices it keeps this run's profile.
-	const relaunch = () => launch(modelSelect && modelSelect.options.length > 0 ? modelSelect.value || undefined : profileId)();
-	return runInterpreter(ui, promptVariables, launch(profileId), relaunch);
+	return runInterpreter(ui, promptVariables, launch, () => action.retry());
 }
 
 /** Drives the Interpreter's controls through one run, which `launch` starts on the controller. */
@@ -490,7 +487,7 @@ function showInterpreterFailure(
 		variant: 'compact',
 		source: errorSource(ui.modelSelect, error),
 		handlers: {
-			// The same prompts again, with the context and model shown now.
+			// Replay the failed request through the shared action controller.
 			retry: () => { void retry(); },
 			openSettings: () => {
 				void browser.runtime.sendMessage({ action: 'openOptionsPage', section: 'ai' });
