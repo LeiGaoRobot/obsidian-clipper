@@ -8,10 +8,11 @@ const outputDirectories = ['dist', 'dist_firefox', 'dist_safari'];
 const verify = process.argv.includes('--verify');
 
 const entryBudgets = {
-	// Raised for the AI gateway's job runner (Phase 4) and the bundled catalog and settings migration (Phase 5).
-	// 200,211 bytes measured at the end of Phase 7 (973,666 at the end of Phase 6, when the unused
-	// buildNativeCliRequest pulled the template filters into the worker through cli-execution-contract.ts).
-	'background.js': 980_000,
+	// The service worker measures about 200 KB (200,441 bytes after the Phase 7 review; 973,666 at
+	// the end of Phase 6, when the unused buildNativeCliRequest pulled the template filters in).
+	// A filter or Defuddle import reaching the worker would add back about 770 KB: catching that is
+	// this budget's job, so it stays close to the measured size.
+	'background.js': 240_000,
 	'content.js': 1_425_000,
 	'highlights.js': 1_450_000,
 	'popup.js': 1_350_000,
