@@ -20,7 +20,6 @@ vi.mock('./browser-polyfill', () => ({
 	}
 }));
 
-import { RequestCancelledError } from './request-cancellation';
 import {
 	checkNativeCliHealth,
 	sendNativeCliRequest
@@ -80,7 +79,7 @@ describe('Native CLI service', () => {
 		const response = sendNativeCliRequest(request, controller.signal);
 		controller.abort();
 
-		await expect(response).rejects.toBeInstanceOf(RequestCancelledError);
+		await expect(response).rejects.toMatchObject({ name: 'AiError', code: 'cancelled' });
 		expect(port.posted).toEqual([
 			request,
 			{
@@ -184,7 +183,7 @@ describe('Native CLI service', () => {
 
 		controller.abort();
 
-		await expect(response).rejects.toBeInstanceOf(RequestCancelledError);
+		await expect(response).rejects.toMatchObject({ name: 'AiError', code: 'cancelled' });
 		expect(port.posted).toEqual([
 			request,
 			{

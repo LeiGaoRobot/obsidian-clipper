@@ -19,7 +19,6 @@ import {
 	TranscriptTranslationProgress,
 	replaceTextSelection
 } from './language-learning';
-import { RequestCancelledError } from './request-cancellation';
 
 type FakeHandlers = {
 	[T in LanguageLearningTask]?: (
@@ -330,9 +329,9 @@ describe('Language learning assistant', () => {
 		const assistant = createLanguageLearningAssistant(fakeModel({}).sendRequest, { runJob });
 
 		await expect(assistant.translateTranscript(['A'], 'Simplified Chinese', undefined, controller.signal))
-			.rejects.toBeInstanceOf(RequestCancelledError);
+			.rejects.toMatchObject({ name: 'AiError', code: 'cancelled' });
 		await expect(assistant.annotateJapaneseTranscript(['日本'], undefined, controller.signal))
-			.rejects.toBeInstanceOf(RequestCancelledError);
+			.rejects.toMatchObject({ name: 'AiError', code: 'cancelled' });
 		expect(calls).toHaveLength(1);
 	});
 

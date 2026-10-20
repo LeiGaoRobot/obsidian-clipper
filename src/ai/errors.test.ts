@@ -93,7 +93,6 @@ describe('toAiError', () => {
 
 	test.each([
 		['AbortError', undefined, 'cancelled'],
-		['RequestCancelledError', undefined, 'cancelled'],
 		['NativeCliUnavailableError', undefined, 'host-missing'],
 		['NativeCliExecutionError', 'timeout', 'timeout'],
 		['NativeCliExecutionError', 'unavailable', 'host-missing'],
@@ -103,13 +102,25 @@ describe('toAiError', () => {
 		['NativeCliExecutionError', 'response-too-large', 'bad-response'],
 		['NativeCliExecutionError', 'cancelled', 'cancelled'],
 		['NativeCliExecutionError', 'cli-failed', 'provider-error'],
-		['NativeCliExecutionError', 'invalid', 'provider-error'],
-		['LanguageLearningRequestError', 'failed', 'provider-error'],
-		['LanguageLearningRequestError', 'timeout', 'timeout']
+		['NativeCliExecutionError', 'invalid', 'provider-error']
 	])('maps %s(%s) to %s', (name, code, expected) => {
 		const error = toAiError(nativeError(name, code, 'CLI said no'));
 		expect(error.code).toBe(expected);
 		expect(error.detail).toBe('CLI said no');
+	});
+
+	test('maps an Error named RequestCancelledError or LanguageLearningRequestError like any other error', () => {
+		expect(toAiError(nativeError('RequestCancelledError', undefined, 'The request was cancelled.')))
+			.toMatchObject({ code: 'provider-error', detail: 'The request was cancelled.' });
+		expect(toAiError(nativeError('LanguageLearningRequestError', 'timeout', 'timed out')))
+			.toMatchObject({ code: 'provider-error', detail: 'timed out' });
+		expect(toAiError(nativeError('LanguageLearningRequestError', 'timeout', 'timed out'))).not.toHaveProperty('nativeCode');
+	});
+
+	test('maps a DOM AbortError from a fetch abort to cancelled', () => {
+		const abort = new Error('The operation was aborted.');
+		abort.name = 'AbortError';
+		expect(toAiError(abort, 'openai')).toMatchObject({ code: 'cancelled', connectionId: 'openai' });
 	});
 
 	test('keeps the Host code and timeout limit from a Native Messaging error', () => {

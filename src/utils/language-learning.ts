@@ -12,8 +12,8 @@ import type {
 } from '../ai/job-client';
 import type { TranscriptJobIdentity, TranscriptJobTask } from '../ai/job-identity';
 import { isEmptySourceSegment } from '../ai/job-limits';
+import { throwIfRequestAborted } from '../ai/abort';
 import type { AiTask } from '../ai/types';
-import { throwIfRequestAborted } from './request-cancellation';
 
 // Reading completeness is part of the reading contract; re-exported for restore validation.
 export { isCompleteTranscriptReadings };

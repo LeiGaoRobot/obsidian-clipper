@@ -11,12 +11,8 @@ import {
 	isNativeCliHeartbeat,
 	buildNativeCliHealthRequest
 } from './native-cli-contract';
-import {
-	RequestCancelledError,
-	isRequestCancelled,
-	raceWithRequestCancellation,
-	throwIfRequestAborted
-} from './request-cancellation';
+import { isCancellation, raceWithRequestCancellation, throwIfRequestAborted } from '../ai/abort';
+import { AiError } from '../ai/errors';
 
 interface NativePortLike {
 	postMessage(message: unknown): void;
@@ -54,7 +50,7 @@ export class NativeCliExecutionError extends Error {
 }
 
 function responseError(response: NativeCliHostResponse): Error {
-	if (response.errorCode === 'cancelled') return new RequestCancelledError();
+	if (response.errorCode === 'cancelled') return new AiError('cancelled');
 	return new NativeCliExecutionError(
 		response.errorCode || 'cli-failed',
 		response.error || response.stderr || 'The local CLI failed to execute.',
@@ -162,7 +158,7 @@ function sendThroughNativePort(
 				return;
 			}
 			abortCleanupTimer = setTimeout(cleanup, NATIVE_CLI_CANCEL_CLEANUP_MS);
-			reject(new RequestCancelledError());
+			reject(new AiError('cancelled'));
 		};
 
 		port.onMessage.addListener(onMessage);
@@ -213,7 +209,7 @@ export async function sendNativeCliRequest(
 		}
 		return response;
 	} catch (error) {
-		if (isRequestCancelled(error) || error instanceof NativeCliExecutionError || error instanceof NativeCliUnavailableError) {
+		if (isCancellation(error) || error instanceof NativeCliExecutionError || error instanceof NativeCliUnavailableError) {
 			throw error;
 		}
 		throw new NativeCliUnavailableError(error instanceof Error ? error.message : String(error));
@@ -264,7 +260,7 @@ export async function checkNativeCliHealth(mode: 'grok' | 'codex', signal?: Abor
 				signal
 			);
 		} catch (error) {
-			if (isRequestCancelled(error) || error instanceof NativeCliExecutionError) throw error;
+			if (isCancellation(error) || error instanceof NativeCliExecutionError) throw error;
 			throw new NativeCliUnavailableError(error instanceof Error ? error.message : String(error));
 		}
 		if (!response || typeof response !== 'object') throw responseError({ ok: false });

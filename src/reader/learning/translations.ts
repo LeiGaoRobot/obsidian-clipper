@@ -3,8 +3,9 @@ import {
 	isCompleteTranscriptTranslationSegment,
 	isCompleteTranscriptTranslations
 } from '../../utils/language-learning';
+import { throwIfRequestAborted } from '../../ai/abort';
 import { cacheTranslations, getCachedTranslations, removeCachedTranslations } from './cache';
-import { readerIncompleteError, throwIfCancelled } from './card';
+import { readerIncompleteError } from './card';
 import type { TranscriptFeatureContext, TranscriptFlow } from './types';
 
 // Bilingual subtitles: aligned translations rendered under each source segment, edit mode, and the
@@ -160,9 +161,9 @@ export function createTranslationsFeature(ctx: TranscriptFeatureContext): Transl
 
 		const taskTexts = taskIndexes.map(index => originalTexts[index]);
 		await ctx.runTranscriptTask(flow, async (runSignal, report) => {
-			throwIfCancelled(runSignal);
+			throwIfRequestAborted(runSignal);
 			await taskBar.loadExecutionInfo('translate', taskTexts);
-			throwIfCancelled(runSignal);
+			throwIfRequestAborted(runSignal);
 			const translations = await tools.translateTranscript(taskTexts, progress => {
 				if (runSignal.aborted) return;
 				if (progress.translations?.some(translation => translation.trim())) {
@@ -174,7 +175,7 @@ export function createTranslationsFeature(ctx: TranscriptFeatureContext): Transl
 					String(progress.total)
 				]), progress.retry);
 			}, runSignal);
-			throwIfCancelled(runSignal);
+			throwIfRequestAborted(runSignal);
 			if (!isCompleteTranscriptTranslations(translations, taskTexts)) {
 				throw readerIncompleteError('readerTranslationIncomplete', 'translate');
 			}

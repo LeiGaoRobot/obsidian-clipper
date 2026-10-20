@@ -76,11 +76,6 @@ export function readerIncompleteError(messageKey: string, task: ReaderAiTask): A
 	return error;
 }
 
-/** Ends a run whose signal was aborted (cancelled, superseded, or cleaned up) before it renders. */
-export function throwIfCancelled(signal: AbortSignal): void {
-	if (signal.aborted) throw new AiError('cancelled');
-}
-
 function describeReaderError(error: AiError): AiErrorDescription {
 	const description = describeAiError(error);
 	const message = readerMessages.get(error);

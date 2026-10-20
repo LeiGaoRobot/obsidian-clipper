@@ -2,7 +2,8 @@ import { getMessage } from '../../utils/i18n';
 import type { LearningSelection } from '../../utils/language-learning';
 import { createAiAction, type AiActionState } from '../../ai/ui/action';
 import { cacheExplanation, getCachedExplanation } from './cache';
-import { throwIfCancelled, type LearningCard } from './card';
+import { throwIfRequestAborted } from '../../ai/abort';
+import type { LearningCard } from './card';
 import type { TranscriptLanguageLearning } from './types';
 
 // Explanations of a selected word or sentence. They run on their own action, so an explanation
@@ -64,7 +65,7 @@ export function createExplainFeature({
 			pendingReturnFocus = returnFocus;
 			await action.start(async runSignal => {
 				const explanation = cached ?? await tools.explainSelection(selection, runSignal);
-				throwIfCancelled(runSignal);
+				throwIfRequestAborted(runSignal);
 				if (!cached && explanation) cacheExplanation(selection, responseLanguage, explanation);
 				await card.showExplanation(selection, explanation || getMessage('emptyResponse'));
 			});

@@ -5,6 +5,7 @@ import {
 	isCompleteTranscriptTranslationSegment,
 	isCompleteTranscriptTranslations
 } from '../../utils/language-learning';
+import { throwIfRequestAborted } from '../../ai/abort';
 import type { AiActionProgress } from '../../ai/ui/action';
 import {
 	cacheJapaneseReadings,
@@ -14,7 +15,7 @@ import {
 	getCachedJapaneseTranslations,
 	removeCachedJapaneseReadings
 } from './cache';
-import { readerIncompleteError, throwIfCancelled } from './card';
+import { readerIncompleteError } from './card';
 import { isJapaneseTranscript, shouldOfferJapaneseReadings } from './japanese';
 import { renderJapaneseTranslationReadings, renderTranscriptReadings } from './readings-render';
 import type { TranscriptFeatureContext, TranscriptFlow } from './types';
@@ -176,7 +177,7 @@ export function createReadingsFeature(ctx: TranscriptFeatureContext): ReadingsFe
 				String(progress.total)
 			]), progress.retry);
 		}, runSignal);
-		throwIfCancelled(runSignal);
+		throwIfRequestAborted(runSignal);
 		if (!isCompleteTranscriptTranslations(translations, sourceTexts)) {
 			throw readerIncompleteError('readerTranslationIncomplete', 'translate');
 		}
@@ -195,11 +196,11 @@ export function createReadingsFeature(ctx: TranscriptFeatureContext): ReadingsFe
 		const sourceTaskTexts = taskIndexes.map(index => originalTexts[index]);
 		return ctx.runTranscriptTask(flow, async (runSignal, report) => {
 			try {
-				throwIfCancelled(runSignal);
+				throwIfRequestAborted(runSignal);
 				await taskBar.loadExecutionInfo('reading', sourceTaskTexts);
-				throwIfCancelled(runSignal);
+				throwIfRequestAborted(runSignal);
 				const taskTexts = await ensureJapaneseTaskTexts(taskIndexes, runSignal, report);
-				throwIfCancelled(runSignal);
+				throwIfRequestAborted(runSignal);
 				const annotated = await tools.annotateJapaneseTranscript(taskTexts, progress => {
 					if (runSignal.aborted) return;
 					if (progress.readings?.some(tokens => tokens.length > 0)) {
@@ -212,7 +213,7 @@ export function createReadingsFeature(ctx: TranscriptFeatureContext): ReadingsFe
 						String(progress.totalSegments)
 					]), progress.retry);
 				}, runSignal);
-				throwIfCancelled(runSignal);
+				throwIfRequestAborted(runSignal);
 				if (!isCompleteTranscriptReadings(annotated, taskTexts)) {
 					throw readerIncompleteError('readerReadingIncomplete', 'reading');
 				}

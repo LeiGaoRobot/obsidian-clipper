@@ -17,7 +17,6 @@ import {
 	clearTranscriptLanguageLearningCache,
 	wireTranscriptLanguageLearning
 } from './index';
-import { RequestCancelledError } from '../../utils/request-cancellation';
 import { AiError } from '../../ai/errors';
 import browser from '../../utils/browser-polyfill';
 import { captureTrustedClicks, createTranscript, flushPromises, selectText } from './test-support';
@@ -458,7 +457,7 @@ describe('Transcript language learning controls', () => {
 			_onProgress?: unknown,
 			signal?: AbortSignal
 		) => new Promise<string[]>((_, reject) => {
-			signal?.addEventListener('abort', () => reject(new RequestCancelledError()), { once: true });
+			signal?.addEventListener('abort', () => reject(new AiError('cancelled')), { once: true });
 		}));
 		const controller = wireTranscriptLanguageLearning({
 			doc: document,
@@ -1889,7 +1888,7 @@ describe('Transcript language learning controls', () => {
 	test('cancels an in-flight translation without showing an error card', async () => {
 		const { controls, transcript, segments } = createTranscript();
 		const translateTranscript = vi.fn((_segments: string[], _onProgress?: unknown, signal?: AbortSignal) => new Promise<string[]>((_, reject) => {
-			signal?.addEventListener('abort', () => reject(new RequestCancelledError()), { once: true });
+			signal?.addEventListener('abort', () => reject(new AiError('cancelled')), { once: true });
 		}));
 		const controller = wireTranscriptLanguageLearning({
 			doc: document,

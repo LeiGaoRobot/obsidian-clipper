@@ -5,7 +5,7 @@ vi.mock('../../utils/native-cli-service', async importOriginal => ({
 	sendNativeCliRequest: vi.fn()
 }));
 
-import { RequestCancelledError } from '../../utils/request-cancellation';
+import { AiError } from '../errors';
 import { NativeCliExecutionError, NativeCliUnavailableError } from '../../utils/native-cli-service';
 import { checkCliHealth, runCliPrompt } from './native-cli';
 
@@ -15,7 +15,7 @@ describe('runCliPrompt errors', () => {
 		[new NativeCliExecutionError('protocol-mismatch', 'old host'), 'host-outdated'],
 		[new NativeCliExecutionError('config', 'not configured'), 'cli-missing'],
 		[new NativeCliUnavailableError('Specified native messaging host not found.'), 'host-missing'],
-		[new RequestCancelledError(), 'cancelled']
+		[new AiError('cancelled'), 'cancelled']
 	])('maps %s to %s', async (error, code) => {
 		const send = vi.fn().mockRejectedValue(error);
 		await expect(runCliPrompt({ kind: 'cli-codex', prompt: 'Page' }, { send, connectionId: 'cli' }))
@@ -64,7 +64,7 @@ describe('runCliPrompt', () => {
 		[new NativeCliExecutionError('timeout', 'codex CLI timed out after 120 seconds.'), 'timeout'],
 		[new NativeCliExecutionError('protocol-mismatch', 'old host'), 'host-outdated'],
 		[new NativeCliUnavailableError('Specified native messaging host not found.'), 'host-missing'],
-		[new RequestCancelledError(), 'cancelled']
+		[new AiError('cancelled'), 'cancelled']
 	])('maps %s to %s', async (error, code) => {
 		const send = vi.fn().mockRejectedValue(error);
 		await expect(runCliPrompt({ kind: 'cli-codex', prompt: 'Rendered', outputSchema }, { send, connectionId: 'cli' }))
@@ -82,5 +82,10 @@ describe('checkCliHealth', () => {
 	test('maps a missing Host to host-missing', async () => {
 		const check = vi.fn().mockRejectedValue(new NativeCliUnavailableError('Specified native messaging host not found.'));
 		await expect(checkCliHealth('cli-codex', { check, connectionId: 'cli' })).rejects.toMatchObject({ code: 'host-missing', connectionId: 'cli' });
+	});
+
+	test('maps a cancelled check to cancelled with the connection', async () => {
+		const check = vi.fn().mockRejectedValue(new AiError('cancelled'));
+		await expect(checkCliHealth('cli-codex', { check, connectionId: 'cli' })).rejects.toMatchObject({ code: 'cancelled', connectionId: 'cli' });
 	});
 });

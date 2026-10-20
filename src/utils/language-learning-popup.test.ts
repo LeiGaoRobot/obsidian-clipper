@@ -154,7 +154,7 @@ describe('Language learning popup', () => {
 	test('cancels an in-flight AI edit request', async () => {
 		const fixture = createPopupFixture();
 		const transformContent = vi.fn((_content: string, _instruction: string, signal?: AbortSignal) => new Promise<string>((_, reject) => {
-			signal?.addEventListener('abort', () => reject(new Error('The request was cancelled.')), { once: true });
+			signal?.addEventListener('abort', () => reject(new AiError('cancelled')), { once: true });
 		}));
 		initializeLanguageLearningPopup({
 			enabled: true,

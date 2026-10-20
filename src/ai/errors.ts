@@ -148,7 +148,7 @@ export function isAiError(value: unknown): value is AiError {
 	return value instanceof AiError;
 }
 
-// Native Messaging codes from native-cli-contract.ts, plus the runtime's generic 'failed'.
+// Native Messaging codes from native-cli-contract.ts carried by NativeCliExecutionError.
 const NATIVE_CODE_MAP: Record<string, AiErrorCode> = {
 	cancelled: 'cancelled',
 	timeout: 'timeout',
@@ -158,14 +158,8 @@ const NATIVE_CODE_MAP: Record<string, AiErrorCode> = {
 	'launch-failed': 'cli-missing',
 	'response-too-large': 'bad-response',
 	'cli-failed': 'provider-error',
-	invalid: 'provider-error',
-	failed: 'provider-error'
+	invalid: 'provider-error'
 };
-
-const NATIVE_ERROR_NAMES = new Set([
-	'NativeCliExecutionError',
-	'LanguageLearningRequestError'
-]);
 
 /**
  * Normalizes any thrown value into an AiError. Uses error names and codes rather than
@@ -178,13 +172,14 @@ export function toAiError(error: unknown, connectionId?: string): AiError {
 		return new AiError('provider-error', { ...context, detail: String(error) });
 	}
 	const detail = error.message;
-	if (error.name === 'AbortError' || error.name === 'RequestCancelledError') {
+	// A fetch() abort; the extension's own cancellations are already AiError('cancelled') (ai/abort.ts).
+	if (error.name === 'AbortError') {
 		return new AiError('cancelled', { ...context, detail });
 	}
 	if (error.name === 'NativeCliUnavailableError') {
 		return new AiError('host-missing', { ...context, detail });
 	}
-	if (NATIVE_ERROR_NAMES.has(error.name)) {
+	if (error.name === 'NativeCliExecutionError') {
 		const native = error as Error & { code?: unknown; details?: { timeoutSeconds?: unknown } };
 		const nativeCode = typeof native.code === 'string' ? native.code : undefined;
 		const timeoutSeconds = native.details?.timeoutSeconds;
