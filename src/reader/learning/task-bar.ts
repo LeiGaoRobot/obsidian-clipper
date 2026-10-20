@@ -36,8 +36,11 @@ export interface TaskBar {
 	setProgress(completed: number, total: number, phase: string, retry?: { delayMs: number }): void;
 	/** A transcript run ended: Cancel hides; a cancelled run says so, any other run hides the pill. */
 	finish(status: AiActionStatus): void;
-	/** Shows a status (a retry wait, Thinking…, cancelled) in place of the progress text. */
-	setStatus(message: string): void;
+	/**
+	 * Shows a status (a retry wait, Thinking…, cancelled) in place of the progress text. A `quiet`
+	 * status is not announced, for one that another live region (the explanation card) speaks.
+	 */
+	setStatus(message: string, options?: { quiet?: boolean }): void;
 	clearStatus(): void;
 	/** Something is running (a transcript run or an explanation): spinner and Cancel show. */
 	setCancelVisible(visible: boolean): void;
@@ -155,6 +158,9 @@ export function createTaskBar({ doc, segments, tools, onCancel }: TaskBarOptions
 	bar.append(spinner, estimate, status, progress, engine, cancelButton);
 
 	let executionInfo: TranscriptExecutionInfo | undefined;
+	// Only the latest `loadExecutionInfo` call may land: an older answer would name the wrong
+	// engine and profile.
+	let executionInfoRequest = 0;
 	let hasProgress = false;
 	// A transcript run is running; `statusMessage` is a retry wait, an explanation's Thinking… or a
 	// cancelled run; `active` means something can be cancelled.
@@ -177,8 +183,9 @@ export function createTaskBar({ doc, segments, tools, onCancel }: TaskBarOptions
 		bar.title = parts.length === 2 ? getMessage('readerTaskEstimate', parts) : parts[0] || '';
 		engine.title = engine.textContent || '';
 	};
-	const setStatus = (message: string) => {
+	const setStatus = (message: string, options?: { quiet?: boolean }) => {
 		statusMessage = message;
+		status.setAttribute('aria-live', options?.quiet ? 'off' : 'polite');
 		render();
 	};
 	const clearStatus = () => setStatus('');
@@ -196,6 +203,7 @@ export function createTaskBar({ doc, segments, tools, onCancel }: TaskBarOptions
 		},
 		async loadExecutionInfo(task, taskTexts) {
 			if (!tools.getExecutionInfo) return;
+			const request = ++executionInfoRequest;
 			let info: TranscriptExecutionInfo;
 			try {
 				info = await tools.getExecutionInfo(task);
@@ -203,6 +211,7 @@ export function createTaskBar({ doc, segments, tools, onCancel }: TaskBarOptions
 				// Execution errors are reported by the requested task itself.
 				return;
 			}
+			if (request !== executionInfoRequest) return;
 			executionInfo = info;
 			engine.textContent = info.label;
 			// Progress that already arrived says more than the count.
@@ -222,6 +231,9 @@ export function createTaskBar({ doc, segments, tools, onCancel }: TaskBarOptions
 			hasProgress = false;
 			phaseText.textContent = '';
 			countText.textContent = '';
+			// The new run's engine (and profile) shows once its getExecutionInfo answers.
+			executionInfo = undefined;
+			engine.textContent = '';
 			progress.removeAttribute('aria-label');
 			progress.max = 1;
 			progress.value = 0;
@@ -229,6 +241,8 @@ export function createTaskBar({ doc, segments, tools, onCancel }: TaskBarOptions
 			render();
 		},
 		setProgress(completed, total, phase, retry) {
+			// A report that arrives after the run ended changes nothing.
+			if (!running) return;
 			hasProgress = true;
 			progress.max = Math.max(1, total);
 			progress.value = Math.min(completed, progress.max);
@@ -244,6 +258,9 @@ export function createTaskBar({ doc, segments, tools, onCancel }: TaskBarOptions
 		finish(endStatus) {
 			running = false;
 			active = false;
+			// A cancelled pill must not keep the running run's tooltip.
+			bar.title = '';
+			engine.title = '';
 			// The result (or the error card) speaks for a finished run; a cancelled one says so until
 			// the next task starts.
 			setStatus(endStatus === 'cancelled' ? getMessage('readerAiCancelled') : '');

@@ -175,7 +175,7 @@ export function createReadingsFeature(ctx: TranscriptFeatureContext): ReadingsFe
 		}
 		const translations = await tools.translateTranscriptToJapanese(sourceTexts, progress => {
 			if (runSignal.aborted) return;
-			report({ completed: progress.completed, total: progress.total });
+			report({ completed: progress.completedSegments, total: progress.totalSegments });
 			taskBar.setProgress(
 				progress.completedSegments,
 				progress.totalSegments,
@@ -304,6 +304,8 @@ export function createReadingsFeature(ctx: TranscriptFeatureContext): ReadingsFe
 		if (!event.isTrusted) return;
 		event.preventDefault();
 		event.stopPropagation();
+		// Busy, the toggle stays focusable but ignores activations (see setFlowBusy in index.ts).
+		if (button.getAttribute('aria-disabled') === 'true') return;
 		void toggle();
 	});
 	regenerateButton.addEventListener('click', event => {

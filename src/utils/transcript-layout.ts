@@ -5,6 +5,10 @@ const TRANSCRIPT_LAYOUT_CLASSES = TRANSCRIPT_LAYOUT_MODES.map(mode => `transcrip
 
 export function clearTranscriptLayoutMode(doc: Document): void {
 	doc.documentElement.classList.remove(...TRANSCRIPT_LAYOUT_CLASSES);
+}
+
+/** Removes what `updateTranscriptScrollbarWidth` published; only a transcript's cleanup does. */
+export function clearTranscriptScrollbarWidth(doc: Document): void {
 	doc.documentElement.style.removeProperty('--transcript-scrollbar-width');
 }
 
@@ -27,18 +31,20 @@ export function normalizeTranscriptLayoutMode(value: unknown): TranscriptLayoutM
 
 /**
  * Publishes the player's height and, when given, the controls' height on `root`, so sticky offsets
- * and the segments' `scroll-margin-top` clear what is pinned above the transcript.
+ * and the segments' `scroll-margin-top` clear what is pinned above the transcript. Controls inside
+ * the player (the Reading layout) also publish their offset in it, `--transcript-controls-top`: an
+ * unpinned player sticks that far above the viewport, so only its toolbar stays in view.
  */
 export function updateTranscriptPlayerHeight(root: HTMLElement, player: HTMLElement, controls?: HTMLElement): void {
-	root.style.setProperty(
-		'--transcript-player-height',
-		`${Math.ceil(player.getBoundingClientRect().height)}px`
-	);
-	if (controls) {
-		root.style.setProperty(
-			'--transcript-controls-height',
-			`${Math.ceil(controls.getBoundingClientRect().height)}px`
-		);
+	const playerRect = player.getBoundingClientRect();
+	root.style.setProperty('--transcript-player-height', `${Math.ceil(playerRect.height)}px`);
+	if (!controls) return;
+	const controlsRect = controls.getBoundingClientRect();
+	root.style.setProperty('--transcript-controls-height', `${Math.ceil(controlsRect.height)}px`);
+	if (player.contains(controls)) {
+		root.style.setProperty('--transcript-controls-top', `${Math.max(0, controlsRect.top - playerRect.top)}px`);
+	} else {
+		root.style.removeProperty('--transcript-controls-top');
 	}
 }
 
@@ -52,6 +58,35 @@ const TOOLBAR_LAYOUT_CLASSES = [
 	'is-controls-stacked'
 ] as const;
 type ToolbarLayoutClass = typeof TOOLBAR_LAYOUT_CLASSES[number];
+
+/** The inputs of each toolbar's last fit, so an unchanged toolbar is not measured again. */
+const toolbarLayoutInputs = new WeakMap<HTMLElement, string>();
+
+/**
+ * What the fit depends on: the viewport and toolbar widths, the layout, the switcher and toggles'
+ * widths under the current classes, their labels and states, and the pill's visible parts and
+ * text lengths (lengths, not text, so a progress report that only changes a digit is no change).
+ */
+function toolbarLayoutKey(toolbar: HTMLElement, view: Window, toolbarWidth: number): string {
+	const parts: Array<string | number> = [
+		view.innerWidth,
+		toolbarWidth,
+		toolbar.closest<HTMLElement>('[data-transcript-layout]')?.dataset.transcriptLayout ?? ''
+	];
+	for (const selector of [':scope > .transcript-layout-switcher', ':scope > .player-primary-actions']) {
+		parts.push(toolbar.querySelector<HTMLElement>(selector)?.getBoundingClientRect().width ?? -1);
+	}
+	toolbar.querySelectorAll<HTMLElement>(
+		':scope > .transcript-layout-switcher > *, :scope > .player-primary-actions > *'
+	).forEach(item => {
+		parts.push(`${item.hidden ? 'hidden ' : ''}${item.className}|${item.textContent}|${item.dataset.shortLabel ?? ''}`);
+	});
+	const pill = toolbar.querySelector<HTMLElement>(':scope > .player-learning-task');
+	parts.push(!pill ? 'none' : pill.hidden ? 'hidden' : Array.from(pill.children, child => (
+		`${(child as HTMLElement).hidden ? 0 : 1}:${(child.textContent || '').length}`
+	)).join(','));
+	return parts.join(';');
+}
 
 /** Distinct rows among `rects`: a rect starts a row when it lies below the current one. */
 function countRows(rects: DOMRect[]): number {
@@ -75,21 +110,21 @@ function countRows(rects: DOMRect[]): number {
  * only the segment count and Cancel, then the pill on a row of its own, and last two rows of controls (the switcher and More, then the toggles) with
  * the pill below. Measured on the real labels, so it holds in every language and never leaves More
  * alone on a line. A toolbar laid out as a column (the Study tools rail) gets no fallback, and one
- * that is not laid out (hidden, or a test document) keeps what it had.
+ * that is not laid out (hidden, or a test document) keeps what it had. A toolbar whose inputs
+ * (`toolbarLayoutKey`) are those of its last fit keeps that fit without measuring the steps again.
  */
 export function syncTranscriptToolbarLayout(toolbar: HTMLElement): void {
 	const view = toolbar.ownerDocument.defaultView;
 	if (!view) return;
-	const previous = TOOLBAR_LAYOUT_CLASSES.filter(name => toolbar.classList.contains(name));
+	const initialRect = toolbar.getBoundingClientRect();
+	if (initialRect.width === 0 || initialRect.height === 0) return;
+	const lastInputs = toolbarLayoutInputs.get(toolbar);
+	if (lastInputs !== undefined && lastInputs === toolbarLayoutKey(toolbar, view, initialRect.width)) return;
+	toolbarLayoutInputs.delete(toolbar);
 	const apply = (classes: readonly ToolbarLayoutClass[]) => {
 		TOOLBAR_LAYOUT_CLASSES.forEach(name => toolbar.classList.toggle(name, classes.includes(name)));
 	};
 	apply([]);
-	const toolbarRect = toolbar.getBoundingClientRect();
-	if (toolbarRect.width === 0 || toolbarRect.height === 0) {
-		apply(previous);
-		return;
-	}
 	if (view.getComputedStyle(toolbar).flexDirection.startsWith('column')) return;
 
 	const switcher = toolbar.querySelector<HTMLElement>(':scope > .transcript-layout-switcher');
@@ -134,8 +169,9 @@ export function syncTranscriptToolbarLayout(toolbar: HTMLElement): void {
 		];
 	for (const [classes, expectedRows] of steps) {
 		apply(classes);
-		if (fits(expectedRows)) return;
+		if (fits(expectedRows)) break;
 	}
+	toolbarLayoutInputs.set(toolbar, toolbarLayoutKey(toolbar, view, initialRect.width));
 }
 
 interface TranscriptControlsPanelOptions {

@@ -277,6 +277,74 @@ describe('Reader progress pill', () => {
 		taskBar.dispose();
 	});
 
+	test('a progress report after the run ended changes nothing, and a cancelled pill has no tooltip', async () => {
+		const { segments } = createTranscript();
+		const taskBar = createTaskBar({
+			doc: document,
+			segments,
+			tools: { getExecutionInfo: vi.fn().mockResolvedValue({ label: 'OpenAI · B' }) },
+			onCancel: vi.fn()
+		});
+		const pill = taskBar.element;
+		const parts = pillParts(pill);
+
+		taskBar.begin();
+		await taskBar.loadExecutionInfo('translate', ['Hello world.']);
+		taskBar.setProgress(1, 4, 'readerTaskPhaseTranslate');
+		expect(pill.title).not.toBe('');
+		taskBar.finish('cancelled');
+		expect([pill.title, parts.engine.title]).toEqual(['', '']);
+
+		taskBar.setProgress(3, 4, 'readerTaskPhaseTranslate', { delayMs: 2000 });
+		expect(parts.count.textContent).toBe('readerTaskSegmentFraction:1,4');
+		expect([parts.progress.value, parts.progress.max]).toEqual([1, 4]);
+		expect(parts.status.textContent).toBe('readerAiCancelled');
+		expect(pill.title).toBe('');
+		taskBar.dispose();
+	});
+
+	test('only the latest getExecutionInfo answer lands, and a new run clears the old engine', async () => {
+		const { segments } = createTranscript(['First.', 'Second.']);
+		const answers: Array<(info: TranscriptExecutionInfo) => void> = [];
+		const taskBar = createTaskBar({
+			doc: document,
+			segments,
+			tools: { getExecutionInfo: vi.fn(() => new Promise<TranscriptExecutionInfo>(resolve => { answers.push(resolve); })) },
+			onCancel: vi.fn()
+		});
+		const { engine } = pillParts(taskBar.element);
+
+		taskBar.begin();
+		const bilingual = taskBar.loadExecutionInfo('translate', ['First.', 'Second.']);
+		taskBar.begin();
+		const readings = taskBar.loadExecutionInfo('reading', ['First.']);
+		answers[1]({ label: 'Anthropic · Reading', profileId: 'reading-profile' });
+		await readings;
+		answers[0]({ label: 'OpenAI · Translate', profileId: 'translate-profile' });
+		await bilingual;
+		expect(engine.textContent).toBe('Anthropic · Reading');
+		expect(taskBar.executionInfo?.profileId).toBe('reading-profile');
+
+		taskBar.begin();
+		expect(engine.textContent).toBe('');
+		expect(engine.hidden).toBe(true);
+		expect(taskBar.executionInfo).toBeUndefined();
+		taskBar.dispose();
+	});
+
+	test('a quiet status is shown but not announced', () => {
+		const { segments } = createTranscript();
+		const taskBar = createTaskBar({ doc: document, segments, tools: {}, onCancel: vi.fn() });
+		const { status } = pillParts(taskBar.element);
+
+		taskBar.setStatus('thinking', { quiet: true });
+		expect(status.textContent).toBe('thinking');
+		expect(status.getAttribute('aria-live')).toBe('off');
+		taskBar.setStatus('readerAiCancelled');
+		expect(status.getAttribute('aria-live')).toBe('polite');
+		taskBar.dispose();
+	});
+
 	test('selects the current segment or the next five minutes from the active segment', () => {
 		const { segments } = createTranscript(['Zero.', 'One.', 'Two.', 'Three.']);
 		segments[1].classList.add('is-active');

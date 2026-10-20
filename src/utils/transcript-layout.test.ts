@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
 	clearTranscriptLayoutMode,
+	clearTranscriptScrollbarWidth,
 	createTranscriptLayoutSwitcher,
 	normalizeTranscriptLayoutMode,
 	syncTranscriptControlsPanel,
@@ -11,7 +12,7 @@ import {
 } from './transcript-layout';
 
 describe('transcript scrollbar width', () => {
-	test('publishes the page scrollbar width that 100vw includes, and clears it with the layout', () => {
+	test('publishes the page scrollbar width that 100vw includes; a layout change keeps it, cleanup clears it', () => {
 		const innerWidth = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1000);
 		const clientWidth = vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(985);
 		updateTranscriptScrollbarWidth(document);
@@ -22,6 +23,8 @@ describe('transcript scrollbar width', () => {
 		expect(document.documentElement.style.getPropertyValue('--transcript-scrollbar-width')).toBe('0px');
 
 		clearTranscriptLayoutMode(document);
+		expect(document.documentElement.style.getPropertyValue('--transcript-scrollbar-width')).toBe('0px');
+		clearTranscriptScrollbarWidth(document);
 		expect(document.documentElement.style.getPropertyValue('--transcript-scrollbar-width')).toBe('');
 		innerWidth.mockRestore();
 		clientWidth.mockRestore();
@@ -75,6 +78,22 @@ describe('transcript layout switcher', () => {
 		expect(document.documentElement.classList.contains('transcript-layout-focus')).toBe(true);
 		expect(focusButton.getAttribute('aria-pressed')).toBe('true');
 		expect(onChange).toHaveBeenLastCalledWith('focus');
+	});
+
+	test('switching the layout keeps the published scrollbar width', () => {
+		const root = document.querySelector('.transcript-study-layout') as HTMLElement;
+		document.documentElement.style.setProperty('--transcript-scrollbar-width', '15px');
+		const switcher = createTranscriptLayoutSwitcher({
+			doc: document,
+			root,
+			initialMode: 'reading',
+			groupLabel: 'Transcript layout',
+			labels: { reading: 'Reading', notebook: 'Notebook', focus: 'Focus' }
+		});
+		switcher.setMode('focus');
+		(switcher.element.querySelector('[data-transcript-layout="notebook"]') as HTMLButtonElement).click();
+		expect(document.documentElement.style.getPropertyValue('--transcript-scrollbar-width')).toBe('15px');
+		document.documentElement.style.removeProperty('--transcript-scrollbar-width');
 	});
 
 	test('falls back to reading for unsupported stored values', () => {
@@ -203,6 +222,39 @@ describe('transcript toolbar layout', () => {
 		expect(classes(toolbar)).toEqual(['is-short-labels', 'is-task-compact']);
 		pill.hidden = true;
 		syncTranscriptToolbarLayout(toolbar);
+		expect(classes(toolbar)).toEqual([]);
+	});
+
+	test('an unchanged toolbar keeps its fit without measuring the steps again', () => {
+		const { toolbar, pill } = setup(720, true);
+		const count = pill.querySelector('.player-learning-task-estimate') as HTMLElement;
+		const summary = toolbar.querySelector('summary') as HTMLElement;
+		const measure = vi.spyOn(summary, 'getBoundingClientRect');
+		count.textContent = '1 / 33';
+		syncTranscriptToolbarLayout(toolbar);
+		expect(classes(toolbar)).toEqual(['is-short-labels', 'is-task-compact']);
+		expect(measure).toHaveBeenCalled();
+
+		// A progress report that changes a digit, or a toolbar that only grew taller, is no change.
+		measure.mockClear();
+		count.textContent = '2 / 33';
+		toolbar.getBoundingClientRect = () => new DOMRect(0, 0, 720, 96);
+		syncTranscriptToolbarLayout(toolbar);
+		expect(measure).not.toHaveBeenCalled();
+		expect(classes(toolbar)).toEqual(['is-short-labels', 'is-task-compact']);
+
+		// A longer count, a new label, or the pill hiding refits.
+		count.textContent = '10 / 33';
+		syncTranscriptToolbarLayout(toolbar);
+		expect(measure).toHaveBeenCalled();
+		measure.mockClear();
+		(toolbar.querySelector('.player-primary-actions > button') as HTMLElement).textContent = 'Show player';
+		syncTranscriptToolbarLayout(toolbar);
+		expect(measure).toHaveBeenCalled();
+		measure.mockClear();
+		pill.hidden = true;
+		syncTranscriptToolbarLayout(toolbar);
+		expect(measure).toHaveBeenCalled();
 		expect(classes(toolbar)).toEqual([]);
 	});
 

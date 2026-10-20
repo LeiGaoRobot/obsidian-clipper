@@ -1,5 +1,5 @@
 import { getMessage } from '../../utils/i18n';
-import { createAiAction, type AiActionRun } from '../../ai/ui/action';
+import { createAiAction, type AiActionRun, type AiActionStatus } from '../../ai/ui/action';
 import { createLearningCard } from './card';
 import { createExplainFeature } from './explain';
 import { createReadingsFeature } from './readings';
@@ -91,12 +91,20 @@ export function wireTranscriptLanguageLearning({
 	// The flow whose button shows the running transcript task.
 	let activeFlow: TranscriptFlow | undefined;
 	let busyFlow: TranscriptFlow | undefined;
+	// How the transcript run or explanation that settled last ended.
+	let lastEnded: AiActionStatus | undefined;
+	// A busy toggle keeps its name and focus: it shows a spinner, is `aria-disabled` (its click
+	// handler ignores activations), and the pill carries the progress.
 	const setFlowBusy = (flow: TranscriptFlow, busy: boolean) => {
-		flow.button.disabled = busy;
 		flow.button.classList.toggle('is-loading', busy);
-		flow.button.textContent = busy ? getMessage('thinking') : flow.label;
-		if (busy) flow.button.setAttribute('aria-busy', 'true');
-		else flow.button.removeAttribute('aria-busy');
+		flow.button.textContent = flow.label;
+		if (busy) {
+			flow.button.setAttribute('aria-busy', 'true');
+			flow.button.setAttribute('aria-disabled', 'true');
+		} else {
+			flow.button.removeAttribute('aria-busy');
+			flow.button.removeAttribute('aria-disabled');
+		}
 	};
 	const retryTranscript = () => { void transcriptAction.retry(); };
 	const transcriptAction = createAiAction<void>({
@@ -110,13 +118,14 @@ export function wireTranscriptLanguageLearning({
 				busyFlow = activeFlow;
 				if (busyFlow) setFlowBusy(busyFlow, true);
 				taskBar.begin();
-				syncCancel();
+				syncPill();
 				return;
 			}
 			if (busyFlow) setFlowBusy(busyFlow, false);
 			busyFlow = undefined;
 			taskBar.finish(state.status);
-			syncCancel();
+			lastEnded = state.status;
+			syncPill();
 			if (state.status === 'error' && state.error && activeFlow) {
 				const progress = state.progress;
 				card.showError('transcript', activeFlow.title, state.error, {
@@ -141,18 +150,21 @@ export function wireTranscriptLanguageLearning({
 		signal,
 		onRequestChange(state) {
 			if (signal.aborted) return;
-			// A running transcript task keeps the pill's progress; otherwise the pill shows the
-			// explanation: Thinking… with Cancel, then a cancelled one says so, and a settled one hides it.
-			if (transcriptAction.state.status !== 'running') {
-				if (state.status === 'running') taskBar.setStatus(getMessage('thinking'));
-				else if (state.status === 'cancelled') taskBar.setStatus(getMessage('readerAiCancelled'));
-				else taskBar.clearStatus();
-			}
-			syncCancel();
+			if (state.status !== 'running') lastEnded = state.status;
+			syncPill();
 		}
 	});
-	const syncCancel = () => {
-		taskBar.setCancelVisible(transcriptAction.state.status === 'running' || explanations.running);
+	// The pill is derived from both controllers: a running transcript task shows its progress (the
+	// task bar owns that text); otherwise a running explanation says Thinking…, quietly, since its
+	// card announces it; otherwise the run that ended last says it was cancelled, or the pill hides.
+	const syncPill = () => {
+		const transcriptRunning = transcriptAction.state.status === 'running';
+		if (!transcriptRunning) {
+			if (explanations.running) taskBar.setStatus(getMessage('thinking'), { quiet: true });
+			else if (lastEnded === 'cancelled') taskBar.setStatus(getMessage('readerAiCancelled'));
+			else taskBar.clearStatus();
+		}
+		taskBar.setCancelVisible(transcriptRunning || explanations.running);
 	};
 	cancelAll = () => {
 		transcriptAction.cancel();

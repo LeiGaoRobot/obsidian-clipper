@@ -19,6 +19,10 @@
 	&.is-player-pinned {
 		--transcript-sticky-offset: calc(var(--transcript-player-height, 0px) + 16px);
 	}
+	// Reading with the player unpinned keeps the toolbar pinned (see .transcript-layout-reading).
+	&.transcript-layout-reading:not(.is-player-pinned) {
+		--transcript-sticky-offset: calc(var(--transcript-controls-height, 0px) + 16px);
+	}
 	// Split view pins the controls over the transcript column; the player has its own column.
 	&.transcript-layout-focus,
 	&.transcript-layout-focus.is-player-pinned {
@@ -88,12 +92,21 @@
 // size 0, so it remains the accessible name; the short one is generated content with empty alt text.
 .player-toggles.is-short-labels {
 	.transcript-layout-option[data-short-label],
-	.player-primary-actions > .player-learning-action[data-short-label]:not(.is-loading) {
+	.player-primary-actions > .player-learning-action[data-short-label] {
 		font-size: 0;
 		&::after {
 			content: attr(data-short-label);
 			content: attr(data-short-label) / '';
 			font-size: var(--font-ui-small);
+		}
+	}
+	// A busy toggle keeps its short label beside the spinner, which keeps its size; the zero-size
+	// full label must not add a second gap.
+	.player-primary-actions > .player-learning-action[data-short-label].is-loading {
+		gap: 0;
+		&::before {
+			font-size: var(--font-ui-small);
+			margin-inline-end: 6px;
 		}
 	}
 }
@@ -1049,6 +1062,17 @@ html.transcript-layout-focus .obsidian-reader-content {
 	> .player-container {
 		max-width: 960px;
 		margin: 0 auto;
+		// Unpinned, the player scrolls away but its toolbar (its last child) stays at the top: the
+		// container sticks `--transcript-controls-top` (the toolbar's offset in it) above the viewport,
+		// so the toolbar and a running task's Cancel stay in view, with the opaque band and fade.
+		&:not(.pin-player) {
+			position: sticky;
+			top: calc(-1 * var(--transcript-controls-top, 0px));
+			z-index: var(--layer-popover);
+			&::after {
+				@include transcript-sticky-fade;
+			}
+		}
 		&.is-compact {
 			> .reader-video-wrapper,
 			> iframe,

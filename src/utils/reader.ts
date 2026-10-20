@@ -892,8 +892,10 @@ export class Reader {
 			return player.getBoundingClientRect().height + toggles.getBoundingClientRect().height + 24;
 		}
 		if (player) return player.getBoundingClientRect().height + 16;
-		// When pin-player is off, the controls bar is sticky independently.
-		if (toggles) return toggles.getBoundingClientRect().height + 32;
+		// When pin-player is off, the controls bar is sticky independently: beside the transcript, or
+		// in Reading at the bottom of the player, which scrolls away but leaves it at the top.
+		const stickyToggles = toggles || layout?.querySelector<HTMLElement>('.player-container > .player-toggles');
+		if (stickyToggles) return stickyToggles.getBoundingClientRect().height + 32;
 		return 0;
 	}
 

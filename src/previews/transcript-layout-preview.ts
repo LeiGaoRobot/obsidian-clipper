@@ -92,6 +92,9 @@ function initializeTranscriptLayoutPreview(doc: Document): void {
 			compactButton.textContent = compact
 				? compactButton.dataset.expandedLabel || ''
 				: compactButton.dataset.compactLabel || '';
+			compactButton.dataset.shortLabel = compact
+				? compactButton.dataset.expandedShortLabel || ''
+				: compactButton.dataset.compactShortLabel || '';
 			return;
 		}
 

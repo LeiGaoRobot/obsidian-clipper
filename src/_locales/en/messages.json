@@ -1366,6 +1366,9 @@
 	"readerShowPlayer": {
 		"message": "Show player"
 	},
+	"readerShowPlayerShort": {
+		"message": "Show"
+	},
 	"readerMoreControls": {
 		"message": "More"
 	},

@@ -1366,6 +1366,9 @@
 	"readerShowPlayer": {
 		"message": "显示播放器"
 	},
+	"readerShowPlayerShort": {
+		"message": "显示"
+	},
 	"readerMoreControls": {
 		"message": "更多"
 	},

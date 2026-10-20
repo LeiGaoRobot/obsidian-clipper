@@ -174,7 +174,7 @@ export function createTranslationsFeature(ctx: TranscriptFeatureContext): Transl
 				if (progress.translations?.some(translation => translation.trim())) {
 					render(merge(taskIndexes, progress.translations), false);
 				}
-				report({ completed: progress.completed, total: progress.total });
+				report({ completed: progress.completedSegments, total: progress.totalSegments });
 				taskBar.setProgress(
 					progress.completedSegments,
 					progress.totalSegments,
@@ -198,6 +198,8 @@ export function createTranslationsFeature(ctx: TranscriptFeatureContext): Transl
 		if (!event.isTrusted) return;
 		event.preventDefault();
 		event.stopPropagation();
+		// Busy, the toggle stays focusable but ignores activations (see setFlowBusy in index.ts).
+		if (bilingualButton.getAttribute('aria-disabled') === 'true') return;
 		void toggle();
 	});
 	editButton.addEventListener('click', event => {

@@ -7,6 +7,7 @@ import {
 import type { TranscriptLayoutMode } from '../types/types';
 import {
 	clearTranscriptLayoutMode,
+	clearTranscriptScrollbarWidth,
 	createTranscriptLayoutSwitcher,
 	normalizeTranscriptLayoutMode,
 	syncTranscriptControlsPanel,
@@ -145,6 +146,7 @@ export function cleanupTranscript(doc: Document): void {
 	transcriptStudyControllers.get(doc)?.cleanup();
 	transcriptStudyControllers.delete(doc);
 	clearTranscriptLayoutMode(doc);
+	clearTranscriptScrollbarWidth(doc);
 	transcriptLayoutResizeObservers.get(doc)?.disconnect();
 	transcriptLayoutResizeObservers.delete(doc);
 }
@@ -298,13 +300,15 @@ export function wireTranscript(
 	compactPlayerButton.type = 'button';
 	compactPlayerButton.className = 'player-learning-action player-compact-toggle';
 	compactPlayerButton.setAttribute('aria-pressed', 'false');
-	// A toolbar short of space shows the short label; the full one stays the accessible name.
-	compactPlayerButton.dataset.shortLabel = getMessage('readerCompactPlayerShort');
 	const updateCompactPlayer = () => {
 		const compact = playerContainer.classList.contains('is-compact');
 		compactPlayerButton.setAttribute('aria-pressed', String(compact));
 		compactPlayerButton.classList.toggle('is-enabled', compact);
-		compactPlayerButton.textContent = getMessage(compact ? 'readerShowPlayer' : 'readerCompactPlayer');
+		compactPlayerButton.textContent = compact ? getMessage('readerShowPlayer') : getMessage('readerCompactPlayer');
+		// A toolbar short of space shows the short label; the full one stays the accessible name.
+		compactPlayerButton.dataset.shortLabel = compact
+			? getMessage('readerShowPlayerShort')
+			: getMessage('readerCompactPlayerShort');
 	};
 	compactPlayerButton.addEventListener('click', () => {
 		playerContainer.classList.toggle('is-compact');
@@ -433,11 +437,12 @@ export function wireTranscript(
 
 	const updatePlayerHeight = () => updateTranscriptPlayerHeight(layoutRoot, playerContainer, toggleBar);
 	const updateControlsLayout = () => {
+		updateTranscriptScrollbarWidth(doc);
 		syncTranscriptToolbarLayout(toggleBar);
 		updatePlayerHeight();
 	};
-	// Restacking changes the observed sizes, so it waits for the next frame rather than changing
-	// them inside the observer's callback.
+	// The scrollbar width and restacking change the observed sizes, so they wait for the next frame
+	// rather than changing them inside the observer's callback (a ResizeObserver loop).
 	let controlsFrame: number | undefined;
 	const scheduleControlsLayout = () => {
 		updatePlayerHeight();
@@ -447,14 +452,28 @@ export function wireTranscript(
 			if (!eventController.signal.aborted) updateControlsLayout();
 		});
 	};
-	updateTranscriptScrollbarWidth(doc);
+	eventController.signal.addEventListener('abort', () => {
+		if (controlsFrame !== undefined && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(controlsFrame);
+		controlsFrame = undefined;
+	}, { once: true });
 	updateControlsLayout();
 	if (typeof ResizeObserver !== 'undefined') {
-		const resizeObserver = new ResizeObserver(() => {
-			updateTranscriptScrollbarWidth(doc);
-			scheduleControlsLayout();
+		// The page's height changes with every rendered group, which needs no new layout; only its
+		// width (the vertical scrollbar appearing or going, a resized window) does.
+		let pageWidth: number | undefined;
+		const resizeObserver = new ResizeObserver(entries => {
+			let changed = false;
+			for (const entry of entries) {
+				if (entry.target !== doc.documentElement) {
+					changed = true;
+					continue;
+				}
+				if (entry.contentRect.width === pageWidth) continue;
+				pageWidth = entry.contentRect.width;
+				changed = true;
+			}
+			if (changed) scheduleControlsLayout();
 		});
-		// The page's width changes when its vertical scrollbar appears or goes.
 		resizeObserver.observe(doc.documentElement);
 		resizeObserver.observe(playerContainer);
 		// The controls grow when a row wraps, and the toggles change width with their labels

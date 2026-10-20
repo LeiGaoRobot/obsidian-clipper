@@ -290,9 +290,56 @@ describe('Transcript layout integration', () => {
 		const button = article.querySelector('.player-compact-toggle') as HTMLButtonElement;
 		expect(player.classList.contains('is-compact')).toBe(true);
 		expect(button.getAttribute('aria-pressed')).toBe('true');
+		// The short label follows the name: pressed, the button shows the player again.
+		expect([button.textContent, button.dataset.shortLabel]).toEqual(['Show player', 'Show']);
 
 		button.click();
 		expect(onSettingChange).toHaveBeenLastCalledWith('compactPlayer', false);
+		expect([button.textContent, button.dataset.shortLabel]).toEqual(['Compact player', 'Compact']);
+	});
+
+	test('short labels are drawn over the full label, which stays each control\'s text and name', () => {
+		vi.stubGlobal('CSS', {});
+		document.body.innerHTML = `
+			<article>
+				<a href="https://www.youtube.com/watch?v=test">Video</a>
+				<div class="youtube transcript">
+					<div class="transcript-segment">
+						<strong><span class="timestamp" data-timestamp="0">0:00</span></strong>
+						Hello world.
+					</div>
+				</div>
+			</article>
+		`;
+		const article = document.querySelector('article') as HTMLElement;
+		wireTranscript(document, article, {
+			pinPlayer: true,
+			autoScroll: true,
+			highlightActiveLine: true,
+			transcriptLayout: 'reading',
+			responseLanguage: 'English'
+		}, {
+			getStickyOffset: () => 0,
+			scrollTo: vi.fn(),
+			programmaticScroll: () => false
+		}, undefined, {
+			translateTranscript: vi.fn(),
+			explainSelection: vi.fn(),
+			annotateJapaneseTranscript: vi.fn()
+		});
+		const toolbar = article.querySelector('.player-toggles') as HTMLElement;
+		toolbar.classList.add('is-short-labels');
+
+		const shortLabelled = Array.from(toolbar.querySelectorAll<HTMLElement>('[data-short-label]'));
+		expect(shortLabelled.map(element => [element.textContent, element.dataset.shortLabel])).toEqual([
+			['Study tools', 'Study'],
+			['Split view', 'Split'],
+			['Compact player', 'Compact'],
+			['Bilingual subtitles', 'Bilingual'],
+			['Japanese readings', 'Readings']
+		]);
+		// No aria-label replaces the text, so the accessible name is the full label.
+		shortLabelled.forEach(element => expect(element.hasAttribute('aria-label')).toBe(false));
 	});
 
 	test('uses a modal, keyboard-contained bottom sheet for mobile secondary controls', () => {
@@ -645,6 +692,114 @@ describe('Transcript cleanup on Reader navigation', () => {
 		expect(document.querySelector('.language-learning-card')).toBeNull();
 		expect(document.querySelector('.language-learning-selection-action')).toBeNull();
 		expect(document.documentElement.hasAttribute('data-transcript-layout')).toBe(false);
+	});
+
+	const stubLayoutObservers = () => {
+		const observers: Array<{ callback: ResizeObserverCallback; targets: Element[] }> = [];
+		vi.stubGlobal('ResizeObserver', class {
+			private readonly entry: { callback: ResizeObserverCallback; targets: Element[] };
+			constructor(callback: ResizeObserverCallback) {
+				this.entry = { callback, targets: [] };
+				observers.push(this.entry);
+			}
+			observe(target: Element) { this.entry.targets.push(target); }
+			disconnect() { this.entry.targets = []; }
+		});
+		const frames = new Map<number, FrameRequestCallback>();
+		let nextFrame = 0;
+		vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+			frames.set(++nextFrame, callback);
+			return nextFrame;
+		}));
+		vi.stubGlobal('cancelAnimationFrame', vi.fn((id: number) => { frames.delete(id); }));
+		const resize = (target: Element, width: number, height: number) => {
+			const observer = observers[observers.length - 1];
+			observer.callback([{ target, contentRect: { width, height } } as unknown as ResizeObserverEntry], {} as ResizeObserver);
+		};
+		const runFrames = () => {
+			const pending = Array.from(frames.values());
+			frames.clear();
+			pending.forEach(callback => callback(0));
+		};
+		return { frames, resize, runFrames };
+	};
+
+	test('a page that only grows taller schedules no toolbar layout; a width change does', () => {
+		vi.stubGlobal('CSS', {});
+		const { frames, resize, runFrames } = stubLayoutObservers();
+		readerTranscript.wireTranscript(document, transcriptArticle(), settings, scroll);
+
+		resize(document.documentElement, 1000, 2000);
+		expect(frames.size).toBe(1);
+		runFrames();
+
+		// Each rendered group makes the page taller; that needs no new layout.
+		resize(document.documentElement, 1000, 2600);
+		resize(document.documentElement, 1000, 3200);
+		expect(frames.size).toBe(0);
+
+		// The scrollbar appearing narrows the page.
+		resize(document.documentElement, 985, 3200);
+		expect(frames.size).toBe(1);
+		runFrames();
+
+		// The toolbar's own size changes still refit it.
+		resize(document.querySelector('.player-toggles') as HTMLElement, 900, 48);
+		expect(frames.size).toBe(1);
+	});
+
+	test('the scrollbar width is measured in the frame, and a frame left after cleanup changes nothing', () => {
+		vi.stubGlobal('CSS', {});
+		const { frames, resize, runFrames } = stubLayoutObservers();
+		const root = document.documentElement;
+		readerTranscript.wireTranscript(document, transcriptArticle(), settings, scroll);
+		expect(root.style.getPropertyValue('--transcript-scrollbar-width')).not.toBe('');
+
+		root.style.removeProperty('--transcript-scrollbar-width');
+		resize(root, 1000, 2000);
+		// Not inside the observer's callback, where resizing the content loops the observer.
+		expect(root.style.getPropertyValue('--transcript-scrollbar-width')).toBe('');
+		runFrames();
+		expect(root.style.getPropertyValue('--transcript-scrollbar-width')).not.toBe('');
+
+		resize(root, 990, 2000);
+		const pending = Array.from(frames.values());
+		expect(pending).toHaveLength(1);
+		readerTranscript.cleanupTranscript(document);
+		expect(frames.size).toBe(0);
+		expect(root.style.getPropertyValue('--transcript-scrollbar-width')).toBe('');
+		// Even a frame that already fired its callback late leaves the cleaned page alone.
+		pending[0](0);
+		expect(root.style.getPropertyValue('--transcript-scrollbar-width')).toBe('');
+		expect(root.classList.contains('transcript-layout-reading')).toBe(false);
+	});
+
+	test('switching layouts keeps the scrollbar width; cleanup removes it', () => {
+		vi.stubGlobal('CSS', {});
+		const root = document.documentElement;
+		readerTranscript.wireTranscript(document, transcriptArticle(), settings, scroll);
+		expect(root.style.getPropertyValue('--transcript-scrollbar-width')).not.toBe('');
+
+		(document.querySelector('[data-transcript-layout="focus"]') as HTMLButtonElement).click();
+		expect(root.style.getPropertyValue('--transcript-scrollbar-width')).not.toBe('');
+		(document.querySelector('[data-transcript-layout="reading"]') as HTMLButtonElement).click();
+		expect(root.style.getPropertyValue('--transcript-scrollbar-width')).not.toBe('');
+
+		readerTranscript.cleanupTranscript(document);
+		expect(root.style.getPropertyValue('--transcript-scrollbar-width')).toBe('');
+	});
+
+	test('Reading publishes the toolbar offset in the player, which an unpinned player sticks by', () => {
+		vi.stubGlobal('CSS', {});
+		readerTranscript.wireTranscript(document, transcriptArticle(), { ...settings, pinPlayer: false }, scroll);
+		const layoutRoot = document.querySelector('.transcript-study-layout') as HTMLElement;
+		const player = layoutRoot.querySelector('.player-container') as HTMLElement;
+		const toolbar = layoutRoot.querySelector('.player-toggles') as HTMLElement;
+		expect(player.contains(toolbar)).toBe(true);
+		expect(layoutRoot.style.getPropertyValue('--transcript-controls-top')).toBe('0px');
+
+		(document.querySelector('[data-transcript-layout="focus"]') as HTMLButtonElement).click();
+		expect(layoutRoot.style.getPropertyValue('--transcript-controls-top')).toBe('');
 	});
 
 	test('the progress pill sits in the toolbar before More, so a running task shows progress and Cancel', async () => {
