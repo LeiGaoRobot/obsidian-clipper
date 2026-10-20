@@ -27,6 +27,9 @@ export function createTranslationsFeature(ctx: TranscriptFeatureContext): Transl
 	bilingualButton.type = 'button';
 	bilingualButton.className = 'player-learning-action player-learning-bilingual';
 	bilingualButton.textContent = getMessage('readerBilingualSubtitles');
+	// A toolbar short of space shows the short label; the full one stays the accessible name.
+	bilingualButton.dataset.shortLabel = getMessage('readerBilingualSubtitlesShort');
+	bilingualButton.setAttribute('aria-pressed', 'false');
 
 	const editButton = doc.createElement('button');
 	editButton.type = 'button';
@@ -108,6 +111,7 @@ export function createTranslationsFeature(ctx: TranscriptFeatureContext): Transl
 		transcript.classList.add('show-bilingual-transcript');
 		transcript.classList.toggle('has-partial-bilingual-transcript', !complete);
 		bilingualButton.classList.add('is-enabled');
+		bilingualButton.setAttribute('aria-pressed', 'true');
 		updateEditing();
 	};
 	const apply = (translations: string[]) => {
@@ -141,6 +145,7 @@ export function createTranslationsFeature(ctx: TranscriptFeatureContext): Transl
 			if (!visible) editMode = false;
 			transcript.classList.toggle('show-bilingual-transcript', visible);
 			bilingualButton.classList.toggle('is-enabled', visible);
+			bilingualButton.setAttribute('aria-pressed', String(visible));
 			updateEditing();
 			ctx.onPreferenceChange?.('bilingualSubtitles', visible);
 			return;

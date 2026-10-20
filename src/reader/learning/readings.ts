@@ -52,6 +52,9 @@ export function createReadingsFeature(ctx: TranscriptFeatureContext): ReadingsFe
 		getMessage('readerJapaneseReadings'),
 		!shouldOfferJapaneseReadings(originalTexts, transcriptLanguage)
 	);
+	// A toolbar short of space shows the short label; the full one stays the accessible name.
+	button.dataset.shortLabel = getMessage('readerJapaneseReadingsShort');
+	button.setAttribute('aria-pressed', 'false');
 	const editButton = createButton('player-learning-readings-edit', getMessage('readerEditReadings'), true);
 	const regenerateButton = createButton('player-learning-readings-regenerate', getMessage('readerRegenerateReadings'), true);
 
@@ -145,6 +148,7 @@ export function createReadingsFeature(ctx: TranscriptFeatureContext): ReadingsFe
 		transcript.classList.toggle('show-japanese-readings', show);
 		transcript.classList.toggle('is-editing-japanese-readings', show && editMode);
 		button.classList.toggle('is-enabled', show);
+		button.setAttribute('aria-pressed', String(show));
 		updateEditButtons();
 	};
 
@@ -284,6 +288,7 @@ export function createReadingsFeature(ctx: TranscriptFeatureContext): ReadingsFe
 		transcript.classList.toggle('show-japanese-readings', visible);
 		transcript.classList.remove('is-editing-japanese-readings');
 		button.classList.toggle('is-enabled', visible);
+		button.setAttribute('aria-pressed', String(visible));
 		updateEditButtons();
 		await generate(false);
 	};

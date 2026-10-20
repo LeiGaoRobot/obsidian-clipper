@@ -5,6 +5,18 @@ const TRANSCRIPT_LAYOUT_CLASSES = TRANSCRIPT_LAYOUT_MODES.map(mode => `transcrip
 
 export function clearTranscriptLayoutMode(doc: Document): void {
 	doc.documentElement.classList.remove(...TRANSCRIPT_LAYOUT_CLASSES);
+	doc.documentElement.style.removeProperty('--transcript-scrollbar-width');
+}
+
+/**
+ * Publishes the width of the page's vertical scrollbar, which `100vw` includes, so the Study tools
+ * and Split view widths (transcripts.scss) fit the viewport without a horizontal scrollbar.
+ */
+export function updateTranscriptScrollbarWidth(doc: Document): void {
+	const view = doc.defaultView;
+	if (!view) return;
+	const width = Math.max(0, view.innerWidth - doc.documentElement.clientWidth);
+	doc.documentElement.style.setProperty('--transcript-scrollbar-width', `${width}px`);
 }
 
 export function normalizeTranscriptLayoutMode(value: unknown): TranscriptLayoutMode {
@@ -30,29 +42,100 @@ export function updateTranscriptPlayerHeight(root: HTMLElement, player: HTMLElem
 	}
 }
 
+/** The toolbar's fallbacks, from the roomiest to the tightest (transcripts.scss). */
+const TOOLBAR_LAYOUT_CLASSES = [
+	'is-short-labels',
+	'is-task-compact',
+	'is-task-minimal',
+	'is-task-tight',
+	'is-task-row',
+	'is-controls-stacked'
+] as const;
+type ToolbarLayoutClass = typeof TOOLBAR_LAYOUT_CLASSES[number];
+
+/** Distinct rows among `rects`: a rect starts a row when it lies below the current one. */
+function countRows(rects: DOMRect[]): number {
+	let rows = 0;
+	let rowBottom = -Infinity;
+	[...rects].sort((a, b) => a.top - b.top).forEach(rect => {
+		if (rect.top >= rowBottom - 1) {
+			rows++;
+			rowBottom = rect.bottom;
+		} else {
+			rowBottom = Math.max(rowBottom, rect.bottom);
+		}
+	});
+	return rows;
+}
+
 /**
- * Stacks the transcript controls in two rows (the layout switcher and More, then the toggles) when
- * the switcher and the toggles group do not fit on one line, so More never wraps alone. Measured
- * on the one-row layout, so it follows the labels' real widths in every language. Layouts that
- * lay the group out as `display: contents` (phones, the Study tools rail, More open) are left as
- * they are.
+ * Fits the transcript toolbar into one row: the layout switcher, the feature toggles, the progress
+ * pill while a task runs, and More. When they do not fit, it steps through the fallbacks until they
+ * do: short labels, then the pill without its engine, then without its progress bar, then with
+ * only the segment count and Cancel, then the pill on a row of its own, and last two rows of controls (the switcher and More, then the toggles) with
+ * the pill below. Measured on the real labels, so it holds in every language and never leaves More
+ * alone on a line. A toolbar laid out as a column (the Study tools rail) gets no fallback, and one
+ * that is not laid out (hidden, or a test document) keeps what it had.
  */
-export function syncTranscriptControlsRows(controls: HTMLElement): void {
-	const switcher = controls.querySelector<HTMLElement>(':scope > .transcript-layout-switcher');
-	const actions = controls.querySelector<HTMLElement>(':scope > .player-controls-actions');
-	const view = controls.ownerDocument.defaultView;
-	if (!switcher || !actions || !view) return;
-	const wasStacked = controls.classList.contains('is-controls-stacked');
-	controls.classList.remove('is-controls-stacked');
-	if (view.getComputedStyle(actions).display === 'contents') return;
-	const switcherRect = switcher.getBoundingClientRect();
-	const actionsRect = actions.getBoundingClientRect();
-	// Not laid out (hidden, or a test document): keep what was there.
-	if (switcherRect.height === 0 || actionsRect.height === 0) {
-		controls.classList.toggle('is-controls-stacked', wasStacked);
+export function syncTranscriptToolbarLayout(toolbar: HTMLElement): void {
+	const view = toolbar.ownerDocument.defaultView;
+	if (!view) return;
+	const previous = TOOLBAR_LAYOUT_CLASSES.filter(name => toolbar.classList.contains(name));
+	const apply = (classes: readonly ToolbarLayoutClass[]) => {
+		TOOLBAR_LAYOUT_CLASSES.forEach(name => toolbar.classList.toggle(name, classes.includes(name)));
+	};
+	apply([]);
+	const toolbarRect = toolbar.getBoundingClientRect();
+	if (toolbarRect.width === 0 || toolbarRect.height === 0) {
+		apply(previous);
 		return;
 	}
-	controls.classList.toggle('is-controls-stacked', actionsRect.top >= switcherRect.bottom - 1);
+	if (view.getComputedStyle(toolbar).flexDirection.startsWith('column')) return;
+
+	const switcher = toolbar.querySelector<HTMLElement>(':scope > .transcript-layout-switcher');
+	const pill = toolbar.querySelector<HTMLElement>(':scope > .player-learning-task');
+	const running = Boolean(pill && !pill.hidden);
+	const rowItems = Array.from(toolbar.querySelectorAll<HTMLElement>([
+		':scope > .transcript-layout-switcher',
+		':scope > .player-controls-divider',
+		':scope > .player-primary-actions',
+		':scope > .player-learning-task',
+		':scope > .player-controls-more > summary'
+	].join(', ')));
+	const innerItems = Array.from(toolbar.querySelectorAll<HTMLElement>(
+		':scope > .player-primary-actions > *, :scope > .player-learning-task > *'
+	));
+	const fits = (expectedRows: number) => {
+		const style = view.getComputedStyle(toolbar);
+		const bounds = toolbar.getBoundingClientRect();
+		const left = bounds.left + (parseFloat(style.paddingLeft) || 0) - 1;
+		const right = bounds.right - (parseFloat(style.paddingRight) || 0) + 1;
+		const laidOut = (rect: DOMRect) => rect.width > 0 && rect.height > 0;
+		const rows = rowItems.map(item => item.getBoundingClientRect()).filter(laidOut);
+		if (!switcher || countRows(rows) > expectedRows) return false;
+		return [...rows, ...innerItems.map(item => item.getBoundingClientRect()).filter(laidOut)]
+			.every(rect => rect.left >= left && rect.right <= right);
+	};
+
+	const steps: Array<[readonly ToolbarLayoutClass[], number]> = running
+		? [
+			[[], 1],
+			[['is-short-labels'], 1],
+			[['is-short-labels', 'is-task-compact'], 1],
+			[['is-short-labels', 'is-task-minimal'], 1],
+			[['is-short-labels', 'is-task-tight'], 1],
+			[['is-short-labels', 'is-task-row'], 2],
+			[['is-short-labels', 'is-controls-stacked'], 3]
+		]
+		: [
+			[[], 1],
+			[['is-short-labels'], 1],
+			[['is-short-labels', 'is-controls-stacked'], 2]
+		];
+	for (const [classes, expectedRows] of steps) {
+		apply(classes);
+		if (fits(expectedRows)) return;
+	}
 }
 
 interface TranscriptControlsPanelOptions {
@@ -72,7 +155,10 @@ export function syncTranscriptControlsPanel({
 	controls,
 	isMobile
 }: TranscriptControlsPanelOptions): void {
+	// Open on a phone, the panel is a sheet over the page; open elsewhere, it is the toolbar's last
+	// row, so More stays where it is; closed, it goes back into More.
 	if (details.open && isMobile) root.appendChild(panel);
+	else if (details.open && details.parentElement === controls) controls.appendChild(panel);
 	else details.appendChild(panel);
 	root.classList.toggle('is-controls-open', details.open);
 	details.querySelector('summary')?.setAttribute('aria-expanded', String(details.open));
@@ -104,6 +190,8 @@ interface TranscriptLayoutSwitcherOptions {
 	initialMode: TranscriptLayoutMode;
 	groupLabel: string;
 	labels: Record<TranscriptLayoutMode, string>;
+	/** Shown instead of `labels` when the toolbar is short of space (`is-short-labels`). */
+	shortLabels?: Partial<Record<TranscriptLayoutMode, string>>;
 	onChange?: (mode: TranscriptLayoutMode) => void;
 }
 
@@ -119,6 +207,7 @@ export function createTranscriptLayoutSwitcher({
 	initialMode,
 	groupLabel,
 	labels,
+	shortLabels,
 	onChange
 }: TranscriptLayoutSwitcherOptions): TranscriptLayoutSwitcher {
 	const element = doc.createElement('div');
@@ -148,6 +237,8 @@ export function createTranscriptLayoutSwitcher({
 		button.dataset.transcriptLayout = mode;
 		button.textContent = labels[mode];
 		button.title = labels[mode];
+		const shortLabel = shortLabels?.[mode];
+		if (shortLabel && shortLabel !== labels[mode]) button.dataset.shortLabel = shortLabel;
 		button.addEventListener('click', () => {
 			if (mode === currentMode) return;
 			applyMode(mode);

@@ -1300,6 +1300,9 @@
 	"readerBilingualSubtitles": {
 		"message": "Bilingual subtitles"
 	},
+	"readerBilingualSubtitlesShort": {
+		"message": "Bilingual"
+	},
 	"readerBilingualSubtitlesRestoreDescription": {
 		"message": "Show completed translations when they are already saved. Missing translations are never generated automatically."
 	},
@@ -1345,11 +1348,17 @@
 	"readerJapaneseReadings": {
 		"message": "Japanese readings"
 	},
+	"readerJapaneseReadingsShort": {
+		"message": "Readings"
+	},
 	"readerJapaneseReadingsRestoreDescription": {
 		"message": "Show completed readings when they are already saved. Missing readings are never generated automatically."
 	},
 	"readerCompactPlayer": {
 		"message": "Compact player"
+	},
+	"readerCompactPlayerShort": {
+		"message": "Compact"
 	},
 	"readerCompactPlayerDescription": {
 		"message": "Start Reading layout with the video collapsed. You can reveal it at any time."
@@ -1375,8 +1384,14 @@
 	"readerTranscriptLayoutNotebook": {
 		"message": "Study tools"
 	},
+	"readerTranscriptLayoutNotebookShort": {
+		"message": "Study"
+	},
 	"readerTranscriptLayoutFocus": {
 		"message": "Split view"
+	},
+	"readerTranscriptLayoutFocusShort": {
+		"message": "Split"
 	},
 	"readerTranscriptTranslationBatchFailed": {
 		"message": "Some transcript batches could not be completed. Retry to continue."
@@ -1519,9 +1534,6 @@
 	"readerSwitchAndRetry": {
 		"message": "Switch and retry"
 	},
-	"readerTaskElapsed": {
-		"message": "$1s"
-	},
 	"readerTaskEstimate": {
 		"message": "$1 · $2"
 	},
@@ -1557,6 +1569,9 @@
 	},
 	"readerTaskSegmentsOne": {
 		"message": "$1 segment"
+	},
+	"readerTaskSegmentFraction": {
+		"message": "$1 / $2"
 	},
 	"readerTheme": {
 		"message": "Theme"

@@ -205,10 +205,21 @@ describe('Transcript layout integration', () => {
 		morePanel.getBoundingClientRect = () => ({ top: 760 } as DOMRect);
 
 		expect(primaryActions).toBeTruthy();
-		// The toggles and More are one group, so More wraps with them instead of alone.
-		const controlActions = toggleBar.querySelector(':scope > .player-controls-actions') as HTMLElement;
-		expect(Array.from(controlActions.children)).toEqual([primaryActions, moreControls]);
-		expect(toggleBar.firstElementChild?.classList.contains('transcript-layout-switcher')).toBe(true);
+		// One toolbar row: the layout switcher, a divider, the toggles, and More at the end.
+		expect(Array.from(toggleBar.children, child => child.className)).toEqual([
+			'transcript-layout-switcher',
+			'player-controls-divider',
+			'player-primary-actions',
+			'player-controls-more'
+		]);
+		expect(toggleBar.querySelector('.player-controls-divider')?.getAttribute('aria-hidden')).toBe('true');
+		const moreSummary = moreControls.querySelector('summary') as HTMLElement;
+		expect(moreSummary.getAttribute('aria-label')).toBe('Open transcript and study controls');
+		expect(moreSummary.title).toBe('Open transcript and study controls');
+		// Short of space, the toggles and the layout options show short labels.
+		expect(compactButton.dataset.shortLabel).toBe('Compact');
+		expect(Array.from(toggleBar.querySelectorAll<HTMLElement>('.transcript-layout-option'), option => option.dataset.shortLabel))
+			.toEqual([undefined, 'Study', 'Split']);
 		expect(moreControls.open).toBe(false);
 		expect(morePanel.querySelectorAll('.player-toggle')).toHaveLength(3);
 		expect(morePanel.querySelectorAll('.player-control-section')).toHaveLength(2);
@@ -400,7 +411,10 @@ describe('Transcript layout integration', () => {
 
 		details.open = true;
 		details.dispatchEvent(new Event('toggle'));
-		expect(panel.parentElement).toBe(details);
+		// Off a phone, the open panel is the toolbar's last row, so More stays in place.
+		const toolbar = root.querySelector('.player-toggles') as HTMLElement;
+		expect(panel.parentElement).toBe(toolbar);
+		expect(toolbar.lastElementChild).toBe(panel);
 
 		viewportQuery.matches = true;
 		viewportListener?.({ matches: true } as MediaQueryListEvent);
@@ -409,6 +423,10 @@ describe('Transcript layout integration', () => {
 
 		viewportQuery.matches = false;
 		viewportListener?.({ matches: false } as MediaQueryListEvent);
+		expect(panel.parentElement).toBe(toolbar);
+
+		details.open = false;
+		details.dispatchEvent(new Event('toggle'));
 		expect(panel.parentElement).toBe(details);
 	});
 
@@ -629,7 +647,7 @@ describe('Transcript cleanup on Reader navigation', () => {
 		expect(document.documentElement.hasAttribute('data-transcript-layout')).toBe(false);
 	});
 
-	test('the transcript task bar sits outside More, so a running task shows progress and Cancel', async () => {
+	test('the progress pill sits in the toolbar before More, so a running task shows progress and Cancel', async () => {
 		vi.stubGlobal('CSS', {});
 		const clicks = captureTrustedClicks();
 		const article = transcriptArticle();
@@ -641,6 +659,7 @@ describe('Transcript cleanup on Reader navigation', () => {
 		const moreControls = document.querySelector('.player-controls-more') as HTMLDetailsElement;
 		const taskBar = document.querySelector('.player-learning-task') as HTMLElement;
 		expect(taskBar.parentElement?.classList.contains('player-toggles')).toBe(true);
+		expect(taskBar.nextElementSibling).toBe(moreControls);
 		expect(moreControls.contains(taskBar)).toBe(false);
 		expect(taskBar.hidden).toBe(true);
 

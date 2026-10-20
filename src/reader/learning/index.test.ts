@@ -701,12 +701,12 @@ describe('Transcript language learning controls', () => {
 			onProgress?.({ completed: 0, total: 2, completedSegments: 0, totalSegments: 3, readings: [[]] });
 			progressStates.push({
 				button: readingButton.textContent || '',
-				status: controls.querySelector('.player-learning-task-estimate')?.textContent || ''
+				status: controls.querySelector('.player-learning-task-progress')?.getAttribute('aria-label') || ''
 			});
 			onProgress?.({ completed: 1, total: 2, completedSegments: 2, totalSegments: 3, readings: [[]] });
 			progressStates.push({
 				button: readingButton.textContent || '',
-				status: controls.querySelector('.player-learning-task-estimate')?.textContent || ''
+				status: controls.querySelector('.player-learning-task-progress')?.getAttribute('aria-label') || ''
 			});
 			return [[
 				{ text: '私', reading: 'わたし' },
@@ -833,7 +833,7 @@ describe('Transcript language learning controls', () => {
 		const { controls, transcript, segments } = createTranscript(['First.', 'Second.']);
 		const statuses: string[] = [];
 		const status = () => [
-			controls.querySelector('.player-learning-task-estimate')?.textContent || '',
+			controls.querySelector('.player-learning-task-progress')?.getAttribute('aria-label') || '',
 			controls.querySelector('.player-learning-progress')?.textContent || ''
 		].join(' | ');
 		const translateTranscript = vi.fn(async (
@@ -1544,7 +1544,7 @@ describe('Transcript language learning controls', () => {
 		expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ action: 'openOptionsPage', section: 'ai' });
 	});
 
-	test('keeps elapsed task status busy until the model request finishes', async () => {
+	test('keeps the progress pill busy until the model request finishes', async () => {
 		const { controls, transcript, segments } = createTranscript();
 		let finishTranslation!: (translations: string[]) => void;
 		const translateTranscript = vi.fn(() => new Promise<string[]>(resolve => {
@@ -1570,8 +1570,7 @@ describe('Transcript language learning controls', () => {
 
 		const taskBar = controls.querySelector('.player-learning-task') as HTMLElement;
 		expect(taskBar.getAttribute('aria-busy')).toBe('true');
-		expect(controls.querySelector('.player-learning-task-elapsed')?.textContent)
-			.toBe('readerTaskElapsed:0');
+		expect(taskBar.hidden).toBe(false);
 
 		finishTranslation(['你好，世界。']);
 		await request;
@@ -1767,6 +1766,59 @@ describe('Transcript language learning controls', () => {
 		expect(document.activeElement).toBe(trigger);
 	});
 
+	test('the pill shows a running explanation, and its Cancel stops the explanation and the transcript task', async () => {
+		const { controls, transcript, segments } = createTranscript();
+		let translateSignal: AbortSignal | undefined;
+		const translateTranscript = vi.fn((_texts: string[], _onProgress: unknown, signal?: AbortSignal) => {
+			translateSignal = signal;
+			return new Promise<string[]>(() => {});
+		});
+		let explainSignal: AbortSignal | undefined;
+		let finishExplanation!: (text: string) => void;
+		const explainSelection = vi.fn((_selection: unknown, signal?: AbortSignal) => {
+			explainSignal = signal;
+			return new Promise<string>(resolve => { finishExplanation = resolve; });
+		});
+		const controller = wireTranscriptLanguageLearning({
+			doc: document,
+			transcript,
+			segments,
+			controls,
+			tools: { translateTranscript, explainSelection, annotateJapaneseTranscript: vi.fn() },
+			responseLanguage: 'English',
+			cancelPendingSeek: vi.fn()
+		});
+		const pill = controls.querySelector('.player-learning-task') as HTMLElement;
+		const cancel = pill.querySelector('.player-learning-cancel') as HTMLButtonElement;
+		const status = pill.querySelector('.player-learning-progress') as HTMLElement;
+
+		// An explanation alone: the pill says Thinking… with Cancel, and hides once it settles.
+		const first = controller.explain({ kind: 'word', text: 'Hello', context: 'Hello world.' });
+		await flushPromises();
+		expect(pill.hidden).toBe(false);
+		expect(pill.getAttribute('aria-busy')).toBe('true');
+		expect(status.textContent).toBe('thinking');
+		expect(cancel.hidden).toBe(false);
+		finishExplanation('a greeting');
+		await first;
+		expect(pill.hidden).toBe(true);
+
+		// Both running: one trusted Cancel stops both, and the pill says so.
+		const translation = controller.toggleBilingual();
+		await flushPromises();
+		const second = controller.explain({ kind: 'word', text: 'world', context: 'Hello world.' });
+		await flushPromises();
+		cancel.click();
+		expect(translateSignal?.aborted).toBe(false);
+		await clicks.click(cancel);
+		await Promise.all([translation, second]);
+		expect(translateSignal?.aborted).toBe(true);
+		expect(explainSignal?.aborted).toBe(true);
+		expect(pill.getAttribute('aria-busy')).toBe('false');
+		expect(cancel.hidden).toBe(true);
+		expect(status.textContent).toBe('readerAiCancelled');
+	});
+
 	test('closing the card while an explanation runs cancels only that explanation', async () => {
 		const { controls, transcript, segments } = createTranscript();
 		let finishTranslation!: (translations: string[]) => void;
@@ -1923,7 +1975,7 @@ describe('Transcript language learning controls', () => {
 			}) => void
 		) => {
 			onProgress?.({ completed: 0, total: 1, completedSegments: 0, totalSegments: 1, translations: [''] });
-			progressLabels.push(first.controls.querySelector('.player-learning-task-estimate')?.textContent || '');
+			progressLabels.push(first.controls.querySelector('.player-learning-task-progress')?.getAttribute('aria-label') || '');
 			onProgress?.({ completed: 1, total: 1, completedSegments: 1, totalSegments: 1, translations: ['你好，世界。'] });
 			return ['你好，世界。'];
 		});

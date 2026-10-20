@@ -1300,6 +1300,9 @@
 	"readerBilingualSubtitles": {
 		"message": "双语字幕"
 	},
+	"readerBilingualSubtitlesShort": {
+		"message": "双语"
+	},
 	"readerBilingualSubtitlesRestoreDescription": {
 		"message": "已有完整翻译时自动显示；缺失内容不会自动调用 AI 生成。"
 	},
@@ -1345,11 +1348,17 @@
 	"readerJapaneseReadings": {
 		"message": "日语读音"
 	},
+	"readerJapaneseReadingsShort": {
+		"message": "读音"
+	},
 	"readerJapaneseReadingsRestoreDescription": {
 		"message": "已有完整读音时自动显示；缺失内容不会自动调用 AI 生成。"
 	},
 	"readerCompactPlayer": {
 		"message": "收起播放器"
+	},
+	"readerCompactPlayerShort": {
+		"message": "收起"
 	},
 	"readerCompactPlayerDescription": {
 		"message": "进入阅读布局时默认收起视频，随时可以重新显示。"
@@ -1375,7 +1384,13 @@
 	"readerTranscriptLayoutNotebook": {
 		"message": "学习工具"
 	},
+	"readerTranscriptLayoutNotebookShort": {
+		"message": "学习"
+	},
 	"readerTranscriptLayoutFocus": {
+		"message": "分屏"
+	},
+	"readerTranscriptLayoutFocusShort": {
 		"message": "分屏"
 	},
 	"readerTranscriptTranslationBatchFailed": {
@@ -1519,9 +1534,6 @@
 	"readerSwitchAndRetry": {
 		"message": "切换并重试"
 	},
-	"readerTaskElapsed": {
-		"message": "$1 秒"
-	},
 	"readerTaskEstimate": {
 		"message": "$1 · $2"
 	},
@@ -1557,6 +1569,9 @@
 	},
 	"readerTaskSegmentsOne": {
 		"message": "$1 段"
+	},
+	"readerTaskSegmentFraction": {
+		"message": "$1 / $2"
 	},
 	"readerTheme": {
 		"message": "主题"

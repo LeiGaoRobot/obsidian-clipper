@@ -109,7 +109,7 @@ export function wireTranscriptLanguageLearning({
 				if (busyFlow && busyFlow !== activeFlow) setFlowBusy(busyFlow, false);
 				busyFlow = activeFlow;
 				if (busyFlow) setFlowBusy(busyFlow, true);
-				taskBar.begin(state.startedAt ?? Date.now());
+				taskBar.begin();
 				syncCancel();
 				return;
 			}
@@ -141,7 +141,8 @@ export function wireTranscriptLanguageLearning({
 		signal,
 		onRequestChange(state) {
 			if (signal.aborted) return;
-			// The status line belongs to a running transcript task.
+			// A running transcript task keeps the pill's progress; otherwise the pill shows the
+			// explanation: Thinking… with Cancel, then a cancelled one says so, and a settled one hides it.
 			if (transcriptAction.state.status !== 'running') {
 				if (state.status === 'running') taskBar.setStatus(getMessage('thinking'));
 				else if (state.status === 'cancelled') taskBar.setStatus(getMessage('readerAiCancelled'));

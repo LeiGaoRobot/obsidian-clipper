@@ -43,77 +43,133 @@
 		overflow: hidden;
 	}
 }
+// The transcript toolbar: one row of the layout switcher, a divider, the feature toggles, the
+// progress pill while a task runs, and More. When the row is short of space,
+// syncTranscriptToolbarLayout adds the fallback classes below, tightest last.
 .player-toggles {
 	box-sizing: border-box;
 	line-height: 1.2;
 	white-space: normal;
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
 	flex-wrap: wrap;
-	gap: 10px 14px;
-	padding: 10px 12px;
+	gap: 8px;
+	padding: 8px 12px;
 	user-select: none;
 	background: var(--background-primary);
 	border-bottom: 1px solid var(--background-modifier-border);
-	// The controls, including the group's items when it lays out as `display: contents`.
-	> *,
-	> .player-controls-actions > * {
-		transition: opacity 0.15s ease;
-	}
-	// The Reader fades the controls while scrolling down. Only the controls fade: the bar's
-	// background stays opaque over the transcript, and hover, focus, or a running task (whose
-	// Cancel must stay in view) shows them again.
-	&.is-scroll-hidden {
-		> *,
-		> .player-controls-actions > * {
-			opacity: 0;
-		}
-		&:hover,
-		&:focus-within,
-		&:has(.player-learning-task[aria-busy="true"]) {
-			> *,
-			> .player-controls-actions > * {
-				opacity: 1;
-			}
-		}
-	}
-}
-// The toggles and More wrap together, so More never sits alone on a line.
-.player-controls-actions {
-	display: flex;
-	align-items: center;
-	flex-wrap: nowrap;
-	gap: 4px 6px;
-	min-width: 0;
-	margin-inline-start: auto;
+	// The pill and More end the row: the pill takes the free space while it shows, More otherwise.
+	> .player-learning-task,
 	> .player-controls-more {
-		flex-shrink: 0;
+		margin-inline-start: auto;
 	}
-	// Open, More's panel takes a row of its own, as the bar's direct child.
-	&:has(> .player-controls-more[open]) {
-		display: contents;
+	> .player-learning-task:not([hidden]) ~ .player-controls-more {
+		margin-inline-start: 0;
+	}
+	// Open off a phone, More's panel is the toolbar's last row (syncTranscriptControlsPanel), so
+	// More stays where it is.
+	> .player-controls-panel {
+		order: 10;
+		flex: 1 0 100%;
+		margin-top: 0;
+		// Moved out of More into the toolbar, the open panel sets its own type.
+		font-family: var(--font-ui);
+		font-size: var(--font-ui-small);
+		line-height: 1.2;
 	}
 }
-// Too narrow for one row (`is-controls-stacked`, set by syncTranscriptControlsRows): More ends the
-// first row, after the layout switcher, and the toggles take the second.
-@mixin transcript-controls-two-rows {
-	.player-controls-actions {
-		display: contents;
+.player-controls-divider {
+	flex: none;
+	width: 1px;
+	height: 20px;
+	background: var(--background-modifier-border);
+}
+// Short of space, labelled controls show their short label. The full label stays in the text at
+// size 0, so it remains the accessible name; the short one is generated content with empty alt text.
+.player-toggles.is-short-labels {
+	.transcript-layout-option[data-short-label],
+	.player-primary-actions > .player-learning-action[data-short-label]:not(.is-loading) {
+		font-size: 0;
+		&::after {
+			content: attr(data-short-label);
+			content: attr(data-short-label) / '';
+			font-size: var(--font-ui-small);
+		}
 	}
-	.player-primary-actions {
+}
+// Then the pill drops its engine (the tooltip keeps it), then its progress bar, then its phase,
+// keeping the segment count and Cancel.
+.player-toggles.is-task-compact > .player-learning-task > .player-learning-task-engine,
+.player-toggles.is-task-minimal > .player-learning-task > .player-learning-task-engine,
+.player-toggles.is-task-minimal > .player-learning-task > .player-learning-task-progress,
+.player-toggles.is-task-tight > .player-learning-task > .player-learning-task-engine,
+.player-toggles.is-task-tight > .player-learning-task > .player-learning-task-progress,
+.player-toggles.is-task-tight > .player-learning-task .player-learning-task-phase {
+	display: none;
+}
+// Then the pill takes a row of its own below the controls; last, the controls take two rows too:
+// the layout switcher and More, then the toggles. More never sits alone on a line.
+.player-toggles.is-task-row,
+.player-toggles.is-controls-stacked {
+	> .player-learning-task {
+		order: 2;
+		flex: 1 0 100%;
+		margin-inline-start: 0;
+		// Full width, the pill hides its engine and then its progress bar when it is narrow.
+		container: transcript-task / inline-size;
+		.player-learning-task-estimate,
+		.player-learning-task-phase,
+		> .player-learning-progress {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+		// The engine gives up its space before the phase does (which shortens once the engine hides).
+		.player-learning-task-estimate {
+			flex-shrink: 0;
+		}
+		.player-learning-task-engine {
+			flex: 1 1 auto;
+			min-width: 0;
+			max-width: none;
+			text-align: end;
+		}
+		> .player-learning-cancel {
+			margin-inline-start: auto;
+		}
+	}
+	> .player-controls-more,
+	> .player-learning-task:not([hidden]) ~ .player-controls-more {
+		margin-inline-start: auto;
+	}
+}
+.player-toggles.is-controls-stacked {
+	> .player-controls-divider {
+		display: none;
+	}
+	> .player-primary-actions {
 		order: 1;
 		flex-basis: 100%;
 	}
-	.player-controls-more {
-		margin-inline-start: auto;
-		&[open] {
-			order: 1;
-			margin-inline-start: 0;
+}
+// A narrow pill row hides the engine, and then the progress bar.
+@container transcript-task (max-width: 420px) {
+	.player-toggles.is-task-row,
+	.player-toggles.is-controls-stacked {
+		> .player-learning-task .player-learning-task-engine {
+			display: none;
+		}
+		> .player-learning-task .player-learning-task-estimate {
+			flex-shrink: 1;
 		}
 	}
-	.player-learning-task {
-		order: 2;
+}
+@container transcript-task (max-width: 260px) {
+	.player-toggles.is-task-row,
+	.player-toggles.is-controls-stacked {
+		> .player-learning-task .player-learning-task-progress {
+			display: none;
+		}
 	}
 }
 .transcript-layout-switcher {
@@ -131,6 +187,7 @@
 .transcript-layout-option {
 	min-height: 28px;
 	padding: 4px 10px;
+	white-space: nowrap;
 	font: inherit;
 	font-weight: 500;
 	color: var(--text-muted);
@@ -233,33 +290,49 @@
 	gap: 4px 6px;
 	min-width: 0;
 }
+// The feature toggles: pills that show their pressed state.
 .player-primary-actions {
 	display: flex;
 	align-items: center;
-	flex-wrap: wrap;
-	gap: 4px 6px;
+	flex-wrap: nowrap;
+	flex-shrink: 0;
+	gap: 4px;
 	min-width: 0;
+	> .player-learning-action {
+		flex-shrink: 0;
+		min-height: 30px;
+		padding-inline: 10px;
+		white-space: nowrap;
+		border-radius: 999px;
+	}
 }
 .player-controls-more {
 	position: relative;
+	flex-shrink: 0;
 	font-family: var(--font-ui);
 	font-size: var(--font-ui-small);
 	line-height: 1.2;
+	// An icon button in the toolbar: its aria-label names it, and its tooltip says what it opens.
 	summary {
 		display: inline-flex;
 		align-items: center;
-		min-height: 28px;
-		padding: 4px 8px;
+		justify-content: center;
+		box-sizing: border-box;
+		width: 32px;
+		height: 32px;
+		padding: 0;
+		font-size: 0;
 		color: var(--text-muted);
 		border: 1px solid transparent;
 		border-radius: var(--radius-s);
 		cursor: pointer;
 		list-style: none;
 		&::-webkit-details-marker { display: none; }
-		&::after {
-			content: '⌄';
-			margin-inline-start: 5px;
-			font-size: 0.85em;
+		&::before {
+			content: '⋯';
+			content: '⋯' / '';
+			font-size: 18px;
+			line-height: 1;
 		}
 		&:hover,
 		&:focus-visible {
@@ -267,14 +340,15 @@
 			background: var(--background-primary-alt);
 			outline: none;
 		}
-	}
-	&[open] {
-		flex: 1 0 100%;
-		> summary {
-			color: var(--text-accent-hover);
-			background: var(--text-selection);
-			border-color: var(--text-selection);
+		&:focus-visible {
+			outline: 2px solid var(--text-accent-hover);
+			outline-offset: 2px;
 		}
+	}
+	&[open] > summary {
+		color: var(--text-accent-hover);
+		background: var(--text-selection);
+		border-color: var(--text-selection);
 	}
 }
 .player-controls-panel {
@@ -470,87 +544,117 @@
 		border: 0;
 	}
 }
+// The progress pill: spinner, phase and segment progress, progress bar, engine, Cancel.
 .player-learning-task {
-	display: grid;
-	grid-template-columns: minmax(0, max-content) minmax(120px, 1fr) auto auto auto;
-	// The status line takes a row of its own only while it shows.
-	grid-template-areas: "engine estimate elapsed progress cancel";
+	display: flex;
 	align-items: center;
-	gap: 6px 10px;
-	flex-basis: 100%;
-	min-width: 0;
-	padding: 7px 9px;
+	gap: 8px;
+	flex: 0 1 auto;
+	box-sizing: border-box;
+	min-height: 32px;
+	padding-block: 3px;
+	padding-inline: 10px 3px;
 	font-family: var(--font-ui);
-	// The Reader defines no smaller UI size; outside More the bar would inherit the article's.
+	// The Reader defines no smaller UI size; in the toolbar the pill would inherit the article's.
 	font-size: var(--font-ui-small);
 	color: var(--text-muted);
-	// Opaque: it sits in the sticky controls, over the transcript scrolling beneath.
-	background: color-mix(in srgb, var(--background-primary-alt) 82%, var(--background-primary));
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-s);
-	&[hidden] {
-		display: none;
+	white-space: nowrap;
+	// Opaque: it sits in the sticky toolbar, over the transcript scrolling beneath.
+	background: color-mix(in srgb, var(--text-accent-hover) 8%, var(--background-primary));
+	border: 1px solid color-mix(in srgb, var(--text-accent-hover) 35%, var(--background-modifier-border));
+	border-radius: 999px;
+	// Nothing to cancel: only a status (a cancelled run) shows.
+	&[aria-busy="false"] {
+		padding-inline-end: 10px;
 	}
+	&[hidden],
 	> [hidden] {
 		display: none;
 	}
 }
-.player-learning-task-engine {
-	grid-area: engine;
-	overflow: hidden;
-	color: var(--text-accent-hover);
-	font-weight: 600;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+.player-learning-task-spinner {
+	flex: none;
+	box-sizing: border-box;
+	width: 12px;
+	height: 12px;
+	border: 2px solid color-mix(in srgb, var(--text-accent-hover) 30%, transparent);
+	border-top-color: var(--text-accent-hover);
+	border-radius: 50%;
+	animation: player-learning-spin 0.8s linear infinite;
 }
 .player-learning-task-estimate {
-	grid-area: estimate;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	display: inline-flex;
+	align-items: baseline;
+	gap: 4px;
+	color: var(--text-normal);
 }
-.player-learning-task-elapsed {
-	grid-area: elapsed;
-	min-width: 3ch;
-	font-variant: tabular-nums;
-	text-align: end;
+.player-learning-task-phase:empty,
+.player-learning-task-count:empty {
+	display: none;
+}
+.player-learning-task-count {
+	flex-shrink: 0;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
 }
 .player-learning-task-progress {
-	grid-area: progress;
-	width: 72px;
+	flex: none;
+	width: 64px;
 	height: 4px;
+	appearance: none;
+	border: 0;
+	border-radius: 2px;
+	overflow: hidden;
+	color: var(--text-accent-hover);
+	background: color-mix(in srgb, var(--text-accent-hover) 20%, transparent);
 	accent-color: var(--text-accent-hover);
+	&::-webkit-progress-bar {
+		background: transparent;
+	}
+	&::-webkit-progress-value {
+		background: var(--text-accent-hover);
+		border-radius: 2px;
+	}
+	&::-moz-progress-bar {
+		background: var(--text-accent-hover);
+		border-radius: 2px;
+	}
 }
-.player-learning-task > .player-learning-cancel {
-	grid-area: cancel;
+.player-learning-task-engine {
+	flex: 0 1 auto;
+	min-width: 3em;
+	max-width: 18em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-size: var(--font-ui-smaller, 12px);
+	color: var(--text-faint);
 }
 .player-learning-task > .player-learning-progress {
-	grid-column: 1 / -1;
+	color: var(--text-normal);
+	white-space: nowrap;
 }
-// Narrow bars: engine and progress text on their own rows, then the progress bar, time and Cancel.
-@mixin player-learning-task-stacked {
-	grid-template-columns: minmax(0, 1fr) auto auto;
-	grid-template-areas:
-		"engine engine engine"
-		"estimate estimate estimate"
-		"progress elapsed cancel";
-	.player-learning-task-estimate,
-	.player-learning-progress {
-		white-space: normal;
-	}
-	.player-learning-task-progress {
-		width: 100%;
+.player-learning-task > .player-learning-cancel {
+	flex: none;
+	min-height: 24px;
+	padding: 2px 10px;
+	color: var(--text-normal);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	&:hover {
+		color: var(--text-normal);
+		background: var(--background-primary-alt);
+		border-color: var(--text-faint);
 	}
 }
 @keyframes player-learning-spin {
 	to { transform: rotate(360deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-	.player-learning-action.is-loading::before {
+	.player-learning-action.is-loading::before,
+	.player-learning-task-spinner {
 		animation: none;
 	}
-	.player-toggles > *,
-	.player-toggles > .player-controls-actions > *,
 	.player-toggle-switch,
 	.player-toggle-switch::after,
 	.player-current-pos,
@@ -932,11 +1036,13 @@
 	}
 }
 
+// `100vw` includes the page's vertical scrollbar; `--transcript-scrollbar-width` (measured by
+// updateTranscriptScrollbarWidth) takes it out, so the wide layouts never scroll sideways.
 html.transcript-layout-notebook .obsidian-reader-content {
-	width: min(1120px, calc(100vw - var(--sidebar-width) - var(--clipper-sidebar-width, 0px))) !important;
+	width: min(1120px, calc(100vw - var(--transcript-scrollbar-width, 0px) - var(--sidebar-width) - var(--clipper-sidebar-width, 0px))) !important;
 }
 html.transcript-layout-focus .obsidian-reader-content {
-	width: min(1320px, calc(100vw - var(--sidebar-width) - var(--clipper-sidebar-width, 0px))) !important;
+	width: min(1320px, calc(100vw - var(--transcript-scrollbar-width, 0px) - var(--sidebar-width) - var(--clipper-sidebar-width, 0px))) !important;
 }
 
 .transcript-layout-reading {
@@ -999,9 +1105,6 @@ html.transcript-layout-focus .obsidian-reader-content {
 		grid-row: 2;
 		padding-top: 18px;
 	}
-	.player-controls-actions {
-		display: contents;
-	}
 	.transcript-layout-switcher,
 	.player-primary-actions,
 	.player-controls-more {
@@ -1020,9 +1123,6 @@ html.transcript-layout-focus .obsidian-reader-content {
 		width: 100%;
 		box-sizing: border-box;
 	}
-	.player-learning-task {
-		@include player-learning-task-stacked;
-	}
 	.player-toggle {
 		width: 100%;
 		box-sizing: border-box;
@@ -1030,6 +1130,64 @@ html.transcript-layout-focus .obsidian-reader-content {
 	.player-control-section-items {
 		align-items: stretch;
 		flex-direction: column;
+	}
+}
+// The Study tools rail lays the toolbar out as a column: no divider, More labelled, and the pill
+// as a card (progress text, then the bar, then the engine and Cancel).
+@media (min-width: 1051px) {
+	.transcript-layout-notebook > .player-toggles {
+		> * {
+			margin-inline-start: 0;
+		}
+		> .player-controls-divider {
+			display: none;
+		}
+		> .player-controls-panel {
+			flex: none;
+		}
+		.player-controls-more > summary {
+			justify-content: flex-start;
+			width: 100%;
+			height: auto;
+			min-height: 28px;
+			padding: 4px 8px;
+			font-size: inherit;
+			&::before {
+				content: none;
+			}
+			&::after {
+				content: '⌄';
+				margin-inline-start: 5px;
+				font-size: 0.85em;
+			}
+		}
+		> .player-learning-task {
+			flex-wrap: wrap;
+			gap: 6px 8px;
+			padding: 8px;
+			white-space: normal;
+			border-radius: var(--radius-m);
+			.player-learning-task-estimate,
+			> .player-learning-progress {
+				flex: 1 1 0;
+				flex-wrap: wrap;
+				min-width: 0;
+			}
+			.player-learning-task-progress {
+				flex: 1 0 100%;
+				width: auto;
+			}
+			.player-learning-task-engine {
+				flex: 1 1 0;
+				min-width: 0;
+				max-width: none;
+				white-space: nowrap;
+			}
+			> .player-learning-cancel {
+				width: auto;
+				text-align: center;
+			}
+		}
 	}
 }
 
@@ -1112,7 +1270,7 @@ html.transcript-layout-focus .language-learning-card {
 @media (max-width: 1050px) {
 	html.transcript-layout-notebook .obsidian-reader-content,
 	html.transcript-layout-focus .obsidian-reader-content {
-		width: min(760px, calc(100vw - var(--sidebar-width) - var(--clipper-sidebar-width, 0px))) !important;
+		width: min(760px, calc(100vw - var(--transcript-scrollbar-width, 0px) - var(--sidebar-width) - var(--clipper-sidebar-width, 0px))) !important;
 	}
 	.transcript-layout-notebook,
 	.transcript-layout-focus {
@@ -1131,9 +1289,8 @@ html.transcript-layout-focus .language-learning-card {
 			z-index: var(--layer-popover);
 			flex-direction: row;
 			align-items: center;
-			justify-content: space-between;
 			margin-top: 0;
-			padding: 10px 12px;
+			padding: 8px 12px;
 			border: 0;
 			border-bottom: 1px solid var(--background-modifier-border);
 			border-radius: 0;
@@ -1154,9 +1311,6 @@ html.transcript-layout-focus .language-learning-card {
 		> .youtube.transcript,
 		> .bilibili.transcript {
 			padding-top: 14px;
-		}
-		.player-controls-actions {
-			display: flex;
 		}
 		.transcript-layout-switcher,
 		.player-primary-actions,
@@ -1192,16 +1346,22 @@ html.transcript-layout-focus .language-learning-card {
 	}
 	.player-toggles {
 		display: flex !important;
-		align-items: stretch;
 		padding: 8px;
-	}
-	.transcript-layout-switcher {
-		width: 100%;
-		box-sizing: border-box;
 	}
 	.transcript-layout-option {
 		flex: 1;
 		padding-inline: 6px;
+	}
+	// Two rows on a phone: the layout switcher fills the first beside More, the toggles share the
+	// second, and a running task's pill takes the third.
+	.player-toggles.is-controls-stacked {
+		> .transcript-layout-switcher {
+			flex: 1 1 auto;
+			box-sizing: border-box;
+		}
+		> .player-primary-actions > .player-learning-action {
+			flex: 1 1 0;
+		}
 	}
 	.player-toggle-group {
 		width: 100%;
@@ -1216,23 +1376,13 @@ html.transcript-layout-focus .language-learning-card {
 		align-items: stretch;
 		flex-direction: column;
 	}
-	// Phones keep the toggles and More as the bar's own items, wrapping as space allows.
-	.transcript-study-layout .player-controls-actions {
-		display: contents;
+	.player-primary-actions > .player-learning-action {
+		min-height: 44px;
+		text-align: center;
 	}
-	.player-primary-actions {
-		flex: 1 1 240px;
-		width: auto;
-		> .player-learning-action {
-			flex: 1 1 calc(50% - 3px);
-			min-height: 44px;
-			text-align: center;
-		}
-	}
-	.player-controls-more {
-		flex: 0 0 auto;
-		> summary { min-height: 44px; }
-		&[open] { flex-basis: auto; }
+	.player-controls-more > summary {
+		width: 44px;
+		height: 44px;
 	}
 	.player-controls-panel {
 		position: fixed;
@@ -1305,9 +1455,6 @@ html.transcript-layout-focus .language-learning-card {
 	.language-learning-card-close {
 		min-height: 44px;
 	}
-	.player-learning-task {
-		@include player-learning-task-stacked;
-	}
 	.player-toggle { min-height: 44px; }
 	.transcript-segment {
 		gap: 0.75rem;
@@ -1362,38 +1509,8 @@ html.transcript-layout-focus .language-learning-card {
 	}
 	.transcript-segment.is-active,
 	.language-learning-card,
-	.player-controls-panel {
+	.player-controls-panel,
+	.player-learning-task {
 		border-color: Highlight;
-	}
-}
-
-// After the layout rules above, which this overrides when the controls are narrow. As one group,
-// the toggles stay on one line and shorten before they would push More away.
-@media (min-width: 769px) {
-	.transcript-layout-reading,
-	.transcript-layout-focus {
-		.player-controls-actions > .player-primary-actions {
-			flex-wrap: nowrap;
-			min-width: 0;
-			> .player-learning-action {
-				min-width: 0;
-				overflow: hidden;
-				text-overflow: ellipsis;
-				white-space: nowrap;
-			}
-		}
-	}
-}
-@media (min-width: 769px) {
-	.transcript-layout-reading,
-	.transcript-layout-focus {
-		.player-toggles.is-controls-stacked {
-			@include transcript-controls-two-rows;
-		}
-	}
-}
-@media (min-width: 769px) and (max-width: 1050px) {
-	.transcript-layout-notebook .player-toggles.is-controls-stacked {
-		@include transcript-controls-two-rows;
 	}
 }

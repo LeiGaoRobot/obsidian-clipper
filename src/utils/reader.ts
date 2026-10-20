@@ -405,14 +405,14 @@ export class Reader {
 		settingsBar.appendChild(triggerGroup);
 		settingsBar.appendChild(clipDropdown);
 
-		// Hide buttons on scroll down, show on scroll up or hover
+		// Hide buttons on scroll down, show on scroll up or hover. The transcript toolbar is not
+		// hidden: it is one slim row, hiding its controls would leave its opaque band empty above the
+		// transcript, and a running task's Cancel must stay in view.
 		let lastScrollY = window.scrollY;
 		let scrollHidden = false;
 		const scrollThreshold = 8;
 
 		const isMobile = window.matchMedia('(pointer: coarse)').matches;
-
-		const getPlayerToggles = () => doc.querySelector('.player-toggles') as HTMLElement | null;
 
 		const showButtons = () => {
 			if (scrollHidden) {
@@ -421,7 +421,6 @@ export class Reader {
 					triggerGroup.style.visibility = '';
 					triggerGroup.style.pointerEvents = '';
 				}
-				getPlayerToggles()?.classList.remove('is-scroll-hidden');
 				scrollHidden = false;
 			}
 		};
@@ -444,9 +443,6 @@ export class Reader {
 						triggerGroup.style.visibility = 'hidden';
 						triggerGroup.style.pointerEvents = 'none';
 					}
-					// The controls fade, not their background: what is pinned stays opaque over the
-					// transcript, and a running task keeps them shown (transcripts.scss).
-					getPlayerToggles()?.classList.add('is-scroll-hidden');
 					scrollHidden = true;
 				}
 			} else if (delta < 0) {

@@ -12,7 +12,21 @@ import { createTaskBar } from './task-bar';
 import { captureTrustedClicks, createTranscript } from './test-support';
 import type { TranscriptExecutionInfo } from './types';
 
-describe('Reader task bar', () => {
+function pillParts(pill: HTMLElement) {
+	const part = <T extends HTMLElement>(selector: string) => pill.querySelector(selector) as T;
+	return {
+		spinner: part('.player-learning-task-spinner'),
+		estimate: part('.player-learning-task-estimate'),
+		phase: part('.player-learning-task-phase'),
+		count: part('.player-learning-task-count'),
+		status: part('.player-learning-progress'),
+		progress: part<HTMLProgressElement>('progress'),
+		engine: part('.player-learning-task-engine'),
+		cancel: part<HTMLButtonElement>('.player-learning-cancel')
+	};
+}
+
+describe('Reader progress pill', () => {
 	let clicks: ReturnType<typeof captureTrustedClicks>;
 
 	beforeEach(() => {
@@ -21,7 +35,30 @@ describe('Reader task bar', () => {
 
 	afterEach(() => {
 		clicks.restore();
-		vi.useRealTimers();
+	});
+
+	test('is hidden until a run starts, then shows the spinner, progress, and Cancel in order', () => {
+		const { segments } = createTranscript();
+		const taskBar = createTaskBar({ doc: document, segments, tools: {}, onCancel: vi.fn() });
+		const pill = taskBar.element;
+		const parts = pillParts(pill);
+
+		expect(pill.hidden).toBe(true);
+		expect(pill.getAttribute('aria-busy')).toBe('false');
+		expect(Array.from(pill.children)).toEqual([
+			parts.spinner, parts.estimate, parts.status, parts.progress, parts.engine, parts.cancel
+		]);
+		expect(parts.spinner.getAttribute('aria-hidden')).toBe('true');
+		expect(parts.status.getAttribute('role')).toBe('status');
+
+		taskBar.begin();
+		expect(pill.hidden).toBe(false);
+		expect(pill.getAttribute('aria-busy')).toBe('true');
+		expect([parts.spinner.hidden, parts.estimate.hidden, parts.progress.hidden, parts.cancel.hidden])
+			.toEqual([false, false, false, false]);
+		// No engine until getExecutionInfo answers.
+		expect(parts.engine.hidden).toBe(true);
+		expect(parts.status.hidden).toBe(true);
 	});
 
 	test('keeps the engine and segment count empty until getExecutionInfo answers', async () => {
@@ -33,18 +70,20 @@ describe('Reader task bar', () => {
 			tools: { getExecutionInfo: vi.fn(() => new Promise<TranscriptExecutionInfo>(resolve => { answer = resolve; })) },
 			onCancel: vi.fn()
 		});
-		const engine = taskBar.element.querySelector('.player-learning-task-engine');
-		const estimate = taskBar.element.querySelector('.player-learning-task-estimate');
+		const { engine, estimate } = pillParts(taskBar.element);
 
-		taskBar.begin(Date.now());
+		taskBar.begin();
 		const loading = taskBar.loadExecutionInfo('translate', ['First.', 'Second.']);
-		expect(engine?.textContent).toBe('');
-		expect(estimate?.textContent).toBe('');
+		expect(engine.textContent).toBe('');
+		expect(estimate.textContent).toBe('');
 
 		answer({ label: 'OpenAI · B' });
 		await loading;
-		expect(engine?.textContent).toBe('OpenAI · B');
-		expect(estimate?.textContent).toBe('readerTaskSegments:2');
+		expect(engine.textContent).toBe('OpenAI · B');
+		expect(engine.hidden).toBe(false);
+		// The engine truncates when space is short; its tooltip keeps the full name.
+		expect(engine.title).toBe('OpenAI · B');
+		expect(estimate.textContent).toBe('readerTaskSegments:2');
 		expect(taskBar.executionInfo?.label).toBe('OpenAI · B');
 	});
 
@@ -56,12 +95,12 @@ describe('Reader task bar', () => {
 			tools: { getExecutionInfo: vi.fn().mockResolvedValue({ label: 'OpenAI · B' }) },
 			onCancel: vi.fn()
 		});
-		const estimate = () => taskBar.element.querySelector('.player-learning-task-estimate')?.textContent;
+		const { estimate } = pillParts(taskBar.element);
 
 		await taskBar.loadExecutionInfo('translate', ['First.', 'Second.']);
-		expect(estimate()).toBe('readerTaskSegments:2');
+		expect(estimate.textContent).toBe('readerTaskSegments:2');
 		await taskBar.loadExecutionInfo('translate', ['First.']);
-		expect(estimate()).toBe('readerTaskSegmentsOne:1');
+		expect(estimate.textContent).toBe('readerTaskSegmentsOne:1');
 	});
 
 	test('leaves the estimate empty when getExecutionInfo fails', async () => {
@@ -73,79 +112,39 @@ describe('Reader task bar', () => {
 			onCancel: vi.fn()
 		});
 
-		taskBar.begin(Date.now());
+		taskBar.begin();
 		await taskBar.loadExecutionInfo('reading', ['Hello world.']);
 
-		expect(taskBar.element.querySelector('.player-learning-task-estimate')?.textContent).toBe('');
+		expect(pillParts(taskBar.element).estimate.textContent).toBe('');
 		expect(taskBar.executionInfo).toBeUndefined();
 	});
 
-	test('starts the elapsed timer with a run and stops it when the run ends', () => {
-		vi.useFakeTimers();
+	test('a running pill shows the phase, x / N, the bar, and a full-text tooltip', async () => {
 		const { segments } = createTranscript();
-		const taskBar = createTaskBar({ doc: document, segments, tools: {}, onCancel: vi.fn() });
-		const elapsed = taskBar.element.querySelector('.player-learning-task-elapsed');
-
-		taskBar.begin(Date.now());
-		expect(taskBar.element.hidden).toBe(false);
-		expect(taskBar.element.getAttribute('aria-busy')).toBe('true');
-		expect(elapsed?.textContent).toBe('readerTaskElapsed:0');
-		vi.advanceTimersByTime(2000);
-		expect(elapsed?.textContent).toBe('readerTaskElapsed:2');
-
-		taskBar.finish('done');
-		vi.advanceTimersByTime(5000);
-		expect(elapsed?.textContent).toBe('readerTaskElapsed:2');
-		expect(taskBar.element.getAttribute('aria-busy')).toBe('false');
-		expect(vi.getTimerCount()).toBe(0);
-	});
-
-	test('a finished run hides the bar, so a bar without Cancel never looks like a running task', async () => {
-		const { segments } = createTranscript(['First.', 'Second.']);
 		const taskBar = createTaskBar({
 			doc: document,
 			segments,
 			tools: { getExecutionInfo: vi.fn().mockResolvedValue({ label: 'Anthropic · Claude Sonnet' }) },
 			onCancel: vi.fn()
 		});
-		const bar = taskBar.element;
-		const cancel = bar.querySelector('.player-learning-cancel') as HTMLButtonElement;
-		const estimate = bar.querySelector('.player-learning-task-estimate') as HTMLElement;
+		const pill = taskBar.element;
+		const { phase, count, progress } = pillParts(pill);
 
-		for (const ended of ['done', 'error'] as const) {
-			taskBar.begin(Date.now());
-			await taskBar.loadExecutionInfo('translate', ['First.', 'Second.']);
-			expect(bar.hidden).toBe(false);
-			expect(cancel.hidden).toBe(false);
-			expect(estimate.textContent).toBe('readerTaskSegments:2');
-
-			taskBar.finish(ended);
-			// Before the fix the bar stayed up with its engine, count and frozen time, and no Cancel.
-			expect(bar.hidden).toBe(true);
-			expect(cancel.hidden).toBe(true);
-		}
-
-		// The next run shows the bar again with a fresh count and Cancel.
-		taskBar.begin(Date.now());
-		expect(bar.hidden).toBe(false);
-		expect(cancel.hidden).toBe(false);
-		expect(estimate.textContent).toBe('');
-		taskBar.dispose();
-	});
-
-	test('shows segment progress for the phase, with the singular message for one segment', () => {
-		const { segments } = createTranscript();
-		const taskBar = createTaskBar({ doc: document, segments, tools: {}, onCancel: vi.fn() });
-		const estimate = taskBar.element.querySelector('.player-learning-task-estimate') as HTMLElement;
-		const progress = taskBar.element.querySelector('progress') as HTMLProgressElement;
-
-		taskBar.begin(Date.now());
+		taskBar.begin();
+		await taskBar.loadExecutionInfo('translate', ['Hello world.']);
 		taskBar.setProgress(12, 33, 'readerTaskPhaseTranslate');
-		expect(estimate.textContent).toBe('readerTaskEstimate:readerTaskPhaseTranslate,readerTaskSegmentProgress:12,33');
+		expect(phase.textContent).toBe('readerTaskPhaseTranslate');
+		expect(count.textContent).toBe('readerTaskSegmentFraction:12,33');
 		expect([progress.value, progress.max]).toEqual([12, 33]);
-		expect(progress.getAttribute('aria-label')).toBe(estimate.textContent);
+		// The bar and the tooltip say it in full: phase, x of N segments, and the engine.
+		expect(progress.getAttribute('aria-label'))
+			.toBe('readerTaskEstimate:readerTaskPhaseTranslate,readerTaskSegmentProgress:12,33');
+		expect(pill.title).toBe(
+			'readerTaskEstimate:readerTaskEstimate:readerTaskPhaseTranslate,readerTaskSegmentProgress:12,33,Anthropic · Claude Sonnet'
+		);
 		taskBar.setProgress(0, 1, 'readerTaskPhaseReadings');
-		expect(estimate.textContent).toBe('readerTaskEstimate:readerTaskPhaseReadings,readerTaskSegmentProgressOne:0,1');
+		expect(progress.getAttribute('aria-label'))
+			.toBe('readerTaskEstimate:readerTaskPhaseReadings,readerTaskSegmentProgressOne:0,1');
 		taskBar.dispose();
 	});
 
@@ -158,53 +157,115 @@ describe('Reader task bar', () => {
 			tools: { getExecutionInfo: vi.fn(() => new Promise<TranscriptExecutionInfo>(resolve => { answer = resolve; })) },
 			onCancel: vi.fn()
 		});
-		const estimate = taskBar.element.querySelector('.player-learning-task-estimate') as HTMLElement;
+		const { count } = pillParts(taskBar.element);
 
-		taskBar.begin(Date.now());
+		taskBar.begin();
 		const loading = taskBar.loadExecutionInfo('translate', ['First.', 'Second.']);
 		taskBar.setProgress(1, 2, 'readerTaskPhaseTranslate');
 		answer({ label: 'OpenAI · B' });
 		await loading;
-		expect(estimate.textContent).toBe('readerTaskEstimate:readerTaskPhaseTranslate,readerTaskSegmentProgress:1,2');
+		expect(count.textContent).toBe('readerTaskSegmentFraction:1,2');
 		taskBar.dispose();
 	});
 
-	test('shows the retry wait until the next progress, and says when a run was cancelled', () => {
+	test('a finished run hides the pill, so a pill without Cancel never looks like a running task', async () => {
+		const { segments } = createTranscript(['First.', 'Second.']);
+		const taskBar = createTaskBar({
+			doc: document,
+			segments,
+			tools: { getExecutionInfo: vi.fn().mockResolvedValue({ label: 'Anthropic · Claude Sonnet' }) },
+			onCancel: vi.fn()
+		});
+		const pill = taskBar.element;
+		const { cancel, estimate } = pillParts(pill);
+
+		for (const ended of ['done', 'error'] as const) {
+			taskBar.begin();
+			await taskBar.loadExecutionInfo('translate', ['First.', 'Second.']);
+			taskBar.setProgress(1, 2, 'readerTaskPhaseTranslate');
+			expect(pill.hidden).toBe(false);
+			expect(cancel.hidden).toBe(false);
+
+			taskBar.finish(ended);
+			// The result, or the error card, speaks for a finished run.
+			expect(pill.hidden).toBe(true);
+			expect(cancel.hidden).toBe(true);
+			expect(pill.getAttribute('aria-busy')).toBe('false');
+		}
+
+		// The next run shows the pill again with fresh progress and Cancel.
+		taskBar.begin();
+		expect(pill.hidden).toBe(false);
+		expect(cancel.hidden).toBe(false);
+		expect(estimate.textContent).toBe('');
+		taskBar.dispose();
+	});
+
+	test('shows the retry wait in place of the progress text until the next progress', () => {
 		const { segments } = createTranscript();
 		const taskBar = createTaskBar({ doc: document, segments, tools: {}, onCancel: vi.fn() });
-		const bar = taskBar.element;
-		const status = bar.querySelector('.player-learning-progress') as HTMLElement;
-		const progress = bar.querySelector('progress') as HTMLProgressElement;
-		const elapsed = bar.querySelector('.player-learning-task-elapsed') as HTMLElement;
-		const estimate = bar.querySelector('.player-learning-task-estimate') as HTMLElement;
+		const { status, estimate, progress } = pillParts(taskBar.element);
 
-		taskBar.begin(Date.now());
+		taskBar.begin();
 		taskBar.setProgress(1, 4, 'readerTaskPhaseTranslate', { delayMs: 4200 });
 		expect(status.textContent).toBe('readerTranscriptRetrying:5');
-		expect(status.hidden).toBe(false);
+		expect([status.hidden, estimate.hidden, progress.hidden]).toEqual([false, true, false]);
 		taskBar.setProgress(2, 4, 'readerTaskPhaseTranslate');
-		expect(status.hidden).toBe(true);
+		expect([status.hidden, estimate.hidden]).toEqual([true, false]);
 		expect([progress.value, progress.max]).toEqual([2, 4]);
-
-		taskBar.finish('cancelled');
-		expect(bar.hidden).toBe(false);
-		expect(status.textContent).toBe('readerAiCancelled');
-		expect(status.hidden).toBe(false);
-		// Nothing left on the bar suggests the run goes on.
-		expect([elapsed.hidden, progress.hidden, estimate.hidden]).toEqual([true, true, true]);
-		taskBar.begin(Date.now());
-		expect([elapsed.hidden, progress.hidden, estimate.hidden]).toEqual([false, false, false]);
 		taskBar.dispose();
+	});
+
+	test('a cancelled run says so in the pill until the next task starts', () => {
+		const { segments } = createTranscript();
+		const taskBar = createTaskBar({ doc: document, segments, tools: {}, onCancel: vi.fn() });
+		const pill = taskBar.element;
+		const parts = pillParts(pill);
+
+		taskBar.begin();
+		taskBar.setProgress(1, 4, 'readerTaskPhaseTranslate');
+		taskBar.finish('cancelled');
+		expect(pill.hidden).toBe(false);
+		expect(pill.getAttribute('aria-busy')).toBe('false');
+		expect(parts.status.textContent).toBe('readerAiCancelled');
+		expect(parts.status.hidden).toBe(false);
+		// Nothing left on the pill suggests the run goes on.
+		expect([parts.spinner.hidden, parts.estimate.hidden, parts.progress.hidden, parts.engine.hidden, parts.cancel.hidden])
+			.toEqual([true, true, true, true, true]);
+
+		taskBar.begin();
+		expect([parts.spinner.hidden, parts.estimate.hidden, parts.progress.hidden, parts.cancel.hidden, parts.status.hidden])
+			.toEqual([false, false, false, false, true]);
+		taskBar.dispose();
+	});
+
+	test('an explanation shows Thinking… with Cancel, and its pill hides once it settles', () => {
+		const { segments } = createTranscript();
+		const taskBar = createTaskBar({ doc: document, segments, tools: {}, onCancel: vi.fn() });
+		const pill = taskBar.element;
+		const parts = pillParts(pill);
+
+		taskBar.setStatus('thinking');
+		taskBar.setCancelVisible(true);
+		expect(pill.hidden).toBe(false);
+		expect(pill.getAttribute('aria-busy')).toBe('true');
+		expect([parts.spinner.hidden, parts.status.hidden, parts.cancel.hidden]).toEqual([false, false, false]);
+		// No transcript run: no progress text, bar, or engine.
+		expect([parts.estimate.hidden, parts.progress.hidden, parts.engine.hidden]).toEqual([true, true, true]);
+
+		taskBar.clearStatus();
+		taskBar.setCancelVisible(false);
+		expect(pill.hidden).toBe(true);
 	});
 
 	test('Cancel is shown while running and calls onCancel only for a trusted click', async () => {
 		const { segments } = createTranscript();
 		const onCancel = vi.fn();
 		const taskBar = createTaskBar({ doc: document, segments, tools: {}, onCancel });
-		const cancel = taskBar.element.querySelector('.player-learning-cancel') as HTMLButtonElement;
+		const { cancel } = pillParts(taskBar.element);
 
 		expect(cancel.hidden).toBe(true);
-		taskBar.begin(Date.now());
+		taskBar.begin();
 		expect(cancel.hidden).toBe(false);
 		cancel.click();
 		expect(onCancel).not.toHaveBeenCalled();

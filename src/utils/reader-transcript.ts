@@ -10,8 +10,9 @@ import {
 	createTranscriptLayoutSwitcher,
 	normalizeTranscriptLayoutMode,
 	syncTranscriptControlsPanel,
-	syncTranscriptControlsRows,
-	updateTranscriptPlayerHeight
+	syncTranscriptToolbarLayout,
+	updateTranscriptPlayerHeight,
+	updateTranscriptScrollbarWidth
 } from './transcript-layout';
 import { TranscriptStudyController, wireTranscriptStudy } from './transcript-study';
 import { trapFocus } from './focus-trap';
@@ -297,6 +298,8 @@ export function wireTranscript(
 	compactPlayerButton.type = 'button';
 	compactPlayerButton.className = 'player-learning-action player-compact-toggle';
 	compactPlayerButton.setAttribute('aria-pressed', 'false');
+	// A toolbar short of space shows the short label; the full one stays the accessible name.
+	compactPlayerButton.dataset.shortLabel = getMessage('readerCompactPlayerShort');
 	const updateCompactPlayer = () => {
 		const compact = playerContainer.classList.contains('is-compact');
 		compactPlayerButton.setAttribute('aria-pressed', String(compact));
@@ -317,6 +320,7 @@ export function wireTranscript(
 	const moreSummary = doc.createElement('summary');
 	moreSummary.textContent = getMessage('readerMoreControls');
 	moreSummary.setAttribute('aria-label', getMessage('readerMoreControlsDescription'));
+	moreSummary.title = getMessage('readerMoreControlsDescription');
 	moreSummary.setAttribute('aria-expanded', 'false');
 	const morePanel = doc.createElement('div');
 	morePanel.className = 'player-controls-panel';
@@ -407,6 +411,10 @@ export function wireTranscript(
 			notebook: getMessage('readerTranscriptLayoutNotebook'),
 			focus: getMessage('readerTranscriptLayoutFocus')
 		},
+		shortLabels: {
+			notebook: getMessage('readerTranscriptLayoutNotebookShort'),
+			focus: getMessage('readerTranscriptLayoutFocusShort')
+		},
 		onChange: mode => {
 			closeMoreControls();
 			placeToggleBar(mode);
@@ -415,17 +423,17 @@ export function wireTranscript(
 			window.dispatchEvent(new CustomEvent('reader-show-nav'));
 		}
 	});
-	// The toggles and More wrap as one group, so More never sits alone on a line.
-	const controlActions = doc.createElement('div');
-	controlActions.className = 'player-controls-actions';
-	controlActions.append(primaryActions, moreControls);
-	toggleBar.appendChild(layoutSwitcher.element);
-	toggleBar.appendChild(controlActions);
+	// One toolbar row: the layout switcher, a divider, the feature toggles, the progress pill while
+	// a task runs (added before More by the language-learning wiring), and More at the end.
+	const controlsDivider = doc.createElement('span');
+	controlsDivider.className = 'player-controls-divider';
+	controlsDivider.setAttribute('aria-hidden', 'true');
+	toggleBar.append(layoutSwitcher.element, controlsDivider, primaryActions, moreControls);
 	placeToggleBar(initialLayout);
 
 	const updatePlayerHeight = () => updateTranscriptPlayerHeight(layoutRoot, playerContainer, toggleBar);
 	const updateControlsLayout = () => {
-		syncTranscriptControlsRows(toggleBar);
+		syncTranscriptToolbarLayout(toggleBar);
 		updatePlayerHeight();
 	};
 	// Restacking changes the observed sizes, so it waits for the next frame rather than changing
@@ -439,12 +447,18 @@ export function wireTranscript(
 			if (!eventController.signal.aborted) updateControlsLayout();
 		});
 	};
+	updateTranscriptScrollbarWidth(doc);
 	updateControlsLayout();
 	if (typeof ResizeObserver !== 'undefined') {
-		const resizeObserver = new ResizeObserver(scheduleControlsLayout);
+		const resizeObserver = new ResizeObserver(() => {
+			updateTranscriptScrollbarWidth(doc);
+			scheduleControlsLayout();
+		});
+		// The page's width changes when its vertical scrollbar appears or goes.
+		resizeObserver.observe(doc.documentElement);
 		resizeObserver.observe(playerContainer);
-		// The controls grow when the task bar appears or the row wraps, and the toggles change
-		// width with their labels (Thinking…, Show player).
+		// The controls grow when a row wraps, and the toggles change width with their labels
+		// (Thinking…, Show player); the progress pill is observed once it is wired.
 		resizeObserver.observe(toggleBar);
 		resizeObserver.observe(layoutSwitcher.element);
 		resizeObserver.observe(primaryActions);
@@ -508,10 +522,14 @@ export function wireTranscript(
 			const primaryAction = learningControls.items.querySelector(selector);
 			if (primaryAction) primaryActions.appendChild(primaryAction);
 		}
-		// The task bar (progress and Cancel) stays visible below the controls, More open or not; it
-		// is hidden until a task starts.
-		const taskBar = learningControls.items.querySelector('.player-learning-task');
-		if (taskBar) toggleBar.appendChild(taskBar);
+		// The progress pill (progress and Cancel) sits in the toolbar before More, More open or
+		// not; it is hidden until a task starts, and the toolbar refits when it shows or changes.
+		const taskPill = learningControls.items.querySelector<HTMLElement>('.player-learning-task');
+		if (taskPill) {
+			toggleBar.insertBefore(taskPill, moreControls);
+			transcriptLayoutResizeObservers.get(doc)?.observe(taskPill);
+			updateControlsLayout();
+		}
 	}
 	// Set timestamp column width to the widest timestamp
 	let maxWidth = 0;

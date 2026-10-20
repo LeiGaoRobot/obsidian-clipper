@@ -38,19 +38,18 @@
 						<div class="player-toggles">
 							<div class="transcript-layout-switcher" role="group" aria-label="字幕布局">
 								<button class="transcript-layout-option" data-transcript-layout="reading" aria-pressed="false">阅读</button>
-								<button class="transcript-layout-option" data-transcript-layout="notebook" aria-pressed="false">学习工具</button>
+								<button class="transcript-layout-option" data-transcript-layout="notebook" data-short-label="学习" aria-pressed="false">学习工具</button>
 								<button class="transcript-layout-option" data-transcript-layout="focus" aria-pressed="true">分屏</button>
 							</div>
-							<div class="player-controls-actions">
-								<div class="player-primary-actions">
-									<button class="player-learning-action player-compact-toggle" data-preview-compact data-compact-label="收起播放器" data-expanded-label="显示播放器" aria-pressed="false">收起播放器</button>
-									<button class="player-learning-action player-learning-bilingual is-enabled" data-preview-toggle="bilingual" aria-pressed="true">双语字幕</button>
-									<button class="player-learning-action player-learning-readings is-enabled" data-preview-toggle="readings" aria-pressed="true">日语读音</button>
-								</div>
-								<details class="player-controls-more">
-									<summary aria-label="打开字幕与学习控制" aria-expanded="false">更多</summary>
-								</details>
+							<span class="player-controls-divider" aria-hidden="true"></span>
+							<div class="player-primary-actions">
+								<button class="player-learning-action player-compact-toggle" data-preview-compact data-compact-label="收起播放器" data-expanded-label="显示播放器" data-short-label="收起" aria-pressed="false">收起播放器</button>
+								<button class="player-learning-action player-learning-bilingual is-enabled" data-preview-toggle="bilingual" data-short-label="双语" aria-pressed="true">双语字幕</button>
+								<button class="player-learning-action player-learning-readings is-enabled" data-preview-toggle="readings" data-short-label="读音" aria-pressed="true">日语读音</button>
 							</div>
+							<details class="player-controls-more">
+								<summary aria-label="打开字幕与学习控制" title="打开字幕与学习控制" aria-expanded="false">更多</summary>
+							</details>
 						</div>
 						<div class="player-controls-panel">
 							<div class="player-controls-panel-handle" aria-hidden="true"></div>

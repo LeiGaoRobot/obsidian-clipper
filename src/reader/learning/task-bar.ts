@@ -8,15 +8,17 @@ import type {
 	TranscriptTaskRange
 } from './types';
 
-// The transcript task controls: the AI range select and the task bar (engine, segment count or
-// progress, elapsed time, progress bar, Cancel, status line). The bar is a view of the transcript
-// action's state; it starts no model work. The engine and segment count stay empty until
-// `getExecutionInfo` answers. The bar shows only while a run is running, or says that it was
-// cancelled: a finished run hides it, so a bar on screen with no Cancel never looks like a run.
+// The transcript task controls: the AI range select and the progress pill that sits in the transcript
+// toolbar (spinner, phase and segment progress, progress bar, engine, Cancel, status line). The pill
+// is a view of the transcript action's state; it starts no model work. The engine and segment count
+// stay empty until `getExecutionInfo` answers. The pill shows only while a run (or an explanation)
+// is running, or says that it was cancelled: a finished run hides it, so a pill on screen with no
+// Cancel never looks like a run.
 
 export interface TaskBar {
 	/** The AI range control, appended before the bilingual button. */
 	rangeControl: HTMLElement;
+	/** The progress pill. */
 	element: HTMLElement;
 	getTaskRange(): TranscriptTaskRange;
 	setTaskRange(range: TranscriptTaskRange): void;
@@ -28,14 +30,16 @@ export interface TaskBar {
 	loadExecutionInfo(task: TranscriptJobTask, taskTexts: string[]): Promise<void>;
 	/** Records the profile Switch and retry routed the task to; the retry refreshes the engine. */
 	useProfile(option: TranscriptProfileOption): void;
-	/** A transcript run started: busy, elapsed timer, empty progress, Cancel shown. */
-	begin(startedAt: number): void;
+	/** A transcript run started: busy, empty progress, Cancel shown. */
+	begin(): void;
 	/** `completed` of `total` segments are done in `phase` (e.g. Translating subtitles). */
 	setProgress(completed: number, total: number, phase: string, retry?: { delayMs: number }): void;
-	/** A transcript run ended: the timer stops and Cancel hides; a cancelled run says so, any other run hides the bar. */
+	/** A transcript run ended: Cancel hides; a cancelled run says so, any other run hides the pill. */
 	finish(status: AiActionStatus): void;
+	/** Shows a status (a retry wait, Thinking…, cancelled) in place of the progress text. */
 	setStatus(message: string): void;
 	clearStatus(): void;
+	/** Something is running (a transcript run or an explanation): spinner and Cancel show. */
 	setCancelVisible(visible: boolean): void;
 	dispose(): void;
 }
@@ -46,7 +50,6 @@ export interface TaskBarOptions {
 	tools: Pick<TranscriptLanguageLearning, 'getExecutionInfo'>;
 	/** A trusted click on Cancel. */
 	onCancel: () => void;
-	now?: () => number;
 }
 
 function getSegmentTimestamp(segment: HTMLElement): number | null {
@@ -69,9 +72,11 @@ function segmentProgress(completed: number, total: number): string {
 		: getMessage('readerTaskSegmentProgress', counts);
 }
 
-export function createTaskBar({ doc, segments, tools, onCancel, now = Date.now }: TaskBarOptions): TaskBar {
-	const view = doc.defaultView ?? window;
+function segmentFraction(completed: number, total: number): string {
+	return getMessage('readerTaskSegmentFraction', [String(completed), String(total)]);
+}
 
+export function createTaskBar({ doc, segments, tools, onCancel }: TaskBarOptions): TaskBar {
 	const rangeControl = doc.createElement('label');
 	rangeControl.className = 'player-learning-range';
 	const rangeLabel = doc.createElement('span');
@@ -113,17 +118,29 @@ export function createTaskBar({ doc, segments, tools, onCancel, now = Date.now }
 	bar.className = 'player-learning-task';
 	bar.hidden = true;
 	bar.setAttribute('aria-busy', 'false');
-	const engine = doc.createElement('span');
-	engine.className = 'player-learning-task-engine';
+	const spinner = doc.createElement('span');
+	spinner.className = 'player-learning-task-spinner';
+	spinner.setAttribute('aria-hidden', 'true');
+	// The phase and the segment progress (or, before progress, the segment count).
 	const estimate = doc.createElement('span');
 	estimate.className = 'player-learning-task-estimate';
-	const elapsed = doc.createElement('span');
-	elapsed.className = 'player-learning-task-elapsed';
-	elapsed.setAttribute('aria-hidden', 'true');
+	const phaseText = doc.createElement('span');
+	phaseText.className = 'player-learning-task-phase';
+	const countText = doc.createElement('strong');
+	countText.className = 'player-learning-task-count';
+	estimate.append(phaseText, countText);
+	const status = doc.createElement('span');
+	status.className = 'player-learning-progress';
+	status.setAttribute('role', 'status');
+	status.setAttribute('aria-live', 'polite');
+	status.hidden = true;
 	const progress = doc.createElement('progress');
 	progress.className = 'player-learning-task-progress';
 	progress.max = 1;
 	progress.value = 0;
+	// Truncates first when the toolbar is short of space; the tooltip keeps the full name.
+	const engine = doc.createElement('span');
+	engine.className = 'player-learning-task-engine';
 	const cancelButton = doc.createElement('button');
 	cancelButton.type = 'button';
 	cancelButton.className = 'player-learning-action player-learning-cancel';
@@ -135,29 +152,36 @@ export function createTaskBar({ doc, segments, tools, onCancel, now = Date.now }
 		event.stopPropagation();
 		onCancel();
 	});
-	const status = doc.createElement('span');
-	status.className = 'player-learning-progress';
-	status.setAttribute('role', 'status');
-	status.setAttribute('aria-live', 'polite');
-	status.hidden = true;
-	bar.append(engine, estimate, elapsed, progress, cancelButton, status);
+	bar.append(spinner, estimate, status, progress, engine, cancelButton);
 
 	let executionInfo: TranscriptExecutionInfo | undefined;
 	let hasProgress = false;
-	let elapsedTimer: number | undefined;
-	const stopTimer = () => {
-		if (elapsedTimer !== undefined) view.clearInterval(elapsedTimer);
-		elapsedTimer = undefined;
+	// A transcript run is running; `statusMessage` is a retry wait, an explanation's Thinking… or a
+	// cancelled run; `active` means something can be cancelled.
+	let running = false;
+	let statusMessage = '';
+	let active = false;
+	const render = () => {
+		bar.hidden = !running && !statusMessage && !active;
+		bar.setAttribute('aria-busy', String(running || active));
+		spinner.hidden = !running && !active;
+		estimate.hidden = !running || Boolean(statusMessage);
+		progress.hidden = !running;
+		engine.hidden = !running || !engine.textContent;
+		status.textContent = statusMessage;
+		status.hidden = !statusMessage;
+		cancelButton.hidden = !active;
 	};
-	const runParts = [estimate, elapsed, progress];
+	const updateTooltip = () => {
+		const parts = [progress.getAttribute('aria-label') || '', engine.textContent || ''].filter(Boolean);
+		bar.title = parts.length === 2 ? getMessage('readerTaskEstimate', parts) : parts[0] || '';
+		engine.title = engine.textContent || '';
+	};
 	const setStatus = (message: string) => {
-		status.textContent = message;
-		status.hidden = false;
+		statusMessage = message;
+		render();
 	};
-	const clearStatus = () => {
-		status.textContent = '';
-		status.hidden = true;
-	};
+	const clearStatus = () => setStatus('');
 
 	return {
 		rangeControl,
@@ -182,60 +206,58 @@ export function createTaskBar({ doc, segments, tools, onCancel, now = Date.now }
 			executionInfo = info;
 			engine.textContent = info.label;
 			// Progress that already arrived says more than the count.
-			if (!hasProgress) estimate.textContent = segmentCount(taskTexts.length);
+			if (!hasProgress) countText.textContent = segmentCount(taskTexts.length);
+			updateTooltip();
+			render();
 		},
 		useProfile(option) {
 			executionInfo = executionInfo
 				? { ...executionInfo, profileId: option.id, kind: option.kind, label: option.label }
 				: undefined;
 		},
-		begin(startedAt) {
-			bar.hidden = false;
-			bar.setAttribute('aria-busy', 'true');
-			runParts.forEach(part => { part.hidden = false; });
+		begin() {
+			running = true;
+			active = true;
+			statusMessage = '';
 			hasProgress = false;
-			estimate.textContent = '';
+			phaseText.textContent = '';
+			countText.textContent = '';
 			progress.removeAttribute('aria-label');
 			progress.max = 1;
 			progress.value = 0;
-			const updateElapsed = () => {
-				elapsed.textContent = getMessage('readerTaskElapsed', String(Math.max(0, Math.floor((now() - startedAt) / 1000))));
-			};
-			updateElapsed();
-			stopTimer();
-			elapsedTimer = view.setInterval(updateElapsed, 1000);
-			cancelButton.hidden = false;
-			clearStatus();
+			updateTooltip();
+			render();
 		},
 		setProgress(completed, total, phase, retry) {
 			hasProgress = true;
 			progress.max = Math.max(1, total);
 			progress.value = Math.min(completed, progress.max);
-			estimate.textContent = getMessage('readerTaskEstimate', [phase, segmentProgress(completed, total)]);
-			progress.setAttribute('aria-label', estimate.textContent);
+			phaseText.textContent = phase;
+			countText.textContent = segmentFraction(completed, total);
+			progress.setAttribute('aria-label', getMessage('readerTaskEstimate', [phase, segmentProgress(completed, total)]));
+			updateTooltip();
 			// A group backing off after a rate limit shows the wait; the next progress clears it.
-			if (retry) setStatus(getMessage('readerTranscriptRetrying', String(Math.max(1, Math.ceil(retry.delayMs / 1000)))));
-			else clearStatus();
+			setStatus(retry
+				? getMessage('readerTranscriptRetrying', String(Math.max(1, Math.ceil(retry.delayMs / 1000))))
+				: '');
 		},
 		finish(endStatus) {
-			stopTimer();
-			bar.setAttribute('aria-busy', 'false');
-			cancelButton.hidden = true;
-			if (endStatus === 'cancelled') {
-				// Only the engine and the status stay: nothing on the bar suggests the run goes on.
-				runParts.forEach(part => { part.hidden = true; });
-				setStatus(getMessage('readerAiCancelled'));
-				return;
-			}
-			// The result (or the error card) speaks for a finished run.
-			clearStatus();
-			bar.hidden = true;
+			running = false;
+			active = false;
+			// The result (or the error card) speaks for a finished run; a cancelled one says so until
+			// the next task starts.
+			setStatus(endStatus === 'cancelled' ? getMessage('readerAiCancelled') : '');
 		},
 		setStatus,
 		clearStatus,
 		setCancelVisible(visible) {
-			cancelButton.hidden = !visible;
+			active = visible;
+			render();
 		},
-		dispose: stopTimer
+		dispose() {
+			running = false;
+			active = false;
+			statusMessage = '';
+		}
 	};
 }
