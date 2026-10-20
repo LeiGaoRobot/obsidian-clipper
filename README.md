@@ -63,7 +63,9 @@ node dist/cli.cjs <url> --template <template.json> --execution-mode grok
 node dist/cli.cjs <url> --template <template.json> --execution-mode codex
 ```
 
-The `grok` mode runs Grok in single-turn mode. The `codex` mode runs Codex with an ephemeral, read-only sandbox. Both modes require the corresponding CLI to be available on `PATH` and already authenticated. Without `--execution-mode`, prompt variables keep their existing unresolved behavior.
+The `grok` mode runs Grok in single-turn mode. The `codex` mode runs Codex with an ephemeral, read-only sandbox. Both modes require the corresponding CLI to be available on `PATH` and already authenticated. The CLI runs every prompt variable in the note content, the properties, and the note name in one request, with the page's extracted content as context (the raw HTML if nothing could be extracted), and writes each answer in place, after the variable's filters. Without `--execution-mode`, prompt variables are removed from the note, as in the API.
+
+Earlier builds had three bugs here: prompt variables were removed before the CLI could fill them, the page context sent with the prompts was empty, and pages clipped through the CLI or the API (`dist/api.mjs`) came out without a title, content, or word count, so `schema:` triggers never matched either. All three are fixed.
 
 ### Use Grok or Codex from the Chrome extension
 
