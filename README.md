@@ -63,18 +63,21 @@ node dist/cli.cjs <url> --template <template.json> --execution-mode grok
 node dist/cli.cjs <url> --template <template.json> --execution-mode codex
 ```
 
-The `grok` mode runs Grok in single-turn mode. The `codex` mode runs Codex with an ephemeral, read-only sandbox. Both modes require the corresponding CLI to be available on `PATH` and already authenticated. Without `--execution-mode`, prompt variables keep their existing unresolved behavior.
+The `grok` mode runs Grok in single-turn mode. The `codex` mode runs Codex with an ephemeral, read-only sandbox. Both modes require the corresponding CLI to be available on `PATH` and already authenticated. The CLI runs every prompt variable in the note content, the properties, and the note name in one request, with the page's extracted content as context (the raw HTML if nothing could be extracted), and writes each answer in place, after the variable's filters. Without `--execution-mode`, prompt variables are removed from the note, as in the API.
+
+Earlier builds had three bugs here: prompt variables were removed before the CLI could fill them, the page context sent with the prompts was empty, and pages clipped through the CLI or the API (`dist/api.mjs`) came out without a title, content, or word count, so `schema:` triggers never matched either. All three are fixed.
 
 ### Use Grok or Codex from the Chrome extension
 
-The Chrome extension can use the same local CLI modes through Native Messaging. Build and load the extension first, then copy its ID from `chrome://extensions` and install the host once:
+The Chrome extension can use the same local CLI modes through Native Messaging. Build and load the extension first:
 
 ```
 npm run build:chrome
-npm run install:native-host -- --extension-id <your-chrome-extension-id>
 ```
 
-The installer records the detected `grok` and `codex` executable paths, so the host does not depend on Chrome's shell `PATH`. In Web Clipper **Settings → Interpreter**, enable Interpreter, choose **Grok CLI** or **Codex CLI** under **Execution mode**, then select **Check connection**. The check verifies the Native Messaging protocol and executable path without sending page content. The local CLI must already be installed and authenticated. The installer currently supports macOS and Linux.
+In Web Clipper **Settings → AI**, select **Add Grok CLI** or **Add Codex CLI** under **Add local CLI**, then choose its model for each task in **Task routing** and turn on **Enable AI features**. Select **Copy install command**; local unpacked builds insert the current extension ID and source path, so the command works from any Terminal directory. Run it once and reload the extension. Chrome cannot install a Native Messaging Host silently from an extension page, so this one-time system installation remains an explicit user action. Packaged release ZIPs exclude the local source path and use the separately distributed Native Messaging Host companion.
+
+The installer records the detected `grok` and `codex` executable paths, so the host does not depend on Chrome's shell `PATH`. The local CLI must already be installed and authenticated. The installer currently supports Google Chrome on macOS and Linux.
 
 Re-run the installer after changing the unpacked extension ID or rebuilding a source version that changes the Native Messaging protocol.
 

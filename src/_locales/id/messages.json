@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "Aktivitas"
 	},
-	"addModel": {
-		"message": "+ Tambah model"
-	},
-	"addModelTitle": {
-		"message": "Tambah model"
-	},
 	"addProperty": {
 		"message": "+ Tambah properti"
-	},
-	"addProvider": {
-		"message": "+ Tambah penyedia"
-	},
-	"addProviderTitle": {
-		"message": "Tambah penyedia"
 	},
 	"addToObsidian": {
 		"message": "Tambah ke Obsidian"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "Tampilkan sorotan yang tersimpan saat memuat laman web. Matikan untuk hanya menampilkan sorotan saat mode sorotan diaktifkan."
-	},
-	"apiKeyMissing": {
-		"message": "Tidak ada kunci API"
 	},
 	"apiKeysWarning": {
 		"message": "Dengan menggunakan penyedia eksternal, Anda menyetujui persyaratan dan kebijakan privasi mereka. Permintaan interpreter dikirim langsung ke penyedia yang Anda pilih. Obsidian tidak mengumpulkan atau menyimpan data apa pun tentang permintaan Anda."
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "Batal"
-	},
-	"cannotDeleteProvider": {
-		"message": "Tidak dapat menghapus penyedia \"$1\" karena sedang digunakan oleh $2 model."
 	},
 	"changelog": {
 		"message": "Catatan perubahan"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "Hapus semua sorotan untuk halaman ini?"
 	},
-	"deleteModelConfirm": {
-		"message": "Apakah Anda yakin ingin menghapus model ini?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Anda yakin ingin menghapus penyedia ini?"
-	},
 	"disableHighlighter": {
 		"message": "Nonaktifkan sorotan"
 	},
@@ -212,12 +188,6 @@
 	"edit": {
 		"message": "Edit"
 	},
-	"editModel": {
-		"message": "Edit model"
-	},
-	"editProvider": {
-		"message": "Edit penyedia"
-	},
 	"editTemplate": {
 		"message": "Ubah template"
 	},
@@ -226,26 +196,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Sorot konten di laman web yang dapat disimpan ke Obsidian."
-	},
-	"enableInterpreter": {
-		"message": "Aktifkan interpreter"
-	},
-	"enableInterpreterDescription": {
-		"message": "Gunakan bahasa alami untuk mengekstrak data dari halaman. Misalnya, Anda dapat menggunakan sintaks template $strong_start${{\"ringkasan halaman\"}}$strong_end$. Memerlukan kunci API atau model kustom yang dikonfigurasi di bawah. $link_start$Pelajari lebih lanjut$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Buka tampilan baca"
@@ -318,9 +268,6 @@
 	"failedToProcessInterpreter": {
 		"message": "Tidak dapat memuat proses interpreter. Silakan coba lagi."
 	},
-	"failedToResetProviders": {
-		"message": "Gagal mengatur ulang penyedia dan model"
-	},
 	"failedToResetTemplate": {
 		"message": "Gagal mengatur ulang template default. Silakan coba lagi."
 	},
@@ -329,9 +276,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Gagal menyimpan file"
-	},
-	"failedToSaveProvider": {
-		"message": "Gagal menyimpan penyedia. Silakan coba lagi."
 	},
 	"feedback": {
 		"message": "Umpan balik"
@@ -478,24 +422,6 @@
 	"modelName": {
 		"message": "Nama model"
 	},
-	"modelNameDescription": {
-		"message": "Nama model yang ingin Anda tampilkan di antarmuka."
-	},
-	"modelProvider": {
-		"message": "Penyedia"
-	},
-	"modelProviderDescription": {
-		"message": "Penyedia model, misalnya Ollama, OpenRouter, Google, dll."
-	},
-	"modelProviderPlaceholder": {
-		"message": "Penyedia"
-	},
-	"modelRequiredFields": {
-		"message": "Nama model, Penyedia, dan ID Model diperlukan."
-	},
-	"models": {
-		"message": "Model"
-	},
 	"modelsListFor": {
 		"message": "Daftar model untuk $1"
 	},
@@ -600,12 +526,6 @@
 	"pleaseReload": {
 		"message": "Silakan coba muat ulang laman web."
 	},
-	"popularModels": {
-		"message": "Model populer"
-	},
-	"popularModelsDescription": {
-		"message": "Pilih dari model yang sering digunakan atau masukkan detail model kustom."
-	},
 	"popup": {
 		"message": "Popup"
 	},
@@ -651,47 +571,14 @@
 	"propertyValue": {
 		"message": "Value properti"
 	},
-	"provider": {
-		"message": "Penyedia"
-	},
 	"providerApiKey": {
 		"message": "Kunci API"
-	},
-	"providerApiKeyDescription": {
-		"message": "Kunci API Anda untuk penyedia ini."
 	},
 	"providerBaseUrl": {
 		"message": "URL Dasar"
 	},
-	"providerBaseUrlDescription": {
-		"message": "URL endpoint API untuk penyedia ini."
-	},
 	"providerModelId": {
 		"message": "ID model"
-	},
-	"providerModelIdDescription": {
-		"message": "Pengidentifikasi model dari penyedia Anda. Biasanya nama pendek tanpa spasi."
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID model"
-	},
-	"providerName": {
-		"message": "Nama penyedia"
-	},
-	"providerNameDescription": {
-		"message": "Nama tampilan untuk penyedia ini."
-	},
-	"providerPreset": {
-		"message": "Preset"
-	},
-	"providerPresetDescription": {
-		"message": "Pilih penyedia atau buat yang kustom."
-	},
-	"providerRequiredFields": {
-		"message": "Nama penyedia dan URL Dasar diperlukan."
-	},
-	"providers": {
-		"message": "Penyedia"
 	},
 	"rateExtensionDescription": {
 		"message": "Apakah Anda menikmati Web Clipper? Bantu kami dengan memberikan penilaian."
@@ -849,9 +736,6 @@
 	"readerViewFullSize": {
 		"message": "Lihat ukuran penuh"
 	},
-	"recommended": {
-		"message": "direkomendasikan"
-	},
 	"refresh": {
 		"message": "Muat ulang"
 	},
@@ -882,12 +766,6 @@
 	"resetDefaultTemplateDescription": {
 		"message": "Hapus semua perubahan yang telah dibuat pada template default."
 	},
-	"resetProvidersAndModels": {
-		"message": "Atur ulang model default"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Atur ulang penyedia dan model ke pengaturan default."
-	},
 	"save": {
 		"message": "Simpan"
 	},
@@ -905,9 +783,6 @@
 	},
 	"searchVariables": {
 		"message": "Cari variabel..."
-	},
-	"selectProvider": {
-		"message": "Pilih penyedia"
 	},
 	"selectTemplateToExport": {
 		"message": "Silakan pilih template untuk diekspor."
@@ -1028,9 +903,6 @@
 	},
 	"thinking": {
 		"message": "berpikir"
-	},
-	"unknownProvider": {
-		"message": "Penyedia tidak dikenal"
 	},
 	"updateAvailable": {
 		"message": "Pembaruan tersedia."

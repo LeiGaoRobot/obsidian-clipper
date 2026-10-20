@@ -14,26 +14,43 @@ Keep changes surgical. Match the existing TypeScript, SCSS, localization, and Ob
 
 | Module | Responsibility | Constraint |
 | --- | --- | --- |
-| `src/utils/language-learning.ts` | Pure prompt construction, text replacement, transcript batching, and response alignment | No DOM, storage, or browser runtime dependencies |
-| `src/utils/language-learning-runtime.ts` | Configured language-learning interface used by Popup and Reader callers | Loads settings and sends model work to the background |
-| `src/utils/language-learning-popup.ts` | Popup and side-panel AI-edit UI | Preview against a source snapshot before applying |
-| `src/utils/transcript-language-learning.ts` | YouTube Reader bilingual and explanation UI | Remote calls must follow trusted user actions |
-| `src/utils/language-learning-service.ts` | Background configuration checks and model selection | Use only stored, enabled Interpreter models |
-| `src/utils/llm-client.ts` | Provider request construction and response parsing | Must remain DOM-free and safe in an MV3 service worker |
+| `src/utils/language-learning.ts` | Pure prompt construction, text replacement, and response alignment; transcript tasks delegate grouping to an injected `runJob` | No DOM, storage, or browser runtime dependencies; cancellation is `AiError('cancelled')` from `src/ai/abort.ts` |
+| `src/utils/language-learning-runtime.ts` | Configured language-learning interface used by Popup and Reader callers | Loads settings and sends model work to the background through `runAiTask`, and whole transcripts through `runTranscriptJob`; Reader restore and manual saves use the job client's checkpoint helpers |
+| `src/utils/language-learning-popup.ts` | Popup and side-panel AI-edit UI on the shared action controller; model errors render the shared error card into `#ai-edit-error` | Preview against a source snapshot before applying; Retry reuses the same content, instruction, and snapshot |
+| `src/utils/interpreter.ts` | Popup Interpreter UI on the shared action controller: Cancel button, the shared error card in `#interpreter-error`, `waitForInterpreter` for Clip | A cancelled run sends no further request, and a Clip that waited on it saves nothing |
+| `src/reader/learning/` | Reader transcript learning: `index.ts` wires the features and re-exports the public names; `task-bar.ts`, `card.ts` (learning dialog hosting the shared error card), `translations.ts`, `readings.ts`, `explain.ts`, `selection.ts`; pure `cache.ts`, `japanese.ts`, `readings-render.ts`, `types.ts` | Remote calls follow trusted user actions; one action controller for transcript tasks and one for explanations; cleanup on SPA navigation, including to an article without a transcript |
+| `src/utils/reader-transcript-loader.ts` | The Reader's handle on the lazily loaded transcript modules (`reader-language-learning` chunk) | Type imports only; a page that never shows a transcript loads nothing; once loaded, every navigation and `teardownContent` clean up the previous transcript first |
+| `src/ai/` | AI domain core: connection kinds, derived v2 settings view, `resolveProfile`, `AiError`, output contracts (`contracts.ts`), structured-output capabilities, Port protocol, transcript job identity (`job-identity.ts`), transcript job limits shared by the runner and the lazy chunks (`job-limits.ts`), cancellation helpers (`abort.ts`), and the shared action controller and error card (`ui/`) | No DOM, storage, or browser runtime dependencies, except `error-messages.ts` (UI-side i18n), `ui/error-card.ts` (DOM only), `client.ts`, `job-client.ts`, `gateway.ts`, and `adapters/native-cli.ts`. See `docs/superpowers/specs/2026-10-19-ai-subsystem-redesign-design.md` |
+| `src/ai/adapters/http.ts` | Provider request construction, streaming (SSE, NDJSON, JSON fallback), idle and hard timeouts | Must remain DOM-free and safe in an MV3 service worker |
+| `src/ai/adapters/listing.ts` | Model listing for a connection: the listing URL derived from the chat URL, the kind's credential header, `GET` with a timeout, and the parsed model ids | DOM-free; the free first step of a connection Test |
+| `src/ai/test-connection.ts` | Connection Test: the per-kind plan (`connectionTestPlan`, whose `billable` drives the cost note), listing, then a structured-output probe or a minimal completion, or the CLI Host health check and one exec per profile; `statusFromTestResult` | Pure over injected adapters and the health check; redacts the credential from error details |
+| `src/ai/diagnostics.ts` | Redacted diagnostics log in `storage.session` (`ai_diagnostics`, last 100 entries), serialized writes, memory fallback | Entries are whitelisted: no prompt, content, key, detail, or job id |
+| `src/ai/gateway.ts` | Background `ai` Port handler: resolves the profile from stored settings, renders the task contract, runs the adapter with the connection's effective structured-output mode (`effectiveStructuredOutput`), validates the reply, streams progress, cancels, replays outcomes on `attach`; hosts durable transcript jobs (`start-job`, `checkpoint-get`/`put`/`clear`) and resumes recent `running` jobs on init; runs connection Tests (`test`), stores `ai_connection_status`, and records diagnostics | The only place model work executes |
+| `src/ai/job-runner.ts` | Durable transcript jobs: group budgets, bounded concurrent pool, serialized checkpoints, 429/5xx retries, CLI timeout splits, resume | Pure with injected store, execute, clock, and timers; statically imported into the background |
+| `src/ai/job-store.ts` | `aiJob:` records and `aiJobInput:` inputs in `storage.session` (in-memory fallback), per-job serialized writes, 20-record pruning, quota eviction | Storage area is injected; no browser runtime imports |
+| `src/ai/client.ts` | `runAiTask(task, input, options)` for Popup, Settings, and Reader callers; `testConnection(connectionId, options)` for the Settings Test button | Sends keepalive pings while a job is pending; rejects with `AiError`; a Test message carries only the connection id |
+| `src/ai/job-client.ts` | `runTranscriptJob` and the `loadTranscriptCheckpoint`/`saveTranscriptCheckpoint`/`clearTranscriptCheckpoint` round trips | Reconnects and re-`attach`es after a disconnect; a restore never starts or resumes a job |
+| `src/ai/ui/` | `action.ts`: `createAiAction`, the shared run, cancel, retry, and stale-result controller behind the popup Interpreter, AI edit, and Reader; `error-card.ts`: `renderAiErrorCard` / `clearAiErrorCard`, the shared error card used by the popup, the Reader, and Settings | `action.ts` is pure and never starts a run on its own; `error-card.ts` is DOM-only with no Settings, storage, or browser imports; neither checks `isTrusted`, so page-DOM callers wrap the card handlers |
+| `src/settings/ai/` | Settings AI section (lazy `settings-ai` chunk): connections with Test, models, routing, language, Interpreter, Diagnostics | Test starts only from a trusted click and waits for pending saves; never imported by the background |
 
-The network client is also re-exported from `src/utils/interpreter.ts` for the existing Interpreter interface. Keep the implementation in `llm-client.ts`; do not duplicate provider logic in UI modules.
+All model work goes through `runAiTask` or `runTranscriptJob` and the background gateway. Do not call providers or the Native Messaging Host from UI modules, and do not duplicate provider logic outside `src/ai/adapters/`.
 
 ## Language-learning invariants
 
-- Never run a paid or remote language-learning request automatically on page load, transcript load, or selection change. A user must explicitly request an edit, translation, or explanation.
-- Page-DOM controls that can create model costs must reject synthetic events with `event.isTrusted`. Programmatic controller methods may exist for isolated tests, but must not be exposed to host-page scripts.
+- Never run a paid or remote language-learning request automatically on page load, transcript load, or selection change. A user must explicitly request an edit, translation, or explanation. A transcript job the user started may resume automatically after a service-worker restart only while its record is still `running` and was updated within `RESUME_WINDOW_MS`; a Reader restore (`checkpoint-get`) never starts or resumes a job.
+- Page-DOM controls that can create model costs must reject synthetic events with `event.isTrusted`. Every Reader learning-card handler (Retry, Continue remaining, Switch and retry, Open AI settings) and the task bar's Cancel require a trusted click. Programmatic controller methods may exist for isolated tests, but must not be exposed to host-page scripts.
+- A connection Test runs only after a trusted click on **Test**. It may send a minimal billable request (a structured-output probe, a 1-token completion, or one CLI exec per profile); show the cost note before it runs whenever the plan has a billable step. Free checks (model listing, Host health) come first.
+- Store the detected structured-output mode per device in `ai_connection_status[id].structuredOutput` and, after a Test, on the synced connection (`connection.structuredOutput`). The old `ai_structured_output` cache is removed on gateway init.
+- Diagnostics entries hold only the whitelisted fields in `src/ai/diagnostics.ts`. Never add prompts, page content, keys, provider detail, or job ids.
 - Execute provider requests in the extension background. Do not fetch model providers directly from Reader or page content scripts.
 - Keep the background network path synchronous in the bundle. Do not dynamically import `interpreter.ts` or create a runtime chunk for Chrome MV3 service workers.
-- Never pass provider credentials through page DOM or language-learning messages. Resolve the provider, API key, and enabled model from stored Interpreter settings in the background.
-- Preserve transcript alignment. Every source segment has a stable numeric ID, long transcripts use sequential requests that target bounded prompt groups, and the UI must reject incomplete translations instead of displaying a partial result as complete. Keep each source segment atomic; one oversized segment may exceed the group target.
-- Resolve the response language from `readerSettings.learningResponseLanguage`, then fall back to the browser language.
+- Never pass provider credentials through page DOM or language-learning messages. Resolve the connection, API key, and model profile from stored AI settings (`ai_*` sync items and the local-only `ai_credentials`) in the background.
+- Preserve transcript alignment. Every source segment has a stable numeric ID equal to its source index, long transcripts run as one background job in bounded concurrent groups with stable ids and serialized checkpoint writes, and the UI must reject incomplete translations instead of displaying a partial result as complete. Keep each source segment atomic; one oversized segment may exceed the group target.
+- Resolve the response language from `ai_routing.responseLanguage` (the Language panel of the Settings AI section), then fall back to the browser language.
 - AI edits operate on the selected portion of the clipping, or the full clipping when there is no selection. Applying a preview must fail if the source content changed after the preview was generated.
-- Clean up Reader controls and listeners during SPA navigation. Explanation caching is session-local and keyed by selection kind, selected text, and context.
+- Run every AI entry point on `createAiAction`: a superseded or cancelled run's late settlement changes nothing, and `cancel` ends the state as `cancelled` at once. Retry re-runs the same request: the same Interpreter input and profile, the same AI-edit content and instruction, or the same transcript range. The Reader task bar's Cancel stops both explanation and transcript work.
+- Errors reach the UI as `AiError` carrying `task`, `profileId`, and `recovery`, and are rendered with `describeAiError` through the shared error card. Do not map them back to legacy error codes or copy.
+- Clean up Reader controls and listeners during SPA navigation, including navigation from a transcript to an article without one. Explanation caching is session-local and keyed by selection kind, selected text, and context.
 
 ## Development workflow
 
@@ -47,6 +64,7 @@ During implementation, run the closest test file repeatedly:
 
 ```sh
 npx vitest run src/utils/<name>.test.ts
+npx vitest run src/reader/learning/<name>.test.ts
 ```
 
 Before committing, run:
@@ -85,4 +103,4 @@ When changing background imports, provider requests, or Webpack entry behavior, 
 
 ## Completion criteria
 
-A change is complete only when its focused tests pass, the full suite and type check pass, affected browser builds succeed, documentation and localization are synchronized, `git diff --check` is clean, and only files required by the task are changed.
+A change is complete only when its focused tests pass, the full suite and type check pass, affected browser builds succeed, documentation and localization are synchronized, `npm run check-strings` reports no more unused strings than the baseline of 86 (most are dynamically built keys the checker cannot see; remove a key only after a grep confirms it is unused), `git diff --check` is clean, and only files required by the task are changed.

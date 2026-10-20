@@ -541,6 +541,16 @@
 	padding-top: 0;
 	border-top: 0;
 }
+.transcript-segment-japanese {
+	display: none;
+	color: var(--text-normal);
+	font-size: 0.92em;
+	line-height: 1.72;
+	margin-top: 0.55em;
+}
+.show-japanese-readings .transcript-segment-japanese:not([hidden]) {
+	display: block;
+}
 .transcript.is-editing-translations .transcript-segment-translation[contenteditable="true"] {
 	display: block;
 	min-height: 1.55em;
@@ -653,7 +663,7 @@
 	padding: 0 16px 14px;
 }
 .language-learning-card-action,
-.language-learning-card-retry {
+.language-learning-card .ai-error-card-action {
 	font: inherit;
 	color: var(--text-normal);
 	background: var(--background-primary);
@@ -674,35 +684,25 @@
 	margin-inline-end: auto;
 	color: var(--text-muted);
 }
-.language-learning-card-error-details {
-	margin: 0 16px 12px;
-	padding: 8px 10px;
-	font-family: var(--font-ui);
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-	background: var(--background-primary-alt);
-	border-radius: var(--radius-s);
-	summary {
-		cursor: pointer;
+.language-learning-card .ai-error-card {
+	// The dialog is the card's frame: its header names the flow and its border marks the error.
+	padding: 0;
+	background: none;
+	border: 0;
+	border-radius: 0;
+	white-space: normal;
+	.ai-error-card-detail code {
+		font-family: var(--font-monospace);
+		background: var(--background-primary-alt);
 	}
-}
-.language-learning-card-error-detail {
-	margin-top: 8px;
-	font-family: var(--font-monospace);
-	white-space: pre-wrap;
-	word-break: break-word;
-}
-.language-learning-card-engine-recovery {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	margin-inline-end: auto;
-	&[hidden] {
-		display: none;
-	}
-	select {
-		max-width: 130px;
+	.ai-error-card-switch select {
+		font: inherit;
 		min-height: 30px;
+		max-width: 160px;
+		color: var(--text-normal);
+		background: var(--background-primary);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: var(--radius-s);
 	}
 }
 .language-learning-vocabulary-entry {
@@ -1154,7 +1154,8 @@ html.transcript-layout-focus .language-learning-card {
 	.player-learning-action,
 	.player-learning-range,
 	.language-learning-card-action,
-	.language-learning-card-retry,
+	.language-learning-card .ai-error-card-action,
+	.language-learning-card .ai-error-card-switch select,
 	.language-learning-card-close {
 		min-height: 44px;
 	}

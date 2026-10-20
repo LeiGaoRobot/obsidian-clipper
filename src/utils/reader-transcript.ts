@@ -3,7 +3,7 @@ import {
 	TranscriptLanguageLearning,
 	cleanupTranscriptLanguageLearning,
 	wireTranscriptLanguageLearning
-} from './transcript-language-learning';
+} from '../reader/learning';
 import type { TranscriptLayoutMode } from '../types/types';
 import {
 	clearTranscriptLayoutMode,
@@ -113,7 +113,11 @@ interface TranscriptSettings {
 	compactPlayer?: boolean;
 	bilingualSubtitles?: boolean;
 	japaneseReadings?: boolean;
-	learningResponseLanguage?: string;
+	/**
+	 * From the AI settings (`ai_routing.responseLanguage`, then the browser language), not from the
+	 * Reader settings.
+	 */
+	responseLanguage: string;
 }
 
 type TranscriptSettingChange = <K extends keyof TranscriptSettings>(
@@ -127,14 +131,12 @@ interface ScrollHelper {
 	programmaticScroll: () => boolean;
 }
 
-export function wireTranscript(
-	doc: Document,
-	article: HTMLElement,
-	settings: TranscriptSettings,
-	scroll: ScrollHelper,
-	onSettingChange?: TranscriptSettingChange,
-	languageLearning?: TranscriptLanguageLearning
-): void {
+/**
+ * Removes what a wired transcript left on the document: its listeners, the study controls, the
+ * layout observer, and the language-learning card, selection button, and in-flight requests. The
+ * Reader also calls it when it navigates to an article without a transcript.
+ */
+export function cleanupTranscript(doc: Document): void {
 	transcriptEventControllers.get(doc)?.abort();
 	transcriptEventControllers.delete(doc);
 	cleanupTranscriptLanguageLearning(doc);
@@ -143,6 +145,17 @@ export function wireTranscript(
 	clearTranscriptLayoutMode(doc);
 	transcriptLayoutResizeObservers.get(doc)?.disconnect();
 	transcriptLayoutResizeObservers.delete(doc);
+}
+
+export function wireTranscript(
+	doc: Document,
+	article: HTMLElement,
+	settings: TranscriptSettings,
+	scroll: ScrollHelper,
+	onSettingChange?: TranscriptSettingChange,
+	languageLearning?: TranscriptLanguageLearning
+): void {
+	cleanupTranscript(doc);
 	removePreviousTranscriptLayout(article);
 	const transcript = article.querySelector(supportedTranscriptSelector) as HTMLElement | null;
 	if (!transcript) return;
@@ -460,7 +473,7 @@ export function wireTranscript(
 				segments,
 				controls: learningControls.items,
 				tools: languageLearning,
-				responseLanguage: settings.learningResponseLanguage,
+				responseLanguage: settings.responseLanguage,
 				restoreBilingualSubtitles: settings.bilingualSubtitles,
 				restoreJapaneseReadings: settings.japaneseReadings,
 				onPreferenceChange: (key, value) => onSettingChange?.(key, value),
@@ -1031,7 +1044,7 @@ export function wireTranscript(
 	// OS double-click interval is longer, restore the position after the seek.
 	transcript.addEventListener('click', (e: MouseEvent) => {
 		const target = e.target as HTMLElement;
-		if (target.closest('.transcript-segment-translation, .transcript-reading-token, .player-learning-action, .language-learning-selection-action')) return;
+		if (target.closest('.transcript-segment-translation, .transcript-segment-japanese, .transcript-reading-token, .player-learning-action, .language-learning-selection-action')) return;
 		if (e.detail > 1) {
 			transcriptClickGuard.cancel();
 			return;

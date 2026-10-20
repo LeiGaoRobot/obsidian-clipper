@@ -1,13 +1,21 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { Settings } from '../types/types';
+import type { V1AiSettings } from '../ai/v1-settings';
+import { AiError } from '../ai/errors';
+import { transcriptJobId, type TranscriptJobIdentity, type TranscriptJobTask } from '../ai/job-identity';
+import type { TranscriptSegment } from '../ai/contracts';
 
 const mocks = vi.hoisted(() => ({
 	loadSettings: vi.fn(),
-	sendMessage: vi.fn(),
-	storageSessionGet: vi.fn(),
-	storageSessionSet: vi.fn(),
-	storageSessionRemove: vi.fn(),
-	storageSessionState: {} as Record<string, unknown>,
+	loadAiSettings: vi.fn(),
+	saveRouting: vi.fn(),
+	runAiTask: vi.fn(),
+	runTranscriptJob: vi.fn(),
+	loadTranscriptCheckpoint: vi.fn(),
+	saveTranscriptCheckpoint: vi.fn(),
+	clearTranscriptCheckpoint: vi.fn(),
+	// The model behind the fake background job: answers the ids the job still needs.
+	executeJob: vi.fn(),
 	storageLocalGet: vi.fn(),
 	storageLocalSet: vi.fn(),
 	storageLocalState: {} as Record<string, unknown>,
@@ -18,13 +26,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('./browser-polyfill', () => ({
 	default: {
-		runtime: { sendMessage: mocks.sendMessage },
+		runtime: {},
 		storage: {
-			session: {
-				get: mocks.storageSessionGet,
-				set: mocks.storageSessionSet,
-				remove: mocks.storageSessionRemove
-			},
 			local: {
 				get: mocks.storageLocalGet,
 				set: mocks.storageLocalSet
@@ -32,18 +35,35 @@ vi.mock('./browser-polyfill', () => ({
 		}
 	}
 }));
+vi.mock('../ai/client', () => ({ runAiTask: mocks.runAiTask }));
+vi.mock('../ai/job-client', async importOriginal => ({
+	...await importOriginal<typeof import('../ai/job-client')>(),
+	runTranscriptJob: mocks.runTranscriptJob,
+	loadTranscriptCheckpoint: mocks.loadTranscriptCheckpoint,
+	saveTranscriptCheckpoint: mocks.saveTranscriptCheckpoint,
+	clearTranscriptCheckpoint: mocks.clearTranscriptCheckpoint
+}));
 vi.mock('./storage-utils', () => ({
 	loadSettings: mocks.loadSettings,
 	saveSettings: mocks.saveSettings
+}));
+vi.mock('./ai-settings', () => ({
+	loadAiSettings: mocks.loadAiSettings,
+	aiSettingsStore: { load: mocks.loadAiSettings, saveRouting: mocks.saveRouting }
 }));
 vi.mock('./clipboard-utils', () => ({ copyToClipboard: mocks.copyToClipboard }));
 vi.mock('./obsidian-note-creator', () => ({ saveToObsidian: mocks.saveToObsidian }));
 vi.mock('./i18n', () => ({ getMessage: (key: string) => key }));
 
+import { withJobAttempts } from '../ai/job-client';
+import { deriveAiSettings } from '../ai/settings-view';
+import { TRANSCRIPT_GROUP_BUDGETS } from '../ai/job-limits';
+import type { AiSettingsView } from '../ai/types';
 import { configuredLanguageLearning } from './language-learning-runtime';
 import type { TranscriptReadingProgress } from './language-learning';
 
-const settings: Settings = {
+// Both the settings `loadSettings` returns and the v1 fields a derived view is built from.
+const settings: Settings & V1AiSettings = {
 	vaults: [],
 	showMoreActionsButton: false,
 	betaFeatures: false,
@@ -64,6 +84,7 @@ const settings: Settings = {
 	providers: [],
 	interpreterEnabled: true,
 	interpreterAutoRun: false,
+	interpreterExecutionMode: 'api',
 	defaultPromptContext: '',
 	propertyTypes: [],
 	readerSettings: {
@@ -96,31 +117,158 @@ const settings: Settings = {
 	saveBehavior: 'addToObsidian'
 };
 
+function aiResult(output: unknown, connectionKind = 'openai-compatible') {
+	return { output, connectionKind };
+}
+
+type JobValue = string | Array<{ text: string; reading: string }>;
+
+interface FakeJobRecord {
+	task: TranscriptJobTask;
+	status: 'running' | 'completed' | 'incomplete' | 'failed';
+	values: JobValue[];
+}
+
+// A stand-in for the background gateway: records by job id, reuse of earlier results, and one
+// executeJob call for the segments still missing, with values aligned like the real client.
+const records = new Map<string, FakeJobRecord>();
+
+function isEmptySource(task: TranscriptJobTask, text: string): boolean {
+	return task === 'reading' ? text === '' : text.trim() === '';
+}
+
+function hasValue(value: JobValue | undefined): boolean {
+	return Array.isArray(value) ? value.length > 0 : Boolean(value?.trim());
+}
+
+function emptyValue(task: TranscriptJobTask): JobValue {
+	return task === 'translate' ? '' : [];
+}
+
+function isDone(task: TranscriptJobTask, segments: TranscriptSegment[], values: JobValue[]): boolean {
+	return segments.every(({ id, text }) => isEmptySource(task, text) || hasValue(values[id]));
+}
+
+function installFakeJobGateway() {
+	records.clear();
+	mocks.runTranscriptJob.mockImplementation(async (
+		task: TranscriptJobTask,
+		input: { instruction: string; segments: TranscriptSegment[]; identity: TranscriptJobIdentity },
+		options: { signal?: AbortSignal; onProgress?: (progress: unknown) => void } = {}
+	) => {
+		const id = transcriptJobId(task, input.identity, input.segments);
+		const values = input.segments.map(({ id: index }) => records.get(id)?.values[index] ?? emptyValue(task));
+		const missing = input.segments.filter(({ id: index, text }) => !isEmptySource(task, text) && !hasValue(values[index]));
+		const report = (completedGroups: number) => options.onProgress?.({
+			completedGroups,
+			totalGroups: missing.length > 0 ? 1 : 0,
+			completedSegments: input.segments.filter(({ id: index, text }) => isEmptySource(task, text) || hasValue(values[index])).length,
+			totalSegments: input.segments.length,
+			values: values.map(value => (Array.isArray(value) ? value.map(token => ({ ...token })) : value))
+		});
+		report(0);
+		if (missing.length > 0) {
+			let items: Array<{ id: number; text?: string; tokens?: JobValue }>;
+			try {
+				items = await mocks.executeJob(task, { instruction: input.instruction, segments: missing }, options);
+			} catch (error) {
+				records.set(id, { task, status: 'failed', values });
+				throw error;
+			}
+			for (const item of items) {
+				if (missing.some(segment => segment.id === item.id)) values[item.id] = (item.text ?? item.tokens) as JobValue;
+			}
+			report(1);
+		}
+		const status = isDone(task, input.segments, values) ? 'completed' : 'incomplete';
+		records.set(id, { task, status, values });
+		return { status, values, results: [], attempts: { requests: missing.length > 0 ? 1 : 0, retries: 0, splits: 0 } };
+	});
+	mocks.loadTranscriptCheckpoint.mockImplementation(async (
+		task: TranscriptJobTask,
+		identity: TranscriptJobIdentity,
+		segments: TranscriptSegment[]
+	) => {
+		const record = records.get(transcriptJobId(task, identity, segments));
+		return record ? { status: record.status, values: [...record.values], completedSegments: 0, totalSegments: segments.length } : undefined;
+	});
+	mocks.saveTranscriptCheckpoint.mockImplementation(async (
+		task: TranscriptJobTask,
+		identity: TranscriptJobIdentity,
+		segments: TranscriptSegment[],
+		values: JobValue[]
+	) => {
+		records.set(transcriptJobId(task, identity, segments), {
+			task,
+			status: isDone(task, segments, values) ? 'completed' : 'incomplete',
+			values: [...values]
+		});
+		return true;
+	});
+	mocks.clearTranscriptCheckpoint.mockImplementation(async (
+		task: TranscriptJobTask,
+		identity: TranscriptJobIdentity,
+		segments: TranscriptSegment[]
+	) => records.delete(transcriptJobId(task, identity, segments)));
+}
+
+function segmentsOf(texts: string[]): TranscriptSegment[] {
+	return texts.map((text, id) => ({ id, text }));
+}
+
+function requestedIds(): number[][] {
+	return mocks.executeJob.mock.calls.map(call => (call[1] as { segments: TranscriptSegment[] }).segments.map(segment => segment.id));
+}
+
+// Mirrors what toAiError builds from a Host NativeCliExecutionError timeout.
+function cliTimeout(mode: string, seconds: number) {
+	return new AiError('timeout', {
+		detail: `${mode} CLI timed out after ${seconds} seconds.`,
+		nativeCode: 'timeout',
+		timeoutSeconds: seconds
+	});
+}
+
+const READINGS = { namespace: 'japanese-readings', scope: 'shared' };
+
+// A stored (v2) view as the Reader sees it: a content script reports no Native Messaging, yet
+// CLI profiles stay listed and routable because the background decides whether they can run.
+function storedView(overrides: Partial<AiSettingsView['routing']> = {}): AiSettingsView {
+	return {
+		enabled: true,
+		connections: [
+			{ id: 'openai', kind: 'openai-compatible', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', apiKeyRequired: true },
+			{ id: 'codex', kind: 'cli-codex', label: '' }
+		],
+		profiles: [
+			{ id: 'gpt', connectionId: 'openai', model: 'gpt-5', label: '', enabled: true },
+			{ id: 'gpt-off', connectionId: 'openai', model: 'gpt-4', label: 'Old', enabled: false },
+			{ id: 'codex-default', connectionId: 'codex', model: 'gpt-5-codex', label: '', enabled: true }
+		],
+		routing: { defaultProfileId: 'gpt', taskProfiles: {}, ...overrides },
+		interpreter: { autoRun: false, defaultPromptContext: '' },
+		credentials: {},
+		nativeMessaging: 'none'
+	};
+}
+
 describe('Configured language learning runtime', () => {
 	beforeEach(() => {
 		mocks.loadSettings.mockReset();
-		mocks.sendMessage.mockReset();
-		mocks.storageSessionGet.mockReset();
-		mocks.storageSessionSet.mockReset();
-		mocks.storageSessionRemove.mockReset();
+		mocks.runAiTask.mockReset();
+		mocks.runTranscriptJob.mockReset();
+		mocks.loadTranscriptCheckpoint.mockReset();
+		mocks.saveTranscriptCheckpoint.mockReset();
+		mocks.clearTranscriptCheckpoint.mockReset();
+		mocks.executeJob.mockReset();
 		mocks.storageLocalGet.mockReset();
 		mocks.storageLocalSet.mockReset();
 		mocks.saveSettings.mockReset();
+		mocks.saveRouting.mockReset().mockResolvedValue(false);
 		mocks.copyToClipboard.mockReset();
 		mocks.saveToObsidian.mockReset();
-		Object.keys(mocks.storageSessionState).forEach(key => delete mocks.storageSessionState[key]);
 		Object.keys(mocks.storageLocalState).forEach(key => delete mocks.storageLocalState[key]);
-		mocks.storageSessionGet.mockImplementation(async (key?: string | string[] | null) => {
-			if (key == null) return { ...mocks.storageSessionState };
-			const keys = Array.isArray(key) ? key : [key];
-			return Object.fromEntries(keys.map(item => [item, mocks.storageSessionState[item]]));
-		});
-		mocks.storageSessionSet.mockImplementation(async (values: Record<string, unknown>) => {
-			Object.assign(mocks.storageSessionState, values);
-		});
-		mocks.storageSessionRemove.mockImplementation(async (key: string | string[]) => {
-			(Array.isArray(key) ? key : [key]).forEach(item => delete mocks.storageSessionState[item]);
-		});
+		installFakeJobGateway();
 		mocks.storageLocalGet.mockImplementation(async (key: string) => ({
 			[key]: mocks.storageLocalState[key]
 		}));
@@ -131,22 +279,186 @@ describe('Configured language learning runtime', () => {
 		mocks.copyToClipboard.mockResolvedValue(true);
 		mocks.saveToObsidian.mockResolvedValue(undefined);
 		mocks.loadSettings.mockResolvedValue(settings);
+		// The runtime reads the AI settings view; in derived mode it is built from the v1 fixture.
+		mocks.loadAiSettings.mockReset().mockImplementation(async () => deriveAiSettings(
+			await mocks.loadSettings(),
+			{ nativeMessaging: 'port' }
+		));
 	});
 
-	test('reports the selected engine and can switch it explicitly', async () => {
+	test('reports the profile routed to a transcript task with its kind budget (derived mode)', async () => {
+		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterExecutionMode: 'grok' });
+
+		await expect(configuredLanguageLearning.getExecutionInfo('reading')).resolves.toEqual({
+			profileId: 'legacy-cli-grok-default',
+			kind: 'cli-grok',
+			label: 'interpreterExecutionModeGrok',
+			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS['cli-grok'].reading
+		});
+		await expect(configuredLanguageLearning.getExecutionInfo('translate')).resolves.toMatchObject({
+			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS['cli-grok'].translate
+		});
+	});
+
+	test('reports per-task routing from a stored view without hiding CLI profiles', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ taskProfiles: { reading: 'codex-default' } }));
+
+		await expect(configuredLanguageLearning.getExecutionInfo('reading')).resolves.toEqual({
+			profileId: 'codex-default',
+			kind: 'cli-codex',
+			label: 'interpreterExecutionModeCodex · gpt-5-codex',
+			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS['cli-codex'].reading
+		});
+		await expect(configuredLanguageLearning.getExecutionInfo('translate')).resolves.toEqual({
+			profileId: 'gpt',
+			kind: 'openai-compatible',
+			label: 'OpenAI · gpt-5',
+			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS.api.translate
+		});
+	});
+
+	test('reports no profile when routing names none or a disabled one', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ defaultProfileId: undefined, taskProfiles: { reading: 'gpt-off' } }));
+
+		await expect(configuredLanguageLearning.getExecutionInfo('reading')).resolves.toEqual({
+			label: 'aiErrorNotConfiguredTitle',
+			promptCharLimit: TRANSCRIPT_GROUP_BUDGETS.api.reading
+		});
+	});
+
+	test('lists every enabled profile, CLI included, labelled connection · model', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView());
+
+		await expect(configuredLanguageLearning.listProfiles()).resolves.toEqual([
+			{ id: 'gpt', label: 'OpenAI · gpt-5', kind: 'openai-compatible' },
+			{ id: 'codex-default', label: 'interpreterExecutionModeCodex · gpt-5-codex', kind: 'cli-codex' }
+		]);
+	});
+
+	test('lists the derived v1 models and both CLIs before v2 exists', async () => {
 		mocks.loadSettings.mockResolvedValue({
 			...settings,
-			interpreterExecutionMode: 'grok'
+			providers: [{ id: 'provider-1', name: 'Provider', baseUrl: 'https://api.example.com/v1/chat/completions', apiKey: '' }]
 		});
 
-		await expect(configuredLanguageLearning.getExecutionInfo()).resolves.toEqual({
-			mode: 'grok',
-			label: 'interpreterExecutionModeGrok',
-			promptCharLimit: 1600
-		});
-		await configuredLanguageLearning.setExecutionMode('codex');
+		await expect(configuredLanguageLearning.listProfiles()).resolves.toEqual([
+			{ id: 'model-1', label: 'Provider · Model', kind: 'openai-compatible' },
+			{ id: 'legacy-cli-codex-default', label: 'interpreterExecutionModeCodex', kind: 'cli-codex' },
+			{ id: 'legacy-cli-grok-default', label: 'interpreterExecutionModeGrok', kind: 'cli-grok' }
+		]);
+	});
 
-		expect(mocks.saveSettings).toHaveBeenCalledWith({ interpreterExecutionMode: 'codex' });
+	test('switching a task profile writes only that routing entry when v2 is stored', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ taskProfiles: { explain: 'gpt' } }));
+		mocks.saveRouting.mockResolvedValue(true);
+
+		await configuredLanguageLearning.setTaskProfile('translate', 'codex-default');
+
+		expect(mocks.saveRouting).toHaveBeenCalledWith({
+			defaultProfileId: 'gpt',
+			taskProfiles: { explain: 'gpt', translate: 'codex-default' }
+		});
+		expect(mocks.saveSettings).not.toHaveBeenCalled();
+	});
+
+	test('switching a task back to the default profile clears its routing entry', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ taskProfiles: { reading: 'codex-default', explain: 'codex-default' } }));
+		mocks.saveRouting.mockResolvedValue(true);
+
+		await configuredLanguageLearning.setTaskProfile('reading', 'gpt');
+
+		expect(mocks.saveRouting).toHaveBeenCalledWith({
+			defaultProfileId: 'gpt',
+			taskProfiles: { explain: 'codex-default' }
+		});
+	});
+
+	test('before v2 exists a switch rejects instead of writing v1', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			providers: [{ id: 'provider-1', name: 'Provider', baseUrl: 'https://api.example.com/v1/chat/completions', apiKey: '' }]
+		});
+		mocks.saveRouting.mockResolvedValue(false);
+
+		await expect(configuredLanguageLearning.setTaskProfile('explain', 'model-1')).rejects.toThrow('not set up');
+		expect(mocks.saveRouting).toHaveBeenCalledTimes(1);
+		expect(mocks.saveSettings).not.toHaveBeenCalled();
+	});
+
+	test('rejects a switch to an unknown profile without writing', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView());
+
+		await expect(configuredLanguageLearning.setTaskProfile('translate', 'missing')).rejects.toThrow('missing');
+		expect(mocks.saveRouting).not.toHaveBeenCalled();
+		expect(mocks.saveSettings).not.toHaveBeenCalled();
+	});
+
+	test('errors name the failed task and its profile for the Reader engine switch', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ taskProfiles: { translate: 'codex-default' } }));
+		mocks.executeJob.mockRejectedValue(withJobAttempts(cliTimeout('codex', 300), { requests: 1, retries: 0, splits: 0 }));
+		mocks.runAiTask.mockRejectedValue(new AiError('auth', { status: 401 }));
+
+		const translation = await configuredLanguageLearning.translateTranscript(['Hello.']).catch(caught => caught);
+		expect(translation).toBeInstanceOf(AiError);
+		expect(translation).toMatchObject({ code: 'timeout', nativeCode: 'timeout', task: 'translate', profileId: 'codex-default' });
+		await expect(configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' }))
+			.rejects.toMatchObject({ code: 'auth', status: 401, task: 'explain', profileId: 'gpt' });
+		// The readings flow of a non-Japanese transcript fails in its translate step, and says so.
+		await expect(configuredLanguageLearning.translateTranscriptToJapanese(['Hello.']))
+			.rejects.toMatchObject({ code: 'timeout', task: 'translate', profileId: 'codex-default' });
+	});
+
+	test('keeps the task and profile the gateway already set', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView());
+		const error = new AiError('quota', { task: 'explain', profileId: 'codex-default', detail: 'out of credit' });
+		mocks.runAiTask.mockRejectedValue(error);
+
+		await expect(configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' }))
+			.rejects.toBe(error);
+	});
+
+	test('the response language comes from the stored view', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ responseLanguage: 'Japanese' }));
+		mocks.executeJob.mockImplementation(async (_task: string, input: { segments: TranscriptSegment[] }) => (
+			input.segments.map(({ id }) => ({ id, text: `T${id}` }))
+		));
+
+		await configuredLanguageLearning.translateTranscript(['Hello.']);
+
+		expect(mocks.runTranscriptJob).toHaveBeenCalledWith(
+			'translate',
+			expect.objectContaining({
+				instruction: expect.stringContaining('Translate each transcript segment into Japanese.'),
+				identity: { namespace: 'translations', scope: 'shared:Japanese' }
+			}),
+			expect.anything()
+		);
+	});
+
+	test('a task routed by its own entry runs without a default profile; one without a profile does not', async () => {
+		mocks.loadAiSettings.mockResolvedValue(storedView({ defaultProfileId: undefined, taskProfiles: { translate: 'gpt' } }));
+		mocks.executeJob.mockImplementation(async (_task: string, input: { segments: TranscriptSegment[] }) => (
+			input.segments.map(({ id }) => ({ id, text: `T${id}` }))
+		));
+
+		await expect(configuredLanguageLearning.translateTranscript(['Hello.'])).resolves.toEqual(['T0']);
+		const error = await configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' })
+			.catch(caught => caught);
+		expect(error).toBeInstanceOf(AiError);
+		expect(error).toMatchObject({ code: 'not-configured', reason: 'no-profile', task: 'explain' });
+		expect(error).not.toHaveProperty('profileId');
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
+	});
+
+	test('AI tools stay off while AI is disabled', async () => {
+		mocks.loadAiSettings.mockResolvedValue({ ...storedView(), enabled: false });
+
+		await expect(configuredLanguageLearning.explainSelection({ kind: 'word', text: 'Hello', context: 'Hello.' }))
+			.rejects.toMatchObject({ code: 'not-configured', reason: 'disabled', task: 'explain' });
+		await expect(configuredLanguageLearning.translateTranscript(['Hello.']))
+			.rejects.toMatchObject({ code: 'not-configured', reason: 'disabled', task: 'translate' });
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
+		expect(mocks.runTranscriptJob).not.toHaveBeenCalled();
 	});
 
 	test('persists learner translation corrections for the next Reader session', async () => {
@@ -154,7 +466,14 @@ describe('Configured language learning runtime', () => {
 		const translations = await configuredLanguageLearning.translateTranscript(['Hello.']);
 
 		expect(translations).toEqual(['你好。']);
-		expect(mocks.sendMessage).not.toHaveBeenCalled();
+		expect(mocks.saveTranscriptCheckpoint).toHaveBeenCalledWith(
+			'translate',
+			{ namespace: 'translations', scope: 'shared:Simplified Chinese' },
+			[{ id: 0, text: 'Hello.' }],
+			['你好。']
+		);
+		expect(mocks.executeJob).not.toHaveBeenCalled();
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
 	test('loads saved translations without requiring an enabled Interpreter', async () => {
@@ -163,11 +482,10 @@ describe('Configured language learning runtime', () => {
 			...settings,
 			interpreterEnabled: false
 		});
-		mocks.sendMessage.mockClear();
 
 		await expect(configuredLanguageLearning.loadTranscriptTranslations(['Hello.']))
 			.resolves.toEqual(['你好。']);
-		expect(mocks.sendMessage).not.toHaveBeenCalled();
+		expect(mocks.runTranscriptJob).not.toHaveBeenCalled();
 	});
 
 	test('reuses completed transcript work after an explicit engine switch', async () => {
@@ -183,7 +501,108 @@ describe('Configured language learning runtime', () => {
 
 		await expect(configuredLanguageLearning.translateTranscript(['Hello.']))
 			.resolves.toEqual(['你好。']);
-		expect(mocks.sendMessage).not.toHaveBeenCalled();
+		expect(mocks.executeJob).not.toHaveBeenCalled();
+	});
+
+	test('translates a transcript as one background job under the response-language scope', async () => {
+		mocks.executeJob.mockImplementation(async (_task: string, input: { segments: TranscriptSegment[] }) => (
+			input.segments.map(({ id }) => ({ id, text: `T${id}` }))
+		));
+		const progress: unknown[] = [];
+
+		await expect(configuredLanguageLearning.translateTranscript(['A', 'B'], next => progress.push(next)))
+			.resolves.toEqual(['T0', 'T1']);
+
+		expect(mocks.runTranscriptJob).toHaveBeenCalledOnce();
+		expect(mocks.runTranscriptJob).toHaveBeenCalledWith(
+			'translate',
+			{
+				instruction: expect.stringContaining('Translate each transcript segment into Simplified Chinese.'),
+				segments: [{ id: 0, text: 'A' }, { id: 1, text: 'B' }],
+				identity: { namespace: 'translations', scope: 'shared:Simplified Chinese' }
+			},
+			expect.objectContaining({ onProgress: expect.any(Function), onRetry: expect.any(Function) })
+		);
+		expect(progress).toEqual([
+			{ completed: 0, total: 1, translations: ['', ''] },
+			{ completed: 1, total: 1, translations: ['T0', 'T1'] }
+		]);
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
+	});
+
+	test('translates transcript to fixed Japanese without colliding with the configured response language', async () => {
+		mocks.executeJob.mockResolvedValue([{ id: 0, text: 'こんにちは、世界。' }]);
+
+		await expect(configuredLanguageLearning.translateTranscriptToJapanese(['Hello world.']))
+			.resolves.toEqual(['こんにちは、世界。']);
+
+		expect(mocks.runTranscriptJob).toHaveBeenCalledWith(
+			'translate',
+			expect.objectContaining({
+				instruction: expect.stringContaining('Translate each transcript segment into Japanese.'),
+				segments: [{ id: 0, text: 'Hello world.' }],
+				identity: { namespace: 'translations', scope: 'japanese-readings:Japanese' }
+			}),
+			expect.anything()
+		);
+		expect(await configuredLanguageLearning.loadJapaneseTranscriptTranslations(['Hello world.']))
+			.toEqual(['こんにちは、世界。']);
+		expect(await configuredLanguageLearning.loadTranscriptTranslations(['Hello world.']))
+			.toBeUndefined();
+	});
+
+	test('keeps fixed Japanese translation separate when the configured response language is Japanese', async () => {
+		mocks.loadSettings.mockResolvedValue({
+			...settings,
+			readerSettings: {
+				...settings.readerSettings,
+				learningResponseLanguage: 'Japanese'
+			}
+		});
+		await configuredLanguageLearning.saveTranscriptTranslations(['Hello world.'], ['手動の普通訳。']);
+		mocks.executeJob.mockResolvedValue([{ id: 0, text: '固定の日本語訳。' }]);
+
+		await expect(configuredLanguageLearning.translateTranscriptToJapanese(['Hello world.']))
+			.resolves.toEqual(['固定の日本語訳。']);
+		expect(mocks.executeJob).toHaveBeenCalledOnce();
+		await expect(configuredLanguageLearning.loadTranscriptTranslations(['Hello world.']))
+			.resolves.toEqual(['手動の普通訳。']);
+	});
+
+	test('loads saved Japanese transcript translation without an enabled Interpreter', async () => {
+		mocks.executeJob.mockResolvedValue([{ id: 0, text: '日本語です。' }]);
+		await configuredLanguageLearning.translateTranscriptToJapanese(['This is Japanese.']);
+		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterEnabled: false });
+		mocks.runTranscriptJob.mockClear();
+
+		await expect(configuredLanguageLearning.loadJapaneseTranscriptTranslations(['This is Japanese.']))
+			.resolves.toEqual(['日本語です。']);
+		expect(mocks.runTranscriptJob).not.toHaveBeenCalled();
+	});
+
+	test('restores only completed records and never starts or resumes a job', async () => {
+		const segments = ['Hello.', 'Bye.'];
+		const id = transcriptJobId('translate', { namespace: 'translations', scope: 'shared:Simplified Chinese' }, segmentsOf(segments));
+		for (const status of ['running', 'incomplete', 'failed'] as const) {
+			records.set(id, { task: 'translate', status, values: ['你好。', '再见。'] });
+			await expect(configuredLanguageLearning.loadTranscriptTranslations(segments)).resolves.toBeUndefined();
+		}
+		records.set(id, { task: 'translate', status: 'completed', values: ['你好。', '再见。'] });
+		await expect(configuredLanguageLearning.loadTranscriptTranslations(segments)).resolves.toEqual(['你好。', '再见。']);
+
+		mocks.loadTranscriptCheckpoint.mockRejectedValue(new AiError('network'));
+		await expect(configuredLanguageLearning.loadTranscriptTranslations(segments)).resolves.toBeUndefined();
+		await expect(configuredLanguageLearning.loadJapaneseTranscriptTranslations(segments)).resolves.toBeUndefined();
+		await expect(configuredLanguageLearning.loadJapaneseReadings(['日本語'])).resolves.toBeUndefined();
+		expect(mocks.runTranscriptJob).not.toHaveBeenCalled();
+		expect(mocks.executeJob).not.toHaveBeenCalled();
+	});
+
+	test('a completed translation counts blank source segments as complete', async () => {
+		await configuredLanguageLearning.saveTranscriptTranslations(['Hello.', ''], ['你好。', '']);
+
+		await expect(configuredLanguageLearning.loadTranscriptTranslations(['Hello.', '']))
+			.resolves.toEqual(['你好。', '']);
 	});
 
 	test('clears a saved Japanese reading before explicit regeneration', async () => {
@@ -192,21 +611,24 @@ describe('Configured language learning runtime', () => {
 			{ text: '日本語', reading: 'にほんご' }
 		]]);
 		await configuredLanguageLearning.clearJapaneseReadings(segments);
-		mocks.sendMessage.mockResolvedValue({
-			success: true,
-			promptResponses: [{
-				key: 'prompt_1',
-				prompt: 'annotate',
-				user_response: '0|||[["日本語","にっぽんご"]]'
-			}]
-		});
+		mocks.executeJob.mockResolvedValue([{ id: 0, tokens: [{ text: '日本語', reading: 'にっぽんご' }] }]);
 
 		await expect(configuredLanguageLearning.annotateJapaneseTranscript(segments)).resolves.toEqual([[
 			{ text: '日本語', reading: 'にっぽんご' }
 		]]);
-		expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-			action: 'languageLearningRequest'
-		}));
+		expect(mocks.clearTranscriptCheckpoint).toHaveBeenCalledWith('reading', READINGS, [{ id: 0, text: '日本語' }]);
+		expect(requestedIds()).toEqual([[0]]);
+	});
+
+	test('regeneration also clears the job of the subset the personal dictionary leaves unresolved', async () => {
+		await configuredLanguageLearning.saveJapaneseReadingOverride('日本語', 'にほんご');
+
+		await configuredLanguageLearning.clearJapaneseReadings(['日本語です。', '漢字']);
+
+		expect(mocks.clearTranscriptCheckpoint.mock.calls).toEqual([
+			['reading', READINGS, [{ id: 0, text: '日本語です。' }, { id: 1, text: '漢字' }]],
+			['reading', READINGS, [{ id: 0, text: '漢字' }]]
+		]);
 	});
 
 	test('loads saved Japanese readings without requiring an enabled Interpreter', async () => {
@@ -217,11 +639,34 @@ describe('Configured language learning runtime', () => {
 			...settings,
 			interpreterEnabled: false
 		});
-		mocks.sendMessage.mockClear();
 
 		await expect(configuredLanguageLearning.loadJapaneseReadings(segments))
 			.resolves.toEqual(readings);
-		expect(mocks.sendMessage).not.toHaveBeenCalled();
+		expect(mocks.runTranscriptJob).not.toHaveBeenCalled();
+	});
+
+	test('saving readings is a checkpoint of the full set under the shared readings identity', async () => {
+		const segments = ['日本語', ''];
+		const readings = [[{ text: '日本語', reading: 'にほんご' }], []];
+
+		await configuredLanguageLearning.saveJapaneseReadings(segments, readings);
+
+		expect(mocks.saveTranscriptCheckpoint).toHaveBeenCalledWith(
+			'reading',
+			READINGS,
+			[{ id: 0, text: '日本語' }, { id: 1, text: '' }],
+			readings
+		);
+		await expect(configuredLanguageLearning.loadJapaneseReadings(segments)).resolves.toEqual(readings);
+	});
+
+	test('a refused or failed save stays silent', async () => {
+		mocks.saveTranscriptCheckpoint.mockRejectedValue(new AiError('network'));
+
+		await expect(configuredLanguageLearning.saveJapaneseReadings(['日本'], [[{ text: '日本', reading: 'にほん' }]]))
+			.resolves.toBeUndefined();
+		await expect(configuredLanguageLearning.saveTranscriptTranslations(['Hello.'], ['你好。']))
+			.resolves.toBeUndefined();
 	});
 
 	test('reuses personal Japanese readings without sending an AI request', async () => {
@@ -233,10 +678,53 @@ describe('Configured language learning runtime', () => {
 			{ text: '日本語', reading: 'にほんご' },
 			{ text: 'です。', reading: '' }
 		]]);
-		expect(mocks.sendMessage).not.toHaveBeenCalled();
+		expect(mocks.runTranscriptJob).not.toHaveBeenCalled();
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
 		expect(await configuredLanguageLearning.listJapaneseReadingDictionary()).toEqual([
 			expect.objectContaining({ surface: '日本語', reading: 'にほんご' })
 		]);
+	});
+
+	test('runs the reading job only on segments the dictionary leaves unresolved and merges them back', async () => {
+		await configuredLanguageLearning.saveJapaneseReadingOverride('日本語', 'にほんご');
+		mocks.executeJob.mockResolvedValue([{ id: 0, tokens: [{ text: '漢字', reading: 'かんじ' }] }]);
+		const progress: TranscriptReadingProgress[] = [];
+
+		const readings = await configuredLanguageLearning.annotateJapaneseTranscript(
+			['日本語です。', '漢字'],
+			next => progress.push(next)
+		);
+
+		expect(mocks.runTranscriptJob).toHaveBeenCalledWith(
+			'reading',
+			expect.objectContaining({ segments: [{ id: 0, text: '漢字' }], identity: READINGS }),
+			expect.anything()
+		);
+		expect(readings).toEqual([
+			[{ text: '日本語', reading: 'にほんご' }, { text: 'です。', reading: '' }],
+			[{ text: '漢字', reading: 'かんじ' }]
+		]);
+		expect(progress.map(({ readings: _readings, ...item }) => item)).toEqual([
+			{ completed: 0, total: 1, completedSegments: 1, totalSegments: 2 },
+			{ completed: 1, total: 1, completedSegments: 2, totalSegments: 2 }
+		]);
+		expect(progress[1].readings).toEqual(readings);
+	});
+
+	test('passes a retry backoff through the merged reading progress', async () => {
+		mocks.runTranscriptJob.mockImplementation(async (_task, input: { segments: TranscriptSegment[] }, options: {
+			onProgress?: (progress: unknown) => void;
+			onRetry?: (retry: unknown) => void;
+		}) => {
+			options.onProgress?.({ completedGroups: 0, totalGroups: 1, completedSegments: 0, totalSegments: 1, values: [[]] });
+			options.onRetry?.({ code: 'rate-limited', status: 429, delayMs: 4000, attempt: 1 });
+			return { status: 'completed', values: [[{ text: input.segments[0].text, reading: 'かんじ' }]] };
+		});
+		const progress: TranscriptReadingProgress[] = [];
+
+		await configuredLanguageLearning.annotateJapaneseTranscript(['漢字'], next => progress.push(next));
+
+		expect(progress[1]).toMatchObject({ completed: 0, total: 1, retry: { delayMs: 4000, attempt: 1 } });
 	});
 
 	test('stores vocabulary locally and supports copy and Obsidian note actions', async () => {
@@ -280,14 +768,7 @@ describe('Configured language learning runtime', () => {
 	});
 
 	test('sends model work through the extension background', async () => {
-		mocks.sendMessage.mockResolvedValue({
-			success: true,
-			promptResponses: [{
-				key: 'prompt_1',
-				prompt: 'explain',
-				user_response: 'encounter: 遇到'
-			}]
-		});
+		mocks.runAiTask.mockResolvedValue(aiResult('encounter: 遇到'));
 
 		const output = await configuredLanguageLearning.explainSelection({
 			kind: 'word',
@@ -296,27 +777,18 @@ describe('Configured language learning runtime', () => {
 		});
 
 		expect(output).toBe('encounter: 遇到');
-		expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-			action: 'languageLearningRequest',
-			request: {
-				context: 'Selected word: encountered\nContext: I encountered an unfamiliar word.',
-				prompts: [{
-					key: 'prompt_1',
-					prompt: 'Explain the selected word for a language learner in Simplified Chinese. Use only Simplified Chinese for all explanation text, labels, and translations. Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.'
-				}]
-			}
-		}));
+		expect(mocks.runAiTask).toHaveBeenCalledWith(
+			'explain',
+			{
+				instruction: 'Explain the selected word for a language learner in Simplified Chinese. Use only Simplified Chinese for all explanation text, labels, and translations. Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.',
+				content: 'Selected word: encountered\nContext: I encountered an unfamiliar word.'
+			},
+			expect.objectContaining({ signal: undefined })
+		);
 	});
 
-		test('sends Japanese reading work through the extension background', async () => {
-		mocks.sendMessage.mockResolvedValue({
-			success: true,
-			promptResponses: [{
-				key: 'prompt_1',
-				prompt: 'annotate',
-				user_response: '0|||[{"text":"日本語","reading":"にほんご"}]'
-			}]
-		});
+	test('sends Japanese reading work through the background job', async () => {
+		mocks.executeJob.mockResolvedValue([{ id: 0, tokens: [{ text: '日本語', reading: 'にほんご' }] }]);
 
 		const progress: TranscriptReadingProgress[] = [];
 		const output = await configuredLanguageLearning.annotateJapaneseTranscript(
@@ -330,279 +802,177 @@ describe('Configured language learning runtime', () => {
 			{ completed: 1, total: 1, completedSegments: 1, totalSegments: 1 }
 		]);
 		expect(progress[1].readings).toEqual([[{ text: '日本語', reading: 'にほんご' }]]);
-		expect(mocks.storageSessionSet).toHaveBeenCalled();
-		expect(mocks.sendMessage).toHaveBeenCalledWith({
-			action: 'languageLearningRequest',
-			requestId: expect.any(String),
-			request: expect.objectContaining({
-				context: 'Annotate Japanese transcript segments with aligned ruby readings.'
-			})
-		});
-	});
-
-	test('uses smaller Japanese reading batches for local CLI execution', async () => {
-		mocks.loadSettings.mockResolvedValue({
-			...settings,
-			interpreterExecutionMode: 'grok'
-		});
-		const segmentA = '日'.repeat(800);
-		const segmentB = '本'.repeat(800);
-		mocks.sendMessage.mockImplementation((message: {
-			action: string;
-			request?: { prompts: Array<{ prompt: string }> };
-		}) => {
-			if (message.action !== 'languageLearningRequest' || !message.request) {
-				return Promise.resolve({ success: true });
-			}
-			const prompt = message.request.prompts[0].prompt;
-			const segmentId = prompt.includes('0|||') ? 0 : 1;
-			const text = segmentId === 0 ? segmentA : segmentB;
-			return Promise.resolve({
-				success: true,
-				promptResponses: [{
-					key: 'prompt_1',
-					prompt,
-					user_response: `${segmentId}|||[{"text":"${text}","reading":"ひ"}]`
-				}]
-			});
-		});
-		const progress: TranscriptReadingProgress[] = [];
-
-		const output = await configuredLanguageLearning.annotateJapaneseTranscript(
-			[segmentA, segmentB],
-			next => progress.push(next)
+		expect(mocks.runTranscriptJob).toHaveBeenCalledWith(
+			'reading',
+			{
+				instruction: expect.stringContaining('Annotate each Japanese transcript segment'),
+				segments: [{ id: 0, text: '日本語' }],
+				identity: READINGS
+			},
+			expect.anything()
 		);
-
-		expect(output.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([800, 800]);
-		expect(output.map(tokens => tokens[0]?.reading ?? '')).toEqual(['ひ', 'ひ']);
-		expect(progress.map(({ readings: _readings, ...item }) => item)).toEqual([
-			{ completed: 0, total: 2, completedSegments: 0, totalSegments: 2 },
-			{ completed: 1, total: 2, completedSegments: 1, totalSegments: 2 },
-			{ completed: 2, total: 2, completedSegments: 2, totalSegments: 2 }
-		]);
-		expect(mocks.sendMessage).toHaveBeenCalledTimes(2);
+		expect(mocks.runAiTask).not.toHaveBeenCalled();
 	});
 
-	test('keeps the larger Japanese reading batch for Codex CLI', async () => {
-		mocks.loadSettings.mockResolvedValue({
-			...settings,
-			interpreterExecutionMode: 'codex'
-		});
-		const segments = ['日'.repeat(800), '本'.repeat(800)];
-		mocks.sendMessage.mockImplementation((message: {
-			action: string;
-			request?: { prompts: Array<{ prompt: string }> };
-		}) => {
-			if (message.action !== 'languageLearningRequest' || !message.request) {
-				return Promise.resolve({ success: true });
-			}
-			const prompt = message.request.prompts[0].prompt;
-			return Promise.resolve({
-				success: true,
-				promptResponses: [{
-					key: 'prompt_1',
-					prompt,
-					user_response: segments.map((segment, index) => (
-						`${index}|||[["${segment}","ひ"]]`
-					)).join('\n')
-				}]
-			});
-		});
+	test('a CLI timeout after automatic splits asks the learner to continue the remaining batches', async () => {
+		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterExecutionMode: 'codex' });
+		mocks.executeJob.mockRejectedValue(withJobAttempts(cliTimeout('codex', 300), { requests: 4, retries: 0, splits: 3 }));
 
-		const output = await configuredLanguageLearning.annotateJapaneseTranscript(segments);
-
-		expect(output.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([800, 800]);
-		expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
-		expect(mocks.sendMessage.mock.calls[0][0].request.prompts[0].prompt)
-			.toContain('0|||');
-		expect(mocks.sendMessage.mock.calls[0][0].request.prompts[0].prompt)
-			.toContain('1|||');
+		const translation = await configuredLanguageLearning.translateTranscript(['always fails']).catch(caught => caught);
+		expect(translation).toBeInstanceOf(AiError);
+		expect(translation).toMatchObject({
+			code: 'timeout',
+			retryable: true,
+			recovery: 'continue-remaining',
+			nativeCode: 'timeout',
+			timeoutSeconds: 300,
+			detail: 'codex CLI timed out after 300 seconds.',
+			task: 'translate'
+		});
+		await expect(configuredLanguageLearning.annotateJapaneseTranscript(['漢字']))
+			.rejects.toMatchObject({ code: 'timeout', recovery: 'continue-remaining', task: 'reading' });
 	});
 
-	test('reduces Japanese reading batch size on explicit retry after a Grok timeout', async () => {
-		mocks.loadSettings.mockResolvedValue({
-			...settings,
-			interpreterExecutionMode: 'grok'
-		});
-		const segments = ['日'.repeat(500), '本'.repeat(500)];
-		const requestedPrompts: string[] = [];
-		mocks.sendMessage.mockImplementation((message: {
-			action: string;
-			request?: { prompts: Array<{ prompt: string }> };
-		}) => {
-			if (message.action !== 'languageLearningRequest' || !message.request) {
-				return Promise.resolve({ success: true });
-			}
-			const prompt = message.request.prompts[0].prompt;
-			requestedPrompts.push(prompt);
-			if (prompt.includes('0|||') && prompt.includes('1|||')) {
-				return Promise.reject(new Error('grok CLI timed out after 120 seconds.'));
-			}
-			const index = prompt.includes('0|||') ? 0 : 1;
-			return Promise.resolve({
-				success: true,
-				promptResponses: [{
-					key: 'prompt_1',
-					prompt,
-					user_response: `${index}|||[["${segments[index]}","ひ"]]`
-				}]
-			});
-		});
+	test('a CLI timeout without splits stays a plain timeout', async () => {
+		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterExecutionMode: 'grok' });
+		mocks.executeJob.mockRejectedValue(withJobAttempts(cliTimeout('grok', 120), { requests: 1, retries: 0, splits: 0 }));
 
-		await expect(configuredLanguageLearning.annotateJapaneseTranscript(segments))
-			.rejects.toThrow(/grok CLI timed out after 120 seconds.*readerJapaneseReadingsTimeoutRetry/);
-		const readings = await configuredLanguageLearning.annotateJapaneseTranscript(segments);
+		const error = await configuredLanguageLearning.annotateJapaneseTranscript(['漢字']).catch(caught => caught);
 
-		expect(readings.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([500, 500]);
-		expect(requestedPrompts).toHaveLength(3);
-		expect(requestedPrompts[1]).toContain('0|||');
-		expect(requestedPrompts[1]).not.toContain('1|||');
-		expect(requestedPrompts[2]).toContain('1|||');
-		expect(requestedPrompts[2]).not.toContain('0|||');
+		expect(error).toBeInstanceOf(AiError);
+		expect(error).toMatchObject({ code: 'timeout', nativeCode: 'timeout', timeoutSeconds: 120, task: 'reading' });
+		expect(error).not.toHaveProperty('recovery');
 	});
 
-	test('retries only Japanese reading segments missing after a failed batch', async () => {
-		mocks.loadSettings.mockResolvedValue({
-			...settings,
-			interpreterExecutionMode: 'grok'
-		});
-		const segments = [
-			'日'.repeat(500),
-			'本'.repeat(500),
-			'語'.repeat(500)
-		];
-		const requestedPrompts: string[] = [];
-		mocks.sendMessage.mockImplementation((message: {
-			action: string;
-			request?: { prompts: Array<{ prompt: string }> };
-		}) => {
-			if (message.action !== 'languageLearningRequest' || !message.request) {
-				return Promise.resolve({ success: true });
-			}
-			const prompt = message.request.prompts[0].prompt;
-			requestedPrompts.push(prompt);
-			if (requestedPrompts.length === 2) {
-				return Promise.reject(new Error('grok CLI timed out'));
-			}
-			const ids = requestedPrompts.length === 3
-				? [0, 2]
-				: prompt.includes('0|||') ? [0, 1] : [2];
-			return Promise.resolve({
-				success: true,
-				promptResponses: [{
-					key: 'prompt_1',
-					prompt,
-					user_response: ids.map(index => (
-						`${index}|||[["${segments[index]}","${index === 0 && requestedPrompts.length === 3 ? 'にゅー' : 'ひ'}"]]`
-					)).join('\n')
-				}]
-			});
-		});
+	test('an API timeout of a transcript job is not mapped to a batch failure', async () => {
+		mocks.executeJob.mockRejectedValue(withJobAttempts(
+			new AiError('timeout', { detail: 'provider timed out' }),
+			{ requests: 1, retries: 0, splits: 0 }
+		));
 
-		await expect(configuredLanguageLearning.annotateJapaneseTranscript(segments))
-			.rejects.toThrow('grok CLI timed out');
-		const retryProgress: TranscriptReadingProgress[] = [];
-		const readings = await configuredLanguageLearning.annotateJapaneseTranscript(
-			segments,
-			next => retryProgress.push(next)
-		);
-
-		expect(readings.map(tokens => tokens[0]?.text.length ?? 0)).toEqual([500, 500, 500]);
-		expect(requestedPrompts).toHaveLength(3);
-		expect(requestedPrompts[0]).toContain('0|||');
-		expect(requestedPrompts[1]).toContain('2|||');
-		expect(requestedPrompts[2]).toContain('2|||');
-		expect(requestedPrompts[2]).not.toContain('0|||');
-		expect(readings[0][0].reading).toBe('ひ');
-		expect(retryProgress.map(({ readings: _readings, ...item }) => item)).toEqual([
-			{ completed: 0, total: 1, completedSegments: 2, totalSegments: 3 },
-			{ completed: 1, total: 1, completedSegments: 3, totalSegments: 3 }
-		]);
+		const error = await configuredLanguageLearning.translateTranscript(['A']).catch(caught => caught);
+		expect(error).toMatchObject({ code: 'timeout', detail: 'provider timed out', task: 'translate' });
+		expect(error).not.toHaveProperty('recovery');
 	});
 
-	test('persists completed translation batches and retries only missing segments', async () => {
-		const segments = ['A'.repeat(3500), 'B'.repeat(3500)];
-		const requestedPrompts: string[] = [];
-		mocks.sendMessage.mockImplementation((message: {
-			action: string;
-			request?: { prompts: Array<{ prompt: string }> };
-		}) => {
-			if (message.action !== 'languageLearningRequest' || !message.request) {
-				return Promise.resolve({ success: true });
-			}
-			const prompt = message.request.prompts[0].prompt;
-			requestedPrompts.push(prompt);
-			if (requestedPrompts.length === 2) {
-				return Promise.reject(new Error('provider timed out'));
-			}
-			const index = prompt.includes('0|||') ? 0 : 1;
-			return Promise.resolve({
-				success: true,
-				promptResponses: [{
-					key: 'prompt_1',
-					prompt,
-					user_response: `${index}|||${index === 0 ? '第一段' : '第二段'}`
-				}]
-			});
-		});
+	test('a cancelled transcript job rejects with cancelled', async () => {
+		mocks.executeJob.mockRejectedValue(new AiError('cancelled'));
 
-		await expect(configuredLanguageLearning.translateTranscript(segments))
-			.rejects.toThrow('provider timed out');
-		const translations = await configuredLanguageLearning.translateTranscript(segments);
-
-		expect(translations).toEqual(['第一段', '第二段']);
-		expect(requestedPrompts).toHaveLength(3);
-		expect(requestedPrompts[2]).not.toContain('0|||');
-		expect(requestedPrompts[2]).toContain('1|||');
-		expect(mocks.storageSessionSet).toHaveBeenCalled();
+		await expect(configuredLanguageLearning.translateTranscript(['A'])).rejects.toMatchObject({ code: 'cancelled', task: 'translate' });
 	});
 
-	test('sends a cancellation message when an active request is aborted', async () => {
+	test('passes the abort signal to the AI gateway and surfaces cancellation', async () => {
 		const abortController = new AbortController();
-		let resolveRequest: ((response: unknown) => void) | undefined;
-		mocks.sendMessage.mockImplementation((message: { action: string }) => {
-			if (message.action === 'languageLearningCancel') return Promise.resolve({ success: true });
-			return new Promise(resolve => { resolveRequest = resolve; });
-		});
+		mocks.runAiTask.mockImplementation((
+			_task: string,
+			_input: unknown,
+			options?: { signal?: AbortSignal }
+		) => new Promise((_resolve, reject) => {
+			options?.signal?.addEventListener('abort', () => reject(new AiError('cancelled')));
+		}));
 
 		const request = configuredLanguageLearning.explainSelection({
 			kind: 'word',
 			text: 'encountered',
 			context: 'I encountered an unfamiliar word.'
 		}, abortController.signal);
-		await vi.waitFor(() => expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-			action: 'languageLearningRequest'
-		})));
+		await vi.waitFor(() => expect(mocks.runAiTask).toHaveBeenCalledWith(
+			'explain',
+			expect.anything(),
+			expect.objectContaining({ signal: abortController.signal })
+		));
 		abortController.abort();
 
-		await expect(request).rejects.toThrow('cancelled');
-		expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-			action: 'languageLearningCancel',
-			requestId: expect.any(String)
-		}));
-		resolveRequest?.({ success: false });
+		await expect(request).rejects.toMatchObject({ code: 'cancelled', task: 'explain' });
 	});
 
-	test('preserves structured CLI errors for localized Reader recovery', async () => {
+	test('surfaces a gateway cancellation as cancelled', async () => {
+		mocks.runAiTask.mockRejectedValue(new AiError('cancelled'));
+
+		await expect(configuredLanguageLearning.explainSelection({
+			kind: 'word',
+			text: 'encountered',
+			context: 'I encountered an unfamiliar word.'
+		})).rejects.toMatchObject({ code: 'cancelled' });
+	});
+
+	test('passes gateway errors through as AiError with their detail, tagged with the request', async () => {
+		mocks.runAiTask.mockRejectedValue(new AiError('auth', { status: 401, detail: 'invalid key' }));
+
+		const error = await configuredLanguageLearning.explainSelection({
+			kind: 'word',
+			text: 'encountered',
+			context: 'I encountered an unfamiliar word.'
+		}).catch(caught => caught);
+
+		expect(error).toBeInstanceOf(AiError);
+		expect(error).toMatchObject({
+			code: 'auth',
+			status: 401,
+			retryable: false,
+			detail: 'invalid key',
+			task: 'explain'
+		});
+	});
+
+	test('preserves structured CLI errors for the Reader card', async () => {
 		mocks.loadSettings.mockResolvedValue({
 			...settings,
 			interpreterExecutionMode: 'grok'
 		});
-		mocks.sendMessage.mockResolvedValue({
-			success: false,
-			error: 'grok CLI timed out after 120 seconds.',
-			errorCode: 'timeout',
-			errorDetails: { mode: 'grok', timeoutSeconds: 120 }
-		});
+		mocks.runAiTask.mockRejectedValue(cliTimeout('grok', 120));
 
 		await expect(configuredLanguageLearning.explainSelection({
 			kind: 'word',
 			text: '日本語',
 			context: '日本語を勉強します。'
 		})).rejects.toMatchObject({
-			name: 'LanguageLearningRequestError',
+			name: 'AiError',
 			code: 'timeout',
-			details: { mode: 'grok', timeoutSeconds: 120 }
+			nativeCode: 'timeout',
+			timeoutSeconds: 120,
+			task: 'explain'
+		});
+	});
+
+	test.each([
+		['cli-failed', 'provider-error'],
+		['config', 'cli-missing'],
+		['response-too-large', 'bad-response'],
+		['invalid', 'provider-error'],
+		['protocol-mismatch', 'host-outdated']
+	])('keeps the Host %s code on the AiError', async (nativeCode, aiCode) => {
+		mocks.loadSettings.mockResolvedValue({ ...settings, interpreterExecutionMode: 'codex' });
+		mocks.runAiTask.mockRejectedValue(new AiError(aiCode as never, { nativeCode, detail: 'Host said no' }));
+
+		await expect(configuredLanguageLearning.explainSelection({
+			kind: 'word',
+			text: '日本語',
+			context: '日本語を勉強します。'
+		})).rejects.toMatchObject({
+			name: 'AiError',
+			code: aiCode,
+			nativeCode,
+			detail: 'Host said no',
+			task: 'explain'
+		});
+	});
+
+	test('reports API timeouts as timeout errors with their limit', async () => {
+		mocks.runAiTask.mockRejectedValue(new AiError('timeout', {
+			detail: 'No response from the provider for 60 seconds.',
+			timeoutSeconds: 60
+		}));
+
+		await expect(configuredLanguageLearning.explainSelection({
+			kind: 'word',
+			text: '日本語',
+			context: '日本語を勉強します。'
+		})).rejects.toMatchObject({
+			code: 'timeout',
+			timeoutSeconds: 60,
+			detail: 'No response from the provider for 60 seconds.',
+			task: 'explain'
 		});
 	});
 });

@@ -10,8 +10,8 @@ const lazyChunks = [
 	'reader-language-learning.js',
 	'reader-markdown.js',
 	'reader-syntax-highlighting.js',
-	'settings-interpreter.js',
-	'src_utils_language-learning-runtime_ts.js',
+	'settings-ai.js',
+	'language-learning-runtime.js',
 	'vendors-node_modules_defuddle_dist_index_full_js.js'
 ];
 
@@ -24,7 +24,9 @@ function requireFile(filePath) {
 
 for (const outputDirectory of outputDirectories) {
 	const output = path.join(root, outputDirectory);
-	for (const chunk of lazyChunks) requireFile(path.join(output, 'chunks', chunk));
+	for (const chunk of lazyChunks) {
+		requireFile(path.join(output, 'chunks', chunk));
+	}
 
 	for (const entry of ['popup.js', 'settings.js', 'reader-page.js', 'reader-script.js']) {
 		const source = requireFile(path.join(output, entry));
@@ -47,6 +49,20 @@ for (const outputDirectory of outputDirectories) {
 	}
 	if (!resources.includes('_locales/*/messages.json')) {
 		throw new Error(`${outputDirectory}/manifest.json does not expose runtime locale messages.`);
+	}
+}
+
+const localInstallMetadata = JSON.parse(requireFile(path.join(root, 'dist', 'native-host-install.json')));
+if (
+	typeof localInstallMetadata.workspaceRoot !== 'string'
+	|| !path.isAbsolute(localInstallMetadata.workspaceRoot)
+	|| !existsSync(path.join(localInstallMetadata.workspaceRoot, 'package.json'))
+) {
+	throw new Error('dist/native-host-install.json does not identify the local source root.');
+}
+for (const outputDirectory of ['dist_firefox', 'dist_safari']) {
+	if (existsSync(path.join(root, outputDirectory, 'native-host-install.json'))) {
+		throw new Error(`${outputDirectory} must not contain Chrome local-install metadata.`);
 	}
 }
 

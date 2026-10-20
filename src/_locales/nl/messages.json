@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "Activiteit"
 	},
-	"addModel": {
-		"message": "+ Model toevoegen"
-	},
-	"addModelTitle": {
-		"message": "Model toevoegen"
-	},
 	"addProperty": {
 		"message": "+ Eigenschap toevoegen"
-	},
-	"addProvider": {
-		"message": "+ Provider toevoegen"
-	},
-	"addProviderTitle": {
-		"message": "Provider toevoegen"
 	},
 	"addToObsidian": {
 		"message": "Toevoegen aan Obsidian"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "Toon je opgeslagen markeringen wanneer je een pagina laadt. Schakel uit om markeringen alleen te tonen wanneer de markeerder actief is."
-	},
-	"apiKeyMissing": {
-		"message": "Geen API-sleutel"
 	},
 	"apiKeysWarning": {
 		"message": "Door een externe provider te gebruiken ga je akkoord met hun voorwaarden en privacybeleid. Interpreter-verzoeken worden direct naar de provider van jouw keuze gestuurd. Obsidian verzamelt of bewaart geen gegevens over je verzoeken."
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "Annuleren"
-	},
-	"cannotDeleteProvider": {
-		"message": "Kan provider \"$1\" niet verwijderen omdat deze wordt gebruikt door $2 model(len)."
 	},
 	"changelog": {
 		"message": "Wijzigingslogboek"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "Alle markeringen voor deze pagina verwijderen?"
 	},
-	"deleteModelConfirm": {
-		"message": "Weet je zeker dat je dit model wilt verwijderen?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Weet je zeker dat je deze provider wilt verwijderen?"
-	},
 	"disableHighlighter": {
 		"message": "Markeerder uitschakelen"
 	},
@@ -212,12 +188,6 @@
 	"edit": {
 		"message": "Bewerken"
 	},
-	"editModel": {
-		"message": "Model bewerken"
-	},
-	"editProvider": {
-		"message": "Provider bewerken"
-	},
 	"editTemplate": {
 		"message": "Sjabloon bewerken"
 	},
@@ -226,26 +196,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Markeer inhoud op webpagina's die je kunt opslaan in Obsidian."
-	},
-	"enableInterpreter": {
-		"message": "Interpreter inschakelen"
-	},
-	"enableInterpreterDescription": {
-		"message": "Gebruik natuurlijke taal om gegevens uit pagina's te halen. Je kunt bijvoorbeeld de sjabloonsyntax $strong_start${{\"een samenvatting van de pagina\"}}$strong_end$ gebruiken. Vereist een API-sleutel of aangepast model hieronder geconfigureerd. $link_start$Meer informatie$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Open leesweergave"
@@ -318,9 +268,6 @@
 	"failedToProcessInterpreter": {
 		"message": "Interpreter verwerking mislukt. Probeer het opnieuw."
 	},
-	"failedToResetProviders": {
-		"message": "Resetten van providers en modellen mislukt"
-	},
 	"failedToResetTemplate": {
 		"message": "Standaard sjabloon resetten mislukt. Probeer het opnieuw."
 	},
@@ -329,9 +276,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Bestand opslaan mislukt"
-	},
-	"failedToSaveProvider": {
-		"message": "Provider opslaan mislukt. Probeer het opnieuw."
 	},
 	"feedback": {
 		"message": "Feedback"
@@ -478,24 +422,6 @@
 	"modelName": {
 		"message": "Modelnaam"
 	},
-	"modelNameDescription": {
-		"message": "De naam van het model dat je wilt weergeven in de interface."
-	},
-	"modelProvider": {
-		"message": "Provider"
-	},
-	"modelProviderDescription": {
-		"message": "De provider van het model, bijvoorbeeld Ollama, OpenRouter, Google, etc."
-	},
-	"modelProviderPlaceholder": {
-		"message": "Provider"
-	},
-	"modelRequiredFields": {
-		"message": "Modelnaam, Provider en Model-ID zijn verplicht."
-	},
-	"models": {
-		"message": "Modellen"
-	},
 	"modelsListFor": {
 		"message": "Modellenlijst voor $1"
 	},
@@ -600,12 +526,6 @@
 	"pleaseReload": {
 		"message": "Probeer de pagina opnieuw te laden."
 	},
-	"popularModels": {
-		"message": "Populaire modellen"
-	},
-	"popularModelsDescription": {
-		"message": "Kies uit veelgebruikte modellen of voer aangepaste modeldetails in."
-	},
 	"popup": {
 		"message": "Pop-up"
 	},
@@ -651,47 +571,14 @@
 	"propertyValue": {
 		"message": "Eigenschapwaarde"
 	},
-	"provider": {
-		"message": "Provider"
-	},
 	"providerApiKey": {
 		"message": "API-sleutel"
-	},
-	"providerApiKeyDescription": {
-		"message": "Je API-sleutel voor deze provider."
 	},
 	"providerBaseUrl": {
 		"message": "Basis-URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "De API-endpoint URL voor deze provider."
-	},
 	"providerModelId": {
 		"message": "Model-ID"
-	},
-	"providerModelIdDescription": {
-		"message": "De identifier van het model van je provider. Meestal een korte naam zonder spaties."
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Model-ID"
-	},
-	"providerName": {
-		"message": "Providernaam"
-	},
-	"providerNameDescription": {
-		"message": "Weergavenaam voor deze provider."
-	},
-	"providerPreset": {
-		"message": "Voorinstelling"
-	},
-	"providerPresetDescription": {
-		"message": "Kies een provider of maak een aangepaste aan."
-	},
-	"providerRequiredFields": {
-		"message": "Providernaam en basis-URL zijn verplicht."
-	},
-	"providers": {
-		"message": "Providers"
 	},
 	"rateExtensionDescription": {
 		"message": "Geniet u van Web Clipper? Help ons door het een beoordeling te geven."
@@ -849,9 +736,6 @@
 	"readerViewFullSize": {
 		"message": "Op volledige grootte bekijken"
 	},
-	"recommended": {
-		"message": "aanbevolen"
-	},
 	"refresh": {
 		"message": "Vernieuwen"
 	},
@@ -882,12 +766,6 @@
 	"resetDefaultTemplateDescription": {
 		"message": "Verwijder alle wijzigingen die je hebt aangebracht aan het standaard sjabloon."
 	},
-	"resetProvidersAndModels": {
-		"message": "Standaardmodellen resetten"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Reset providers en modellen naar de standaardinstellingen."
-	},
 	"save": {
 		"message": "Opslaan"
 	},
@@ -905,9 +783,6 @@
 	},
 	"searchVariables": {
 		"message": "Zoek variabelen..."
-	},
-	"selectProvider": {
-		"message": "Selecteer een provider"
 	},
 	"selectTemplateToExport": {
 		"message": "Selecteer een sjabloon om te exporteren."
@@ -1028,9 +903,6 @@
 	},
 	"thinking": {
 		"message": "nadenken"
-	},
-	"unknownProvider": {
-		"message": "Onbekende provider"
 	},
 	"updateAvailable": {
 		"message": "Er is een update beschikbaar."

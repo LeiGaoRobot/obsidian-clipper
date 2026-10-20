@@ -178,9 +178,24 @@ label {
 	}
 }
 
-.native-cli-health-status {
-	min-height: 1.25em;
-	word-break: break-word;
+.native-cli-install-guide {
+	margin-top: 0.75rem;
+}
+
+.native-cli-install-command {
+	display: block;
+	padding: 0.5rem 0.625rem;
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-smaller);
+	overflow-wrap: anywhere;
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+.native-cli-install-status {
+	margin-top: 0.5rem;
 	&:empty {
 		display: none;
 	}
@@ -537,43 +552,6 @@ label {
 	color: var(--text-error, #e93147);
 	margin-top: 4px;
 	display: block;
-}
-
-.language-learning-readiness {
-	margin: 0 0 1rem;
-	padding: 12px 16px;
-	background: color-mix(in srgb, var(--interactive-accent) 6%, var(--background-primary));
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
-
-	summary {
-		font-weight: 600;
-		color: var(--text-normal);
-		cursor: pointer;
-	}
-
-	p {
-		margin: 10px 0;
-		color: var(--text-muted);
-		font-size: var(--font-ui-small);
-	}
-}
-
-.language-learning-readiness-step {
-	margin: 7px 0;
-	color: var(--text-muted);
-	&::marker { font-weight: 600; }
-	&.is-ready { color: var(--text-success); }
-	&.is-error { color: var(--text-error); }
-	&.is-pending { color: var(--text-warning); }
-}
-
-.language-learning-readiness-actions {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 8px;
-	margin: 12px 0 8px;
 }
 
 .setting-item-stacked {

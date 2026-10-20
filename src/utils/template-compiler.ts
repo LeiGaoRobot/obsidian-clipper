@@ -15,6 +15,18 @@ import { processPrompt } from './variables/prompt';
  */
 export type SelectorProcessor = (match: string, currentUrl: string) => Promise<string>;
 
+export interface CompileTemplateOptions {
+	/**
+	 * Keep `{{"…"}}` prompt variables in the output, for a caller that fills them afterwards (the
+	 * popup Interpreter, the CLI's `--execution-mode`). By default they compile to nothing.
+	 */
+	keepPromptVariables?: boolean;
+	/** Async resolver override (defaults to the browser selector resolver). */
+	asyncResolver?: AsyncResolver;
+	/** Selector processor override for post-processing. */
+	selectorProcessor?: SelectorProcessor;
+}
+
 /**
  * Main function to compile a template with the given variables.
  *
@@ -22,8 +34,7 @@ export type SelectorProcessor = (match: string, currentUrl: string) => Promise<s
  * @param text - Template string to compile
  * @param variables - Variables available in the template
  * @param currentUrl - Current page URL for filter processing
- * @param customAsyncResolver - Optional async resolver override (defaults to browser selector resolver)
- * @param customSelectorProcessor - Optional selector processor override for post-processing
+ * @param options - Prompt-variable handling and resolver overrides
  * @returns Compiled template string
  */
 export async function compileTemplate(
@@ -31,9 +42,9 @@ export async function compileTemplate(
 	text: string,
 	variables: { [key: string]: any },
 	currentUrl: string,
-	customAsyncResolver?: AsyncResolver,
-	customSelectorProcessor?: SelectorProcessor
+	options: CompileTemplateOptions = {}
 ): Promise<string> {
+	const { asyncResolver: customAsyncResolver } = options;
 	// Strip text fragment from URL
 	currentUrl = currentUrl.replace(/#:~:text=[^&]+(&|$)/, '');
 
@@ -70,7 +81,7 @@ export async function compileTemplate(
 
 	// Post-process: handle special variable types that weren't processed by the renderer
 	// The renderer handles basic variables, but special prefixes need custom processing
-	const processedText = await processVariables(tabId, result.output, variables, currentUrl, customSelectorProcessor);
+	const processedText = await processVariables(tabId, result.output, variables, currentUrl, options);
 
 	return processedText;
 }
@@ -87,7 +98,7 @@ export async function processVariables(
 	text: string,
 	variables: { [key: string]: any },
 	currentUrl: string,
-	customSelectorProcessor?: SelectorProcessor
+	{ keepPromptVariables = false, selectorProcessor: customSelectorProcessor }: CompileTemplateOptions = {}
 ): Promise<string> {
 	const regex = /{{([\s\S]*?)}}/g;
 	let result = text;
@@ -108,7 +119,7 @@ export async function processVariables(
 		} else if (trimmedMatch.startsWith('schema:')) {
 			replacement = await processSchema(fullMatch, variables, currentUrl);
 		} else if (trimmedMatch.startsWith('"') || trimmedMatch.startsWith('prompt:')) {
-			replacement = await processPrompt(fullMatch, variables, currentUrl);
+			replacement = processPrompt(fullMatch, keepPromptVariables);
 		} else {
 			replacement = await processSimpleVariable(trimmedMatch, variables, currentUrl);
 		}

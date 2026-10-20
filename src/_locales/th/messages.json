@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "กิจกรรม"
 	},
-	"addModel": {
-		"message": "+ เพิ่มโมเดล"
-	},
-	"addModelTitle": {
-		"message": "เพิ่มโมเดล"
-	},
 	"addProperty": {
 		"message": "+ เพิ่มคุณสมบัติ"
-	},
-	"addProvider": {
-		"message": "+ เพิ่มผู้ให้บริการ"
-	},
-	"addProviderTitle": {
-		"message": "เพิ่มผู้ให้บริการ"
 	},
 	"addToObsidian": {
 		"message": "เพิ่มไปยัง Obsidian"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "แสดงไฮไลต์ที่บันทึกไว้เมื่อโหลดหน้า ปิดเพื่อแสดงไฮไลต์เฉพาะเมื่อเปิดใช้งานโหมดไฮไลต์"
-	},
-	"apiKeyMissing": {
-		"message": "ไม่มีคีย์ API"
 	},
 	"apiKeysWarning": {
 		"message": "การใช้ผู้ให้บริการภายนอกถือว่าคุณยอมรับข้อกำหนดและนโยบายความเป็นส่วนตัวของพวกเขา คำขอตัวแปลจะถูกส่งตรงไปยังผู้ให้บริการที่คุณเลือก Obsidian ไม่ได้เก็บรวบรวมหรือจัดเก็บข้อมูลใดๆ เกี่ยวกับคำขอของคุณ"
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "ยกเลิก"
-	},
-	"cannotDeleteProvider": {
-		"message": "ไม่สามารถลบผู้ให้บริการ \"$1\" เนื่องจากถูกใช้โดย $2 โมเดล"
 	},
 	"changelog": {
 		"message": "บันทึกการเปลี่ยนแปลง"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "ลบไฮไลต์ทั้งหมดสำหรับหน้านี้?"
 	},
-	"deleteModelConfirm": {
-		"message": "คุณแน่ใจหรือไม่ว่าต้องการลบโมเดลนี้?"
-	},
-	"deleteProviderConfirm": {
-		"message": "คุณแน่ใจหรือไม่ว่าต้องการลบผู้ให้บริการนี้?"
-	},
 	"disableHighlighter": {
 		"message": "ปิดใช้งานไฮไลต์"
 	},
@@ -212,12 +188,6 @@
 	"edit": {
 		"message": "แก้ไข"
 	},
-	"editModel": {
-		"message": "แก้ไขโมเดล"
-	},
-	"editProvider": {
-		"message": "แก้ไขผู้ให้บริการ"
-	},
 	"editTemplate": {
 		"message": "แก้ไขเทมเพลต"
 	},
@@ -226,26 +196,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "ไฮไลต์เนื้อหาบนหน้าเว็บที่คุณสามารถบันทึกไปยัง Obsidian"
-	},
-	"enableInterpreter": {
-		"message": "เปิดใช้งานตัวแปล"
-	},
-	"enableInterpreterDescription": {
-		"message": "ใช้ภาษาธรรมชาติเพื่อดึงข้อมูลจากหน้า ตัวอย่างเช่น คุณสามารถใช้ไวยากรณ์เทมเพลต $strong_start${{\"สรุปของหน้านี้\"}}$strong_end$ ต้องใช้คีย์ API หรือกำหนดค่าโมเดลที่กำหนดเองด้านล่าง $link_start$เรียนรู้เพิ่มเติม$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "เปิดมุมมองการอ่าน"
@@ -318,9 +268,6 @@
 	"failedToProcessInterpreter": {
 		"message": "การประมวลผลตัวแปลล้มเหลว ลองอีกครั้ง"
 	},
-	"failedToResetProviders": {
-		"message": "ไม่สามารถรีเซ็ตผู้ให้บริการและโมเดล"
-	},
 	"failedToResetTemplate": {
 		"message": "ไม่สามารถรีเซ็ตเทมเพลตเริ่มต้น ลองอีกครั้ง"
 	},
@@ -329,9 +276,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "ไม่สามารถบันทึกไฟล์"
-	},
-	"failedToSaveProvider": {
-		"message": "ไม่สามารถบันทึกผู้ให้บริการ ลองอีกครั้ง"
 	},
 	"feedback": {
 		"message": "ข้อเสนอแนะ"
@@ -478,24 +422,6 @@
 	"modelName": {
 		"message": "ชื่อที่แสดง"
 	},
-	"modelNameDescription": {
-		"message": "ชื่อของโมเดลที่คุณต้องการแสดงในอินเทอร์เฟซ"
-	},
-	"modelProvider": {
-		"message": "ผู้ให้บริการ"
-	},
-	"modelProviderDescription": {
-		"message": "เลือกผู้ให้บริการสำหรับโมเดลนี้"
-	},
-	"modelProviderPlaceholder": {
-		"message": "ผู้ให้บริการ"
-	},
-	"modelRequiredFields": {
-		"message": "ต้องระบุชื่อโมเดล ผู้ให้บริการ และ ID โมเดล"
-	},
-	"models": {
-		"message": "โมเดล"
-	},
 	"modelsListFor": {
 		"message": "รายการโมเดลสำหรับ $1"
 	},
@@ -600,12 +526,6 @@
 	"pleaseReload": {
 		"message": "โปรดลองโหลดหน้าใหม่"
 	},
-	"popularModels": {
-		"message": "โมเดลยอดนิยม"
-	},
-	"popularModelsDescription": {
-		"message": "เลือกจากโมเดลที่ใช้บ่อยหรือป้อนรายละเอียดโมเดลที่กำหนดเอง"
-	},
 	"popup": {
 		"message": "ป๊อปอัป"
 	},
@@ -651,47 +571,14 @@
 	"propertyValue": {
 		"message": "ค่าคุณสมบัติ"
 	},
-	"provider": {
-		"message": "ผู้ให้บริการ"
-	},
 	"providerApiKey": {
 		"message": "คีย์ API"
-	},
-	"providerApiKeyDescription": {
-		"message": "คีย์ API ของคุณสำหรับผู้ให้บริการนี้"
 	},
 	"providerBaseUrl": {
 		"message": "URL พื้นฐาน"
 	},
-	"providerBaseUrlDescription": {
-		"message": "URL จุดสิ้นสุด API สำหรับผู้ให้บริการนี้"
-	},
 	"providerModelId": {
 		"message": "ID โมเดล"
-	},
-	"providerModelIdDescription": {
-		"message": "ตัวระบุของโมเดลจากผู้ให้บริการของคุณ โดยทั่วไปเป็นชื่อสั้นๆ ที่ไม่มีช่องว่าง"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID โมเดล"
-	},
-	"providerName": {
-		"message": "ชื่อผู้ให้บริการ"
-	},
-	"providerNameDescription": {
-		"message": "ชื่อที่แสดงสำหรับผู้ให้บริการนี้"
-	},
-	"providerPreset": {
-		"message": "ค่าที่ตั้งไว้ล่วงหน้า"
-	},
-	"providerPresetDescription": {
-		"message": "เลือกผู้ให้บริการหรือสร้างผู้ให้บริการที่กำหนดเอง"
-	},
-	"providerRequiredFields": {
-		"message": "ต้องระบุชื่อผู้ให้บริการและ URL พื้นฐาน"
-	},
-	"providers": {
-		"message": "ผู้ให้บริการ"
 	},
 	"rateExtensionDescription": {
 		"message": "ชอบ Web Clipper ไหม? ช่วยเราด้วยการให้คะแนน"
@@ -849,9 +736,6 @@
 	"readerViewFullSize": {
 		"message": "ดูขนาดเต็ม"
 	},
-	"recommended": {
-		"message": "แนะนำ"
-	},
 	"refresh": {
 		"message": "รีเฟรช"
 	},
@@ -882,12 +766,6 @@
 	"resetDefaultTemplateDescription": {
 		"message": "ลบการเปลี่ยนแปลงทั้งหมดที่คุณทำกับเทมเพลตเริ่มต้น"
 	},
-	"resetProvidersAndModels": {
-		"message": "รีเซ็ตโมเดลเริ่มต้น"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "รีเซ็ตผู้ให้บริการและโมเดลกลับเป็นค่าเริ่มต้น"
-	},
 	"save": {
 		"message": "บันทึก"
 	},
@@ -905,9 +783,6 @@
 	},
 	"searchVariables": {
 		"message": "ค้นหาตัวแปร..."
-	},
-	"selectProvider": {
-		"message": "เลือกผู้ให้บริการ"
 	},
 	"selectTemplateToExport": {
 		"message": "เลือกเทมเพลตที่จะส่งออก"
@@ -1028,9 +903,6 @@
 	},
 	"thinking": {
 		"message": "กำลังคิด"
-	},
-	"unknownProvider": {
-		"message": "ผู้ให้บริการที่ไม่รู้จัก"
 	},
 	"updateAvailable": {
 		"message": "มีการอัปเดตพร้อมใช้งาน"

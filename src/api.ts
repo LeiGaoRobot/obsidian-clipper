@@ -9,6 +9,7 @@ import { AsyncResolver, RenderContext } from './utils/renderer';
 import { applyFilters } from './utils/filters';
 import { buildVariables, generateFrontmatter, extractContentBySelector, selectorContentToString, formatPropertyValue } from './utils/shared';
 import { sanitizeFileName } from './utils/string-utils';
+import { PROMPT_VARIABLE_PATTERN } from './utils/prompt-variables';
 import { Template, Property } from './types/types';
 
 // ---------------------------------------------------------------------------
@@ -27,6 +28,11 @@ export interface ClipOptions {
 	propertyTypes?: Record<string, string>;
 	/** Pre-parsed document to skip re-parsing (e.g. when already parsed for trigger matching). */
 	parsedDocument?: any;
+	/**
+	 * Keep `{{"…"}}` prompt variables in the output, for a caller that runs the prompts and fills
+	 * them itself (the CLI's `--execution-mode`). By default they are removed.
+	 */
+	keepPromptVariables?: boolean;
 }
 
 export interface ClipResult {
@@ -174,15 +180,15 @@ export function matchTemplate(templates: Template[], url: string, schemaOrgData?
  * - Writing the output (file, vault API, etc.)
  */
 export async function clip(options: ClipOptions): Promise<ClipResult> {
-	const { html, url, template, documentParser, propertyTypes, parsedDocument } = options;
+	const { html, url, template, documentParser, propertyTypes, parsedDocument, keepPromptVariables = false } = options;
 
 	// Use pre-parsed document if provided, otherwise parse
 	const doc = parsedDocument ?? documentParser.parseFromString(html, 'text/html');
-	const documentElement = doc.documentElement || doc;
 
-	// Extract content with defuddle
+	// Extract content with defuddle. It needs the Document itself: given linkedom's
+	// documentElement it extracts nothing (no title, content or word count).
 	// Cast through unknown: linkedom's Document is structurally compatible but not nominally typed as DOM Document
-	const defuddle = new DefuddleClass(documentElement as unknown as Document, { url });
+	const defuddle = new DefuddleClass(doc as unknown as Document, { url });
 	const defuddleResult = defuddle.parse();
 
 	// Convert to markdown
@@ -213,7 +219,7 @@ export async function clip(options: ClipOptions): Promise<ClipResult> {
 	const selectorProcessor = createSelectorProcessor(doc);
 
 	const compile = (text: string) =>
-		compileTemplate(0, text, variables, url, asyncResolver, selectorProcessor);
+		compileTemplate(0, text, variables, url, { asyncResolver, selectorProcessor, keepPromptVariables });
 
 	// Compile note name
 	const compiledNoteName = await compile(template.noteNameFormat);
@@ -224,7 +230,11 @@ export async function clip(options: ClipOptions): Promise<ClipResult> {
 		template.properties.map(async (prop) => {
 			let value = await compile(prop.value);
 			const propType = prop.type || 'text';
-			value = formatPropertyValue(value, propType, prop.value);
+			// A kept placeholder is formatted by the caller once it is filled: formatting it now would
+			// turn a checkbox into `false` and strip a number down to the digits in the prompt text.
+			if (!(keepPromptVariables && PROMPT_VARIABLE_PATTERN.test(value))) {
+				value = formatPropertyValue(value, propType, prop.value);
+			}
 			return { name: prop.name, value, type: prop.type };
 		})
 	);

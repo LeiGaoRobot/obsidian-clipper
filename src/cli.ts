@@ -1,15 +1,14 @@
 // Browser globals (DOMParser, window, document) are provided by the esbuild
 // banner in scripts/build-cli.mjs. They must run before any bundled module code.
 import { parseHTML } from 'linkedom';
-import { clip, matchTemplate, DocumentParser } from './api';
+import { clip, createAsyncResolver, createSelectorProcessor, matchTemplate, DocumentParser } from './api';
 import { openInObsidian } from './utils/cli-utils';
-import {
-	CliExecutionMode,
-	collectPromptVariables,
-	executePromptVariables,
-	replacePromptVariables
-} from './utils/cli-execution';
-import { Template } from './types/types';
+import { CliExecutionMode, collectPromptVariables } from './utils/cli-execution-contract';
+import { executePromptVariables, fillPromptResponses, promptContextOf } from './cli-process';
+import { compileTemplate } from './utils/template-compiler';
+import { CodexReasoningEffort, Template } from './types/types';
+import { normalizeCodexModel } from './utils/codex-model';
+import { CODEX_REASONING_EFFORTS, normalizeCodexReasoningEffort } from './utils/codex-reasoning-effort';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -26,6 +25,8 @@ interface CliArgs {
 	silent: boolean;
 	uri: boolean;
 	executionMode?: CliExecutionMode;
+	codexModel?: string;
+	codexEffort?: CodexReasoningEffort;
 	propertyTypesPath?: string;
 	htmlPath?: string;
 }
@@ -44,6 +45,8 @@ Options:
       --uri                    Use URI scheme instead of Obsidian CLI
       --silent                 Suppress Obsidian focus (URI mode)
       --execution-mode <mode>  Resolve template prompts with grok or codex CLI
+      --model <id>             Codex model override (codex mode only)
+      --effort <level>         Codex reasoning effort (codex mode only)
       --property-types <path>  JSON mapping property names to types
   -h, --help                   Show this help message
 `.trim();
@@ -60,6 +63,8 @@ function parseArgs(argv: string[]): CliArgs {
 	let silent = false;
 	let uri = false;
 	let executionMode: CliExecutionMode | undefined;
+	let codexModel: string | undefined;
+	let codexEffort: CodexReasoningEffort | undefined;
 	let propertyTypesPath: string | undefined;
 	let htmlPath: string | undefined;
 
@@ -105,6 +110,22 @@ function parseArgs(argv: string[]): CliArgs {
 				executionMode = value;
 				break;
 			}
+			case '--model': {
+				if (i + 1 >= args.length) { console.error('Error: --model requires a value'); process.exit(1); }
+				codexModel = normalizeCodexModel(args[++i]);
+				if (!codexModel) { console.error('Error: --model must be 1-200 characters'); process.exit(1); }
+				break;
+			}
+			case '--effort': {
+				if (i + 1 >= args.length) { console.error('Error: --effort requires a value'); process.exit(1); }
+				const value = args[++i];
+				codexEffort = normalizeCodexReasoningEffort(value);
+				if (!codexEffort) {
+					console.error(`Error: --effort must be one of ${CODEX_REASONING_EFFORTS.join(', ')}`);
+					process.exit(1);
+				}
+				break;
+			}
 			case '--html':
 				if (i + 1 >= args.length) { console.error('Error: --html requires a value'); process.exit(1); }
 				htmlPath = args[++i];
@@ -136,7 +157,12 @@ function parseArgs(argv: string[]): CliArgs {
 		process.exit(1);
 	}
 
-	return { url, templatePath, outputPath, vault, open, silent, uri, executionMode, propertyTypesPath, htmlPath };
+	if ((codexModel || codexEffort) && executionMode !== 'codex') {
+		console.error('Error: --model and --effort require --execution-mode codex');
+		process.exit(1);
+	}
+
+	return { url, templatePath, outputPath, vault, open, silent, uri, executionMode, codexModel, codexEffort, propertyTypesPath, htmlPath };
 }
 
 // ---------------------------------------------------------------------------
@@ -227,7 +253,8 @@ async function main(): Promise<void> {
 			if (hasSchemaTrigs) {
 				const DefuddleClass = (await import('defuddle')).default;
 				parsedDocument = linkedomParser.parseFromString(html, 'text/html');
-				const defuddle = new DefuddleClass((parsedDocument.documentElement || parsedDocument) as unknown as Document, { url: args.url });
+				// The Document itself, as `clip` passes it: Defuddle extracts nothing from documentElement.
+				const defuddle = new DefuddleClass(parsedDocument as unknown as Document, { url: args.url });
 				const defuddleResult = defuddle.parse();
 				matched = matchTemplate(templates, args.url, defuddleResult.schemaOrgData);
 			}
@@ -247,7 +274,13 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
-	// Call the API (reuse pre-parsed document if available)
+	// An execution mode compiles the note name again below, against the same document.
+	if (args.executionMode && !parsedDocument) {
+		parsedDocument = linkedomParser.parseFromString(html, 'text/html');
+	}
+
+	// Call the API (reuse pre-parsed document if available). An execution mode fills the prompt
+	// variables below, so they must survive compilation.
 	const result = await clip({
 		html,
 		url: args.url,
@@ -255,6 +288,7 @@ async function main(): Promise<void> {
 		documentParser: linkedomParser,
 		propertyTypes,
 		parsedDocument,
+		keepPromptVariables: Boolean(args.executionMode),
 	});
 
 	let fullContent = result.fullContent;
@@ -269,10 +303,24 @@ async function main(): Promise<void> {
 			throw new Error('--execution-mode requires at least one template prompt variable.');
 		}
 
-		const context = result.variables.content || result.variables.fullHtml || '';
-		const promptResponses = await executePromptVariables(args.executionMode, context, promptVariables);
-		fullContent = replacePromptVariables(fullContent, promptVariables, promptResponses, args.url);
-		noteName = replacePromptVariables(noteName, promptVariables, promptResponses, args.url);
+		const promptResponses = await executePromptVariables(args.executionMode, promptContextOf(result.variables), promptVariables, {
+			model: args.codexModel,
+			effort: args.codexEffort
+		});
+		// `clip` returns the note name sanitized, which strips the placeholders' quotes and filters.
+		const compiledNoteName = collectPromptVariables([template.noteNameFormat]).length > 0
+			? await compileTemplate(0, template.noteNameFormat, result.variables, args.url, {
+				asyncResolver: createAsyncResolver(parsedDocument),
+				selectorProcessor: createSelectorProcessor(parsedDocument),
+				keepPromptVariables: true
+			})
+			: undefined;
+		({ fullContent, noteName } = fillPromptResponses(
+			{ ...result, template, propertyTypes, compiledNoteName },
+			promptVariables,
+			promptResponses,
+			args.url
+		));
 	}
 
 	// Output

@@ -64,7 +64,7 @@ async function runFixture(html: string, url: string, template: FixtureTemplate):
 	const selectorProcessor = createSelectorProcessor(document);
 
 	const compileFn = (text: string) =>
-		compileTemplate(0, text, variables, url, asyncResolver, selectorProcessor);
+		compileTemplate(0, text, variables, url, { asyncResolver, selectorProcessor });
 
 	// Compile properties with type-aware formatting
 	const compiledProperties = await Promise.all(

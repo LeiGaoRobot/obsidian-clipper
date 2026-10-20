@@ -5,17 +5,17 @@ import { TextHighlightData } from './utils/highlighter';
 import { debounce } from './utils/debounce';
 import { Settings } from './types/types';
 import { debugLog } from './utils/debug';
-import { LanguageLearningRequest } from './utils/language-learning';
-import { runLanguageLearningRequest } from './utils/language-learning-service';
-import { isCliExecutionMode, isNativeCliRequest } from './utils/native-cli-contract';
+import { createAiDiagnostics } from './ai/diagnostics';
+import { createAiGateway } from './ai/gateway';
+import { createAiJobStore, type StorageAreaLike } from './ai/job-store';
+import { aiSettingsBootstrapper } from './ai/migrate';
 import {
-	NATIVE_CLI_LAST_RUN_STORAGE_KEY,
-	NativeCliExecutionError,
-	NativeCliUnavailableError,
-	checkNativeCliHealth,
-	sendNativeCliRequest
-} from './utils/native-cli-service';
-import { TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX } from './utils/transcript-checkpoint-storage';
+	createAiSettingsStore,
+	createConnectionStatusStore,
+	type StorageChangedEventLike
+} from './ai/settings';
+import { getExtensionBranding } from './utils/extension-branding';
+import { detectNativeMessaging } from './utils/native-messaging-support';
 import { fetchBilibiliTranscript } from './utils/bilibili-transcript';
 import { fetchBilibiliPageJson } from './utils/bilibili-page-fetch';
 import { fetchCurrentBilibiliPlayerJson } from './utils/bilibili-player-page';
@@ -23,22 +23,6 @@ import { fetchCurrentBilibiliPlayerJson } from './utils/bilibili-player-page';
 const YOUTUBE_EMBED_RULE_ID = 9001;
 const YOUTUBE_INNERTUBE_RULE_ID = 9002;
 const BILIBILI_TRANSCRIPT_REQUEST_TIMEOUT_MS = 3_000;
-const activeLanguageLearningRequests = new Map<string, AbortController>();
-
-type TranscriptCheckpointStorageRequest = {
-	action?: string;
-	operation?: 'get' | 'set' | 'remove';
-	keys?: string | string[] | null;
-	values?: Record<string, unknown>;
-};
-
-function validTranscriptCheckpointKeys(keys: unknown, allowNull = false): keys is string | string[] | null {
-	if (allowNull && keys === null) return true;
-	const values = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : [];
-	return values.length > 0 && values.every(key => (
-		typeof key === 'string' && key.startsWith(TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX)
-	));
-}
 
 function getBilibiliVideoBvid(value: string | undefined): string | null {
 	if (!value) return null;
@@ -467,138 +451,51 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 		.catch(() => ({ success: false }));
 });
 
-browser.runtime.onMessage.addListener((request: unknown) => {
-	if (typeof request !== 'object' || request === null) return;
-	const message = request as { action?: string; request?: unknown };
-	if (message.action !== 'nativeCliRequest') return;
-	if (!isNativeCliRequest(message.request)) {
-		return Promise.resolve({
-			success: false,
-			errorCode: 'invalid',
-			error: 'Invalid native CLI request.'
-		});
-	}
+// Durable transcript jobs live in storage.session, which survives a service worker restart but not
+// a browser restart. Without it (Safari < 16.4) records last only as long as this worker.
+const aiJobSession = (browser.storage as unknown as { session?: StorageAreaLike }).session;
 
-	return sendNativeCliRequest(message.request)
-		.then(response => ({ success: true, stdout: response.stdout || '' }))
-		.catch(error => ({
-			success: false,
-			errorCode: error instanceof NativeCliUnavailableError
-				? 'unavailable'
-				: error instanceof NativeCliExecutionError ? error.code : 'failed',
-			error: error instanceof Error ? error.message : String(error),
-			errorDetails: error instanceof NativeCliExecutionError ? error.details : undefined
-		}));
+// The background's own v2 AI settings store, wired like the UI one in `utils/ai-settings.ts`. It
+// runs the v1 → v2 bootstrap on load; the Popup and Reader stores never do.
+const aiSettingsStore = createAiSettingsStore({
+	sync: browser.storage.sync as unknown as StorageAreaLike,
+	local: browser.storage.local as unknown as StorageAreaLike,
+	...(aiJobSession ? { session: aiJobSession } : {}),
+	onChanged: browser.storage.onChanged as unknown as StorageChangedEventLike,
+	nativeMessaging: detectNativeMessaging,
+	bootstrap: true,
+	bootstrapper: aiSettingsBootstrapper,
+	build: browser.runtime.getManifest().version
 });
 
-browser.runtime.onMessage.addListener((request: unknown) => {
-	if (typeof request !== 'object' || request === null) return;
-	const message = request as { action?: string; mode?: unknown };
-	if (message.action !== 'nativeCliHealth') return;
-	if (!isCliExecutionMode(message.mode)) {
-		return Promise.resolve({ success: false, errorCode: 'invalid', error: 'Invalid CLI mode.' });
+// Every model request runs here, never in Reader or page content scripts, so provider
+// credentials stay in extension storage and cross-origin requests avoid page CORS rules.
+const aiGateway = createAiGateway({
+	loadAiSettings: () => aiSettingsStore.load(),
+	// Test results and structured-output downgrades, per device.
+	connectionStatus: createConnectionStatusStore(browser.storage.local as unknown as StorageAreaLike),
+	// The redacted run and Test log shown under Settings → AI → Diagnostics.
+	diagnostics: createAiDiagnostics(aiJobSession),
+	jobStore: createAiJobStore(aiJobSession),
+	keepAlive: () => {
+		void browser.runtime.getPlatformInfo();
+	},
+	app: () => {
+		const { name, homepageUrl } = getExtensionBranding();
+		return { name, homepageUrl };
 	}
-	return checkNativeCliHealth(message.mode)
-		.then(async health => {
-			const session = (browser.storage as unknown as {
-				session?: { get(key: string): Promise<Record<string, unknown>> };
-			}).session;
-			const stored = session ? await session.get(NATIVE_CLI_LAST_RUN_STORAGE_KEY) : {};
-			return {
-				success: true,
-				health,
-				lastRun: stored[NATIVE_CLI_LAST_RUN_STORAGE_KEY]
-			};
-		})
-		.catch(error => ({
-			success: false,
-			errorCode: error instanceof NativeCliExecutionError
-				? error.code
-				: error instanceof NativeCliUnavailableError ? 'unavailable' : 'failed',
-			error: error instanceof Error ? error.message : String(error),
-			errorDetails: error instanceof NativeCliExecutionError ? error.details : undefined
-		}));
 });
-
-// Keep transcript checkpoints in the trusted extension context. Chrome and
-// Firefox do not expose storage.session to content scripts by default.
-browser.runtime.onMessage.addListener((request: unknown) => {
-	if (typeof request !== 'object' || request === null) return;
-	const message = request as TranscriptCheckpointStorageRequest;
-	if (message.action !== 'transcriptCheckpointStorage') return;
-	const session = (browser.storage as unknown as {
-		session?: {
-			get(keys?: string | string[] | null): Promise<Record<string, unknown>>;
-			set(values: Record<string, unknown>): Promise<void>;
-			remove(keys: string | string[]): Promise<void>;
-		};
-	}).session;
-	if (!session) return Promise.resolve({ success: false });
-
-	return (async () => {
-		try {
-			if (message.operation === 'get' && validTranscriptCheckpointKeys(message.keys, true)) {
-				const values = await session.get(message.keys);
-				return {
-					success: true,
-					values: Object.fromEntries(Object.entries(values).filter(([key]) => (
-						key.startsWith(TRANSCRIPT_CHECKPOINT_STORAGE_PREFIX)
-					)))
-				};
-			}
-			if (message.operation === 'set' && message.values && validTranscriptCheckpointKeys(Object.keys(message.values))) {
-				await session.set(message.values);
-				return { success: true };
-			}
-			if (message.operation === 'remove' && message.keys !== null && validTranscriptCheckpointKeys(message.keys)) {
-				await session.remove(message.keys);
-				return { success: true };
-			}
-			return { success: false };
-		} catch {
-			return { success: false };
-		}
-	})();
+browser.runtime.onConnect.addListener(port => aiGateway.handlePort(port));
+// Resumes jobs the user started that were running when the previous worker stopped.
+aiGateway.init().catch(error => {
+	console.error('Could not resume AI jobs:', error);
 });
-
-// Language-learning requests can originate in Reader content scripts, where
-// cross-origin model requests are subject to the page's CORS policy. Execute
-// them in the extension service worker and only use stored model configuration.
-browser.runtime.onMessage.addListener((request: unknown) => {
-	if (typeof request !== 'object' || request === null) return;
-	const message = request as { action?: string; request?: LanguageLearningRequest; requestId?: string };
-	if (message.action === 'languageLearningCancel') {
-		if (!message.requestId) {
-			return Promise.resolve({ success: false, error: 'Invalid language-learning request ID.' });
-		}
-		activeLanguageLearningRequests.get(message.requestId)?.abort();
-		return Promise.resolve({ success: true });
-	}
-	if (message.action !== 'languageLearningRequest') return;
-	if (!message.request || typeof message.request.context !== 'string' || !Array.isArray(message.request.prompts)) {
-		return Promise.resolve({ success: false, error: 'Invalid language-learning request.' });
-	}
-	const requestId = message.requestId || `language-learning-legacy-${Date.now()}-${Math.random()}`;
-	if (activeLanguageLearningRequests.has(requestId)) {
-		return Promise.resolve({ success: false, error: 'A language-learning request with this ID is already running.' });
-	}
-	const requestController = new AbortController();
-	activeLanguageLearningRequests.set(requestId, requestController);
-	return runLanguageLearningRequest(message.request, requestController.signal)
-		.then(promptResponses => ({ success: true, promptResponses }))
-		.catch(error => ({
-			success: false,
-			error: error instanceof Error ? error.message : String(error),
-			errorCode: error instanceof NativeCliExecutionError
-				? error.code
-				: error instanceof NativeCliUnavailableError ? 'unavailable' : undefined,
-			errorDetails: error instanceof NativeCliExecutionError ? error.details : undefined
-		}))
-		.finally(() => {
-			if (activeLanguageLearningRequests.get(requestId) === requestController) {
-				activeLanguageLearningRequests.delete(requestId);
-			}
-		});
+// Storage work only, never a model request: migrates v1 AI settings (and imports this device's
+// v1 keys) when the worker starts, so the Popup and Reader, whose stores never bootstrap, find v2.
+aiSettingsStore.loadSnapshot().then(snapshot => {
+	if (snapshot.bootstrapError !== undefined) console.error('Could not set up AI settings:', snapshot.bootstrapError);
+}, error => {
+	console.error('Could not load AI settings:', error);
 });
 
 browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void): true | undefined => {
@@ -835,7 +732,16 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 
 		if (typedRequest.action === "openOptionsPage") {
 			try {
-				if (typeof browser.runtime.openOptionsPage === 'function') {
+				// A section (the AI error card's Open AI settings sends `ai`) needs a query, which
+				// openOptionsPage() cannot take, so it opens Settings in a tab of its own.
+				const section = typeof typedRequest.section === 'string' && /^[a-z-]{1,40}$/.test(typedRequest.section)
+					? typedRequest.section
+					: undefined;
+				if (section) {
+					browser.tabs.create({
+						url: browser.runtime.getURL(`settings.html?section=${encodeURIComponent(section)}`)
+					});
+				} else if (typeof browser.runtime.openOptionsPage === 'function') {
 					// Chrome way
 					browser.runtime.openOptionsPage();
 				} else {

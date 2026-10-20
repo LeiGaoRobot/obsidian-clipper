@@ -2,15 +2,26 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
+import {
+	CODEX_REASONING_EFFORTS,
+	DEFAULT_TIMEOUT_MS,
+	MAX_CODEX_MODEL_CHARS,
+	MAX_OUTPUT_SCHEMA_CHARS,
+	NATIVE_CLI_PROTOCOL_VERSION,
+	buildCliArguments
+} from './cli-invocation.mjs';
 
-export const NATIVE_CLI_PROTOCOL_VERSION = 2;
+// Re-exported so an installed Host can be checked against the extension's protocol.
+export { NATIVE_CLI_PROTOCOL_VERSION };
+/** Matches `MAX_INPUT_CHARS` in `src/ai/protocol.ts`; a parity test keeps them equal. */
 export const MAX_PROMPT_CHARS = 750_000;
 export const MAX_REQUEST_BYTES = 4_000_000;
 export const MAX_RESPONSE_BYTES = 900_000;
-const DEFAULT_TIMEOUT_MS = 120_000;
+export const HEARTBEAT_INTERVAL_MS = 10_000;
 
 class NativeHostError extends Error {
 	constructor(code, message, details) {
@@ -45,6 +56,12 @@ function isMode(value) {
 	return value === 'grok' || value === 'codex';
 }
 
+function isPlainObject(value) {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+	const prototype = Object.getPrototypeOf(value);
+	return prototype === Object.prototype || prototype === null;
+}
+
 export function validateRequest(request) {
 	if (!request || typeof request !== 'object') return 'Request must be an object.';
 	if (request.protocolVersion !== NATIVE_CLI_PROTOCOL_VERSION) {
@@ -61,10 +78,39 @@ export function validateRequest(request) {
 	if (!isMode(request.mode)) return 'Unsupported CLI execution mode.';
 	if (typeof request.prompt !== 'string' || request.prompt.length === 0) return 'Prompt must be a non-empty string.';
 	if (request.prompt.length > MAX_PROMPT_CHARS) return 'Prompt is too large for Native Messaging.';
+	if (request.heartbeat !== undefined && typeof request.heartbeat !== 'boolean') {
+		return 'Heartbeat must be a boolean.';
+	}
+	if (request.model !== undefined) {
+		if (request.mode !== 'codex') return 'Codex model overrides require Codex execution mode.';
+		if (typeof request.model !== 'string'
+			|| request.model.length === 0
+			|| request.model.length > MAX_CODEX_MODEL_CHARS) {
+			return 'Codex model must be a non-empty string of at most 200 characters.';
+		}
+		if (request.model !== request.model.trim()) {
+			return 'Codex model must not include leading or trailing whitespace.';
+		}
+	}
+	if (request.effort !== undefined) {
+		if (request.mode !== 'codex') {
+			return 'Codex reasoning effort overrides require Codex execution mode.';
+		}
+		if (typeof request.effort !== 'string' || !CODEX_REASONING_EFFORTS.includes(request.effort)) {
+			return 'Codex reasoning effort must be a supported value.';
+		}
+	}
+	if (request.outputSchema !== undefined) {
+		if (request.mode !== 'codex') return 'Output schemas require Codex execution mode.';
+		if (!isPlainObject(request.outputSchema)) return 'Output schema must be a JSON object.';
+		if (JSON.stringify(request.outputSchema).length > MAX_OUTPUT_SCHEMA_CHARS) {
+			return `Output schema must serialize to at most ${MAX_OUTPUT_SCHEMA_CHARS} characters.`;
+		}
+	}
 	return null;
 }
 
-export function createCliInvocation(request, config) {
+export function createCliInvocation(request, config, outputSchemaPath) {
 	const command = request.mode === 'grok' ? config.grokPath : config.codexPath;
 	if (!command) {
 		throw new NativeHostError(
@@ -74,50 +120,62 @@ export function createCliInvocation(request, config) {
 		);
 	}
 
-	if (request.mode === 'grok') {
-		return {
-			command,
-			args: [
-				'--single',
-				request.prompt,
-				'--output-format',
-				'plain',
-				'--no-plan',
-				'--no-subagents',
-				'--no-memory',
-				'--disable-web-search',
-				'--tools',
-				'',
-				'--max-turns',
-				'1',
-				'--verbatim'
-			],
-			input: ''
-		};
-	}
-
+	// Pass known fields only so a request cannot smuggle in `outputSchemaPath`.
 	return {
 		command,
-		args: [
-			'exec',
-			'--ephemeral',
-			'--color',
-			'never',
-			'--sandbox',
-			'read-only',
-			'--skip-git-repo-check',
-			'-'
-		],
-		input: request.prompt
+		...buildCliArguments({
+			mode: request.mode,
+			prompt: request.prompt,
+			model: request.model,
+			effort: request.effort,
+			outputSchemaPath
+		})
 	};
 }
 
-export function runCli(request, config, onStart) {
-	const invocation = createCliInvocation(request, config);
+function cancelledError(request) {
+	return new NativeHostError('cancelled', 'The CLI request was cancelled.', { mode: request.mode });
+}
+
+/**
+ * Writes the schema to a fresh private temp directory for the duration of `run`, and removes
+ * the directory however `run` settles. Without a schema, `run` starts synchronously.
+ */
+async function withOutputSchemaFile(outputSchema, run) {
+	if (outputSchema === undefined) return run(undefined);
+	const directory = await mkdtemp(path.join(os.tmpdir(), 'obsidian-clipper-schema-'));
+	try {
+		const schemaPath = path.join(directory, 'schema.json');
+		await writeFile(schemaPath, JSON.stringify(outputSchema), { mode: 0o600, flag: 'wx' });
+		return await run(schemaPath);
+	} finally {
+		// A cleanup failure must not replace the CLI result; `force` already ignores a missing path.
+		await rm(directory, { recursive: true, force: true }).catch(() => {});
+	}
+}
+
+export function runCli(request, config, onStart, onHeartbeat) {
+	// Cancellation can arrive while the schema file is still being written, before the child exists.
+	let cancelled = false;
+	let terminate = () => { cancelled = true; };
+	onStart(() => terminate());
+	return withOutputSchemaFile(request.outputSchema, outputSchemaPath => {
+		if (cancelled) throw cancelledError(request);
+		const invocation = createCliInvocation(request, config, outputSchemaPath);
+		return spawnCli(request, invocation, childTerminate => { terminate = childTerminate; }, onHeartbeat);
+	});
+}
+
+function spawnCli(request, invocation, onStart, onHeartbeat) {
+	const executablePath = [
+		path.dirname(process.execPath),
+		path.dirname(invocation.command),
+		process.env.PATH
+	].filter(Boolean).join(path.delimiter);
 	return new Promise((resolve, reject) => {
 		const child = spawn(invocation.command, invocation.args, {
 			cwd: os.homedir(),
-			env: { ...process.env, NO_COLOR: '1' },
+			env: { ...process.env, PATH: executablePath, NO_COLOR: '1' },
 			stdio: ['pipe', 'pipe', 'pipe']
 		});
 		let stdout = '';
@@ -126,6 +184,15 @@ export function runCli(request, config, onStart) {
 		let terminationError;
 		let timeout;
 		let forceKillTimer;
+		const startedAt = Date.now();
+		// Only connected ports opt in: a one-shot sendNativeMessage takes the first reply as the response.
+		const heartbeatTimer = request.heartbeat && onHeartbeat
+			? setInterval(() => onHeartbeat({
+				type: 'heartbeat',
+				requestId: request.requestId,
+				elapsedMs: Date.now() - startedAt
+			}), HEARTBEAT_INTERVAL_MS)
+			: undefined;
 		const terminateWithError = error => {
 			if (settled || terminationError) return;
 			terminationError = error;
@@ -134,12 +201,7 @@ export function runCli(request, config, onStart) {
 				if (!settled) child.kill('SIGKILL');
 			}, 2000);
 		};
-		const terminate = () => terminateWithError(new NativeHostError(
-			'cancelled',
-			'The CLI request was cancelled.',
-			{ mode: request.mode }
-		));
-		onStart(terminate);
+		onStart(() => terminateWithError(cancelledError(request)));
 		timeout = setTimeout(() => {
 			terminateWithError(new NativeHostError(
 				'timeout',
@@ -152,6 +214,7 @@ export function runCli(request, config, onStart) {
 			if (settled) return;
 			settled = true;
 			clearTimeout(timeout);
+			if (heartbeatTimer) clearInterval(heartbeatTimer);
 			if (forceKillTimer) clearTimeout(forceKillTimer);
 			callback();
 		};
@@ -308,7 +371,12 @@ function startHost() {
 			));
 			return;
 		}
-		const task = runCli(request, config, cancel => activeRequests.set(request.requestId, cancel))
+		const task = runCli(
+			request,
+			config,
+			cancel => activeRequests.set(request.requestId, cancel),
+			heartbeat => void writeResponse(heartbeat)
+		)
 			.then(writeResponse)
 			.catch(error => writeResponse(errorResponse(request.requestId, error)))
 			.finally(() => {

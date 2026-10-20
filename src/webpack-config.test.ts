@@ -47,19 +47,42 @@ describe('Webpack extension entries', () => {
 		expect(config.output.clean).toBe(true);
 	});
 
-	test('sets the injected Reader chunk root from the extension runtime', () => {
+	test('uses relative chunk URLs until the injected Reader sets its runtime root', () => {
 		const [config] = createWebpackConfig(
 			{ BROWSER: 'chrome' },
 			{ mode: 'production' }
 		);
 
-		expect(config.output.publicPath).toBe('');
+		expect(config.output.publicPath).toBe('./');
 		expect(config.output.chunkFormat).toBe('module');
 		expect(config.output.chunkLoading).toBe('import');
 		expect(config.entry['reader-script']).toEqual([
 			'./src/extension-public-path.ts',
 			'./src/reader-script.ts'
 		]);
+	});
+
+	test('keeps local Native Host source metadata out of packaged releases', () => {
+		const [chrome] = createWebpackConfig(
+			{ BROWSER: 'chrome' },
+			{ mode: 'production' }
+		);
+		const [firefox] = createWebpackConfig(
+			{ BROWSER: 'firefox' },
+			{ mode: 'production' }
+		);
+		const pluginName = (plugin: unknown) => (plugin as { constructor?: { name?: string } })
+			.constructor?.name;
+		const zipPlugin = chrome.plugins.find(plugin => pluginName(plugin) === 'ZipPlugin') as {
+			options?: { exclude?: RegExp[] };
+		};
+
+		expect(chrome.plugins.some(plugin => pluginName(plugin) === 'LocalNativeHostMetadataPlugin'))
+			.toBe(true);
+		expect(firefox.plugins.some(plugin => pluginName(plugin) === 'LocalNativeHostMetadataPlugin'))
+			.toBe(false);
+		expect(zipPlugin.options?.exclude?.some(pattern => pattern.test('native-host-install.json')))
+			.toBe(true);
 	});
 
 	test('allows generated chunks in each browser manifest', () => {

@@ -45,6 +45,13 @@
 	margin-top: 8px;
 }
 
+#ai-edit-error {
+	margin-top: 6px;
+	&[hidden] {
+		display: none;
+	}
+}
+
 #ai-edit-status {
 	min-height: 1.2em;
 	margin-top: 4px;

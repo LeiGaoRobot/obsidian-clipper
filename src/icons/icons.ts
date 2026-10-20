@@ -30,6 +30,7 @@ import {
 	Share,
 	SquareCheckBig,
 	Tags,
+	Terminal,
 	Trash2,
 	X
 } from 'lucide';
@@ -68,6 +69,7 @@ export const icons = {
 	Share,
 	SquareCheckBig,
 	Tags,
+	Terminal,
 	Trash2,
 	X
 };

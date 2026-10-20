@@ -5,20 +5,8 @@
 	"activity": {
 		"message": "活动"
 	},
-	"addModel": {
-		"message": "+ 添加模型"
-	},
-	"addModelTitle": {
-		"message": "添加模型"
-	},
 	"addProperty": {
 		"message": "+ 添加属性"
-	},
-	"addProvider": {
-		"message": "+ 添加提供商"
-	},
-	"addProviderTitle": {
-		"message": "添加提供商"
 	},
 	"addToObsidian": {
 		"message": "添加到 Obsidian"
@@ -74,11 +62,503 @@
 	"aiRequestCancelled": {
 		"message": "AI 请求已取消。"
 	},
-	"aiLanguageToolsRequireInterpreter": {
-		"message": "请先启用解释器并配置模型，再使用 AI 语言学习工具。"
+	"aiErrorNotConfiguredTitle": {
+		"message": "AI 尚未配置"
 	},
-	"aiLanguageToolsRequireModel": {
-		"message": "请先启用一个解释器模型，再使用 AI 语言学习工具。"
+	"aiErrorNotConfiguredBody": {
+		"message": "请在设置的 AI 部分启用 AI 功能，并选择一个模型。"
+	},
+	"aiErrorCredentialMissingTitle": {
+		"message": "缺少 API 密钥"
+	},
+	"aiErrorCredentialMissingBody": {
+		"message": "此连接在本设备上还没有 API 密钥，请在设置中填写。"
+	},
+	"aiErrorAuthTitle": {
+		"message": "API 密钥 无效"
+	},
+	"aiErrorAuthBody": {
+		"message": "提供商拒绝了这个 API 密钥，请在设置中检查或更换。"
+	},
+	"aiErrorModelUnavailableTitle": {
+		"message": "模型不可用"
+	},
+	"aiErrorModelUnavailableBody": {
+		"message": "提供商找不到这个模型，或你的账号无权使用。请检查模型 ID，或换一个模型。"
+	},
+	"aiErrorRateLimitedTitle": {
+		"message": "请求过于频繁"
+	},
+	"aiErrorRateLimitedBody": {
+		"message": "提供商暂时限制了请求频率，请稍后重试。"
+	},
+	"aiErrorQuotaTitle": {
+		"message": "额度或余额不足"
+	},
+	"aiErrorQuotaBody": {
+		"message": "提供商账号的额度或余额已用完。请检查套餐或账单，或换一个模型。"
+	},
+	"aiErrorTimeoutTitle": {
+		"message": "请求超时"
+	},
+	"aiErrorTimeoutBody": {
+		"message": "模型响应时间过长，请重试。"
+	},
+	"aiErrorNetworkTitle": {
+		"message": "网络错误"
+	},
+	"aiErrorNetworkBody": {
+		"message": "无法连接到提供商。请检查网络和 基础 URL 后重试。"
+	},
+	"aiErrorHostMissingTitle": {
+		"message": "本地 CLI Host 未安装"
+	},
+	"aiErrorHostMissingBody": {
+		"message": "Native Messaging Host 未安装或无法启动。请复制安装命令，在终端中运行一次，然后重新加载扩展。"
+	},
+	"aiErrorHostOutdatedTitle": {
+		"message": "本地 CLI Host 版本过旧"
+	},
+	"aiErrorHostOutdatedBody": {
+		"message": "已安装的 Native Messaging Host 比扩展旧。请复制安装命令，重新运行一次。"
+	},
+	"aiErrorHostUnsupportedTitle": {
+		"message": "此浏览器不支持本地 CLI"
+	},
+	"aiErrorHostUnsupportedBody": {
+		"message": "此浏览器无法运行本地 CLI，请改用 API 模型。"
+	},
+	"aiErrorCliMissingTitle": {
+		"message": "找不到 CLI"
+	},
+	"aiErrorCliMissingBody": {
+		"message": "Native Messaging Host 找不到或无法启动这个 CLI。请先安装它，再重新运行安装命令，让 Host 记录其路径。"
+	},
+	"aiErrorCliNotAuthenticatedTitle": {
+		"message": "CLI 未登录"
+	},
+	"aiErrorCliNotAuthenticatedBody": {
+		"message": "请先在终端中登录这个 CLI，然后重试。"
+	},
+	"aiErrorBadResponseTitle": {
+		"message": "无法读取响应"
+	},
+	"aiErrorBadResponseBody": {
+		"message": "模型返回的内容格式不符合预期。请重试，或换一个模型。"
+	},
+	"aiErrorIncompleteTitle": {
+		"message": "结果不完整"
+	},
+	"aiErrorIncompleteBody": {
+		"message": "部分内容缺失。选择“继续”，只请求缺失的部分。"
+	},
+	"aiErrorCancelledTitle": {
+		"message": "已取消"
+	},
+	"aiErrorCancelledBody": {
+		"message": "请求已取消。"
+	},
+	"aiErrorProviderErrorTitle": {
+		"message": "提供商返回错误"
+	},
+	"aiErrorProviderErrorBody": {
+		"message": "提供商返回了错误。请稍后重试，或查看详情。"
+	},
+	"aiSettings": {
+		"message": "AI"
+	},
+	"aiConnections": {
+		"message": "连接"
+	},
+	"aiConnectionsDescription": {
+		"message": "可以运行 AI 任务的 API 提供商和本地 CLI。API 密钥只保存在这台设备的浏览器扩展本地存储中，不会同步到您的其他设备，也没有加密。"
+	},
+	"aiConnectionsEmpty": {
+		"message": "还没有连接。添加一个 API 提供商或本地 CLI 即可开始。"
+	},
+	"aiAddApiProvider": {
+		"message": "+ 添加 API 提供商"
+	},
+	"aiCatalogTitle": {
+		"message": "添加 API 提供商"
+	},
+	"aiCatalogDescription": {
+		"message": "选择一个提供商，或选择“自定义”连接其他端点。"
+	},
+	"aiCatalogCustomDescription": {
+		"message": "其他任意端点"
+	},
+	"aiConnectionAddTitle": {
+		"message": "添加 API 提供商"
+	},
+	"aiConnectionEditTitle": {
+		"message": "编辑连接"
+	},
+	"aiConnectionLabel": {
+		"message": "名称"
+	},
+	"aiConnectionLabelDescription": {
+		"message": "显示在设置和模型菜单中。"
+	},
+	"aiConnectionLabelRequired": {
+		"message": "请输入此连接的名称。"
+	},
+	"aiConnectionBaseUrlDescription": {
+		"message": "提供商的对话端点。请将其中的 {占位符} 替换为您自己的值。"
+	},
+	"aiConnectionBaseUrlInvalid": {
+		"message": "请输入完整的端点 URL，以 https:// 或 http:// 开头，并替换其中的 {占位符}。"
+	},
+	"aiConnectionApiKeyDescription": {
+		"message": "仅保存在这台设备上。"
+	},
+	"aiConnectionShowKey": {
+		"message": "显示"
+	},
+	"aiConnectionHideKey": {
+		"message": "隐藏"
+	},
+	"aiConnectionApiKeyRequired": {
+		"message": "需要 API 密钥"
+	},
+	"aiConnectionApiKeyRequiredDescription": {
+		"message": "如果本地服务器无需密钥即可接受请求，请关闭此项。"
+	},
+	"aiConnectionMaxConcurrency": {
+		"message": "最大并发请求数"
+	},
+	"aiConnectionMaxConcurrencyDescription": {
+		"message": "长任务（例如字幕翻译）同时向此连接发送的请求数。留空则使用默认值。"
+	},
+	"aiConnectionMaxConcurrencyPlaceholder": {
+		"message": "默认"
+	},
+	"aiConnectionMaxConcurrencyInvalid": {
+		"message": "请输入 1 到 $1 之间的整数，或留空。"
+	},
+	"aiConnectionDeleteConfirm": {
+		"message": "删除“$1”？它的 $2 个模型以及这台设备上的 API 密钥也会一并删除。"
+	},
+	"aiConnectionUnnamed": {
+		"message": "未命名连接"
+	},
+	"aiConnectionTest": {
+		"message": "测试"
+	},
+	"aiConnectionTestCostNote": {
+		"message": "测试可能向提供商发送一次最小请求，提供商可能会对此计费。"
+	},
+	"aiConnectionTestCostNoteCli": {
+		"message": "测试会为每个模型运行一次 CLI，可能计入你的 CLI 套餐用量或产生费用。"
+	},
+	"aiTestStepListing": {
+		"message": "正在通过列出模型检查密钥…"
+	},
+	"aiTestStepStructured": {
+		"message": "正在检查结构化输出…"
+	},
+	"aiTestStepProbe": {
+		"message": "正在发送最小测试请求…"
+	},
+	"aiTestStepHealth": {
+		"message": "正在检查本地 CLI 主机…"
+	},
+	"aiTestStepExec": {
+		"message": "正在运行 CLI…"
+	},
+	"aiTestStepExecProfile": {
+		"message": "正在使用 $1 运行 CLI…"
+	},
+	"aiTestResultOk": {
+		"message": "连接正常。"
+	},
+	"aiTestResultModels": {
+		"message": "在提供商的列表中找到 $2 个模型中的 $1 个。"
+	},
+	"aiTestResultNotListed": {
+		"message": "未列出：$1。请检查模型 ID。"
+	},
+	"aiTestResultStructured": {
+		"message": "结构化输出：$1"
+	},
+	"aiTestResultBillable": {
+		"message": "本次测试发送了一次最小请求，提供商可能会对此计费。"
+	},
+	"aiTestResultOneShot": {
+		"message": "此浏览器每次只能向 CLI 主机发送一个请求。取消会停止等待，但无法停止已开始的 CLI 运行。"
+	},
+	"aiTestResultListingUnavailable": {
+		"message": "此地址无法获取模型列表（HTTP $1）。请检查基础 URL。此测试不会发送计费请求，因此没有检查其他内容。"
+	},
+	"aiTestResultListingUnavailableAddModel": {
+		"message": "此服务器不提供模型列表（HTTP $1），因此免费测试无法检查它。请添加一个模型后再次测试：测试随后会发送一个最小请求，提供商可能会计费。"
+	},
+	"aiStructuredOutputJsonSchema": {
+		"message": "JSON schema"
+	},
+	"aiStructuredOutputJsonObject": {
+		"message": "JSON 对象"
+	},
+	"aiStructuredOutputNone": {
+		"message": "不支持（纯文本）"
+	},
+	"aiCliCodex": {
+		"message": "Codex CLI"
+	},
+	"aiCliGrok": {
+		"message": "Grok CLI"
+	},
+	"aiCliConnectionHost": {
+		"message": "本机上的本地 CLI"
+	},
+	"aiCliAlreadyAdded": {
+		"message": "已添加 $1。"
+	},
+	"aiAddLocalCli": {
+		"message": "添加本地 CLI"
+	},
+	"aiAddLocalCliDescription": {
+		"message": "通过 Native Messaging Host 使用本机安装的 Codex 或 Grok CLI 运行任务。请先用下面的命令安装一次该主机程序。"
+	},
+	"aiAddCli": {
+		"message": "添加 $1"
+	},
+	"aiStatusUntested": {
+		"message": "未测试"
+	},
+	"aiStatusOk": {
+		"message": "正常"
+	},
+	"aiStatusFailing": {
+		"message": "失败"
+	},
+	"aiStatusFailingReason": {
+		"message": "失败：$1"
+	},
+	"aiStatusKeyMissing": {
+		"message": "此设备缺少密钥"
+	},
+	"aiStatusUnsupported": {
+		"message": "此浏览器不支持"
+	},
+	"aiProfiles": {
+		"message": "模型"
+	},
+	"aiProfilesDescription": {
+		"message": "每个连接提供的模型。只有已启用的模型才会出现在任务路由和模型菜单中。"
+	},
+	"aiProfilesEmpty": {
+		"message": "请先添加连接，然后在这里添加它的模型。"
+	},
+	"aiAddProfile": {
+		"message": "+ 添加模型"
+	},
+	"aiProfileAddTitle": {
+		"message": "添加模型"
+	},
+	"aiProfileEditTitle": {
+		"message": "编辑模型"
+	},
+	"aiProfileModelDescription": {
+		"message": "提供商使用的模型标识符。"
+	},
+	"aiProfileCodexModelDescription": {
+		"message": "留空则使用 Codex CLI 的默认模型。"
+	},
+	"aiProfileModelRequired": {
+		"message": "请输入模型 ID。"
+	},
+	"aiProfileLabelDescription": {
+		"message": "可选。留空则显示模型 ID。"
+	},
+	"aiProfileEffort": {
+		"message": "推理强度"
+	},
+	"aiProfileEffortDescription": {
+		"message": "强度越高，耗时可能越长、消耗的 token 越多。不受支持的模型与强度组合会直接失败，不会回退。"
+	},
+	"aiProfileEffortDefault": {
+		"message": "使用 Codex CLI 默认值"
+	},
+	"aiProfileEffortValue": {
+		"message": "强度：$1"
+	},
+	"aiProfileCliDefault": {
+		"message": "CLI 默认模型"
+	},
+	"aiProfileUnnamed": {
+		"message": "未命名模型"
+	},
+	"aiProfileCopyLabel": {
+		"message": "$1（副本）"
+	},
+	"aiProfileDeleteConfirm": {
+		"message": "删除“$1”？所有使用它的任务路由都会被清除。"
+	},
+	"aiProfileEnabled": {
+		"message": "启用 $1"
+	},
+	"aiProfileOrphanGroup": {
+		"message": "连接已缺失"
+	},
+	"aiProfileModelNotListed": {
+		"message": "模型未列出"
+	},
+	"aiProfileModelNotListedTitle": {
+		"message": "上次测试未在提供商的列表中找到此模型。请检查模型 ID。"
+	},
+	"aiRouting": {
+		"message": "任务路由"
+	},
+	"aiRoutingDescription": {
+		"message": "为每个任务选择模型。设为“使用默认”的任务会跟随默认模型。"
+	},
+	"aiRoutingDefault": {
+		"message": "默认模型"
+	},
+	"aiRoutingDefaultDescription": {
+		"message": "所有设为“使用默认”的任务都使用此模型。"
+	},
+	"aiRoutingNone": {
+		"message": "无"
+	},
+	"aiRoutingUseDefault": {
+		"message": "使用默认"
+	},
+	"aiRoutingNotSet": {
+		"message": "未设置"
+	},
+	"aiRoutingUnavailable": {
+		"message": "模型不可用"
+	},
+	"aiRoutingDisabledProfile": {
+		"message": "$1（已停用）"
+	},
+	"aiRoutingMissingProfile": {
+		"message": "已删除的模型"
+	},
+	"aiTaskInterpret": {
+		"message": "解释器"
+	},
+	"aiTaskInterpretDescription": {
+		"message": "模板中的提示变量。"
+	},
+	"aiTaskEdit": {
+		"message": "AI 编辑"
+	},
+	"aiTaskEditDescription": {
+		"message": "在弹出窗口和侧边栏中编辑剪藏内容。"
+	},
+	"aiTaskTranslate": {
+		"message": "字幕翻译"
+	},
+	"aiTaskTranslateDescription": {
+		"message": "阅读器中的双语字幕。"
+	},
+	"aiTaskReading": {
+		"message": "日语读音"
+	},
+	"aiTaskReadingDescription": {
+		"message": "为阅读器中的日语字幕标注读音。"
+	},
+	"aiTaskExplain": {
+		"message": "讲解"
+	},
+	"aiTaskExplainDescription": {
+		"message": "阅读器中的单词和句子讲解。"
+	},
+	"aiLanguage": {
+		"message": "语言"
+	},
+	"aiEnabled": {
+		"message": "启用 AI 功能"
+	},
+	"aiEnabledDescription": {
+		"message": "允许解释器、AI 编辑和阅读器的语言工具使用上面设置的模型。"
+	},
+	"aiErrorTechnicalDetails": {
+		"message": "技术详情"
+	},
+	"aiErrorActionRetry": {
+		"message": "重试"
+	},
+	"aiErrorActionSwitchProfile": {
+		"message": "选择其他模型"
+	},
+	"aiErrorActionOpenSettings": {
+		"message": "打开 AI 设置"
+	},
+	"aiErrorSwitchProfileSelect": {
+		"message": "用于重试的模型"
+	},
+	"aiSettingsSaveFailedTitle": {
+		"message": "无法保存 AI 设置"
+	},
+	"aiSettingsQuotaItemTooLarge": {
+		"message": "此更改超出了浏览器同步存储的单项上限（8 KB）。请缩短提示上下文，或删除不再使用的连接或模型。"
+	},
+	"aiSettingsQuotaTotal": {
+		"message": "浏览器同步存储已满。请删除不再使用的设置或模板，然后重试。"
+	},
+	"aiSettingsQuotaWriteRate": {
+		"message": "短时间内更改过多。请等待一分钟后重试。"
+	},
+	"aiSettingsUnexpectedBody": {
+		"message": "保存时出现问题。请重新加载设置后重试。"
+	},
+	"aiSettingsNotWritableTitle": {
+		"message": "这台设备上还没有 AI 设置"
+	},
+	"aiSettingsNotWritableBody": {
+		"message": "由于还没有可更新的 AI 设置，此更改未保存。请重新加载设置后重试。"
+	},
+	"aiSettingsBootstrapFailedTitle": {
+		"message": "无法在这台设备上初始化 AI 设置"
+	},
+	"aiSettingsBootstrapFailedBody": {
+		"message": "您之前的 AI 设置没有变化。请重新加载设置以重试。"
+	},
+	"aiSettingsBootstrapQuotaTotal": {
+		"message": "浏览器同步存储已满，因此无法在这台设备上初始化 AI 设置。您之前的 AI 设置没有变化。请释放空间（例如删除不再使用的模板），然后重新加载设置。"
+	},
+	"aiSettingsBootstrapItemTooLarge": {
+		"message": "无法将您之前的 AI 设置迁移到此版本：“$1”这一项超过了浏览器同步存储单项 8 KB 的上限。您之前的 AI 设置没有变化，AI 设置在这台设备上保持只读。如需报告此问题，请附上下方的技术详情。"
+	},
+	"aiSettingsConnectionMissingTitle": {
+		"message": "此连接已被删除"
+	},
+	"aiSettingsProfileMissingTitle": {
+		"message": "此模型已被删除"
+	},
+	"aiSettingsItemMissingBody": {
+		"message": "在您编辑时它已被删除，可能是在另一台设备上。您的更改未保存。"
+	},
+	"aiDiagnostics": {
+		"message": "诊断"
+	},
+	"aiDiagnosticsDescription": {
+		"message": "此浏览器中最近 100 次模型运行和连接测试，保留到浏览器关闭。从不记录提示词、页面内容和 API 密钥。"
+	},
+	"aiDiagnosticsEmpty": {
+		"message": "尚无 AI 请求。"
+	},
+	"aiDiagnosticsUnavailable": {
+		"message": "诊断需要会话存储，但此浏览器不提供。"
+	},
+	"aiDiagnosticsClear": {
+		"message": "清除"
+	},
+	"aiDiagnosticsCopy": {
+		"message": "复制为 JSON"
+	},
+	"aiDiagnosticsCancelled": {
+		"message": "已取消"
+	},
+	"aiDiagnosticsFallback": {
+		"message": "已在无结构化输出的情况下重试"
+	},
+	"aiDiagnosticsGroups": {
+		"message": "$1 组，$2 次重试"
 	},
 	"allHighlights": {
 		"message": "所有高亮"
@@ -94,9 +574,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "加载页面时显示已保存的高亮内容。关闭此选项则仅在高亮模式激活时显示高亮。"
-	},
-	"apiKeyMissing": {
-		"message": "无 API 密钥"
 	},
 	"apiKeysWarning": {
 		"message": "使用外部提供商即表示您同意其条款和隐私政策。解释器请求直接发送给您选择的提供商。Obsidian 不会收集或存储任何关于您请求的数据。"
@@ -127,9 +604,6 @@
 	},
 	"cancel": {
 		"message": "取消"
-	},
-	"cannotDeleteProvider": {
-		"message": "无法删除提供商 \"$1\"，因为它正在被 $2 个模型使用。"
 	},
 	"changelog": {
 		"message": "更新日志"
@@ -228,12 +702,6 @@
 	"deleteHighlightsForPage": {
 		"message": "删除此页面的所有高亮？"
 	},
-	"deleteModelConfirm": {
-		"message": "您确定要删除此模型吗？"
-	},
-	"deleteProviderConfirm": {
-		"message": "您确定要删除此提供商吗？"
-	},
 	"disableHighlighter": {
 		"message": "禁用高亮"
 	},
@@ -266,12 +734,6 @@
 	"edit": {
 		"message": "编辑"
 	},
-	"editModel": {
-		"message": "编辑模型"
-	},
-	"editProvider": {
-		"message": "编辑提供商"
-	},
 	"editTemplate": {
 		"message": "编辑模板"
 	},
@@ -283,26 +745,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "在网页上高亮内容并保存到 Obsidian。"
-	},
-	"enableInterpreter": {
-		"message": "启用解释器"
-	},
-	"enableInterpreterDescription": {
-		"message": "使用自然语言从页面提取数据。例如，您可以使用模板语法 $strong_start${{\"页面摘要\"}}$strong_end$。需要 API 密钥或下面配置的自定义模型。$link_start$了解更多$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "打开阅读视图"
@@ -375,9 +817,6 @@
 	"failedToProcessInterpreter": {
 		"message": "解释器处理失败。请重试。"
 	},
-	"failedToResetProviders": {
-		"message": "重置提供商和模型失败"
-	},
 	"failedToResetTemplate": {
 		"message": "无法重置默认模板。请再试一次。"
 	},
@@ -386,9 +825,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "保存文件失败"
-	},
-	"failedToSaveProvider": {
-		"message": "无法保存提供商。请再试一次。"
 	},
 	"feedback": {
 		"message": "反馈"
@@ -494,17 +930,8 @@
 	"interpreter": {
 		"message": "解释器"
 	},
-	"interpreterExecutionMode": {
-		"message": "执行模式"
-	},
-	"interpreterExecutionModeApi": {
-		"message": "API 提供商"
-	},
 	"interpreterExecutionModeCodex": {
 		"message": "Codex CLI"
-	},
-	"interpreterExecutionModeDescription": {
-		"message": "使用 API 提供商，或通过 Chrome Native Messaging 调用本机安装的 Grok/Codex CLI。CLI 模式需要一次性安装 Host。"
 	},
 	"interpreterExecutionModeGrok": {
 		"message": "Grok CLI"
@@ -512,14 +939,23 @@
 	"interpreterContext": {
 		"message": "解释器上下文"
 	},
+	"interpreterPartialStatus": {
+		"message": "部分完成"
+	},
+	"interpreterPartialTitle": {
+		"message": "部分提示词没有得到回答。"
+	},
+	"interpreterPartialBody": {
+		"message": "模型回答了 $2 个提示词中的 $1 个。下面未回答的提示词会以占位符形式保留在笔记中。你可以手动补全，也可以直接按现状添加到 Obsidian。如需重新解读，请重新打开 Web Clipper。"
+	},
 	"interpreterContextDescription": {
-		"message": "用于解释提示变量的上下文。覆盖$link_start$解释器设置$link_end$中定义的默认上下文。此处可以使用变量。",
+		"message": "用于解释提示变量的上下文。覆盖$link_start$AI 设置$link_end$中定义的默认上下文。此处可以使用变量。",
 		"placeholders": {
 			"link_end": {
 				"content": "</a>"
 			},
 			"link_start": {
-				"content": "<a href=\"?section=interpreter\">"
+				"content": "<a href=\"?section=ai\">"
 			}
 		}
 	},
@@ -535,41 +971,23 @@
 	"lastUsed": {
 		"message": "最近使用"
 	},
-	"nativeCliFailed": {
-		"message": "本机 CLI 请求失败。请检查 CLI 输出和 Native Messaging Host 安装。"
+	"nativeCliInstallCopied": {
+		"message": "安装命令已复制。请在终端运行一次，重新加载扩展，然后检查连接。"
 	},
-	"nativeCliHealth": {
-		"message": "本机 CLI 连接"
+	"nativeCliInstallCopy": {
+		"message": "复制安装命令"
 	},
-	"nativeCliHealthCheck": {
-		"message": "检查连接"
+	"nativeCliInstallCopyFailed": {
+		"message": "无法自动复制，请手动选择并复制上方命令。"
 	},
-	"nativeCliHealthChecking": {
-		"message": "正在检查 Native Messaging Host 和所选 CLI…"
+	"nativeCliInstallDescription": {
+		"message": "首次设置：复制此命令并在终端运行一次。命令已包含当前扩展 ID 和源码路径，可在任意目录执行。"
 	},
-	"nativeCliHealthDescription": {
-		"message": "检查 Native Messaging Host 和所选 CLI，不会发送网页内容。"
+	"nativeCliInstallSourceUnavailable": {
+		"message": "此打包版本不包含本地源码路径，请改用单独发布的 Native Messaging Host 配套安装包。"
 	},
-	"nativeCliHealthFailed": {
-		"message": "连接检查失败（$1）：$2"
-	},
-	"nativeCliHealthLastRun": {
-		"message": "上次运行：$1，时间 $2。"
-	},
-	"nativeCliHealthReady": {
-		"message": "已连接到 $1（协议版本 $2）。"
-	},
-	"nativeCliRunStatusCancelled": {
-		"message": "已取消"
-	},
-	"nativeCliRunStatusFailed": {
-		"message": "失败"
-	},
-	"nativeCliRunStatusSuccess": {
-		"message": "成功"
-	},
-	"nativeCliUnavailable": {
-		"message": "本机 CLI 不可用。请安装 Native Messaging Host，并确认所选 CLI 已安装且已登录。"
+	"nativeCliInstallUnsupported": {
+		"message": "Native Messaging 引导安装目前仅支持 macOS 和 Linux 上的 Google Chrome。"
 	},
 	"legacyMode": {
 		"message": "传统模式"
@@ -585,24 +1003,6 @@
 	},
 	"modelName": {
 		"message": "模型名称"
-	},
-	"modelNameDescription": {
-		"message": "您想在界面中显示的模型名称。"
-	},
-	"modelProvider": {
-		"message": "提供商"
-	},
-	"modelProviderDescription": {
-		"message": "模型提供商，例如 Ollama、OpenRouter、Google 等。"
-	},
-	"modelProviderPlaceholder": {
-		"message": "提供商"
-	},
-	"modelRequiredFields": {
-		"message": "模型名称、提供商和模型 ID 是必需的。"
-	},
-	"models": {
-		"message": "模型"
 	},
 	"modelsListFor": {
 		"message": "$1的模型列表"
@@ -708,12 +1108,6 @@
 	"pleaseReload": {
 		"message": "请尝试重新加载页面。"
 	},
-	"popularModels": {
-		"message": "热门模型"
-	},
-	"popularModelsDescription": {
-		"message": "从常用模型中选择，或输入自定义模型详细信息。"
-	},
 	"popup": {
 		"message": "弹出窗口"
 	},
@@ -759,47 +1153,14 @@
 	"propertyValue": {
 		"message": "属性值"
 	},
-	"provider": {
-		"message": "提供商"
-	},
 	"providerApiKey": {
 		"message": "API 密钥"
-	},
-	"providerApiKeyDescription": {
-		"message": "此提供商的 API 密钥。"
 	},
 	"providerBaseUrl": {
 		"message": "基础 URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "此提供商的 API 端点 URL。"
-	},
 	"providerModelId": {
 		"message": "模型 ID"
-	},
-	"providerModelIdDescription": {
-		"message": "来自提供商的模型标识符。通常是一个不含空格的简短名称。"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "模型 ID"
-	},
-	"providerName": {
-		"message": "提供商名称"
-	},
-	"providerNameDescription": {
-		"message": "此提供商的显示名称。"
-	},
-	"providerPreset": {
-		"message": "预设"
-	},
-	"providerPresetDescription": {
-		"message": "选择一个提供商或创建一个自定义的。"
-	},
-	"providerRequiredFields": {
-		"message": "提供商名称和基础 URL 是必需的。"
-	},
-	"providers": {
-		"message": "提供商"
 	},
 	"rateExtensionDescription": {
 		"message": "您喜欢使用Web Clipper吗？请帮助我们给它评分。"
@@ -839,30 +1200,6 @@
 	},
 	"readerBilingualSubtitlesRestoreDescription": {
 		"message": "已有完整翻译时自动显示；缺失内容不会自动调用 AI 生成。"
-	},
-	"readerCliConfig": {
-		"message": "$1 尚未配置，请检查本机 Host 配置后重试。"
-	},
-	"readerCliFailed": {
-		"message": "$1 未能完成此任务。你可以重试或切换执行模式。"
-	},
-	"readerCliInvalid": {
-		"message": "$1 请求无效。请重新构建扩展并重装 Native Messaging Host。"
-	},
-	"readerCliLaunchFailed": {
-		"message": "无法启动 $1，请确认它已安装并完成登录。"
-	},
-	"readerCliProtocolMismatch": {
-		"message": "扩展与 Native Messaging Host 版本不一致，请重新安装 Host。"
-	},
-	"readerCliResponseTooLarge": {
-		"message": "$1 返回的数据过多，请选择更小的字幕范围重试。"
-	},
-	"readerCliTimeout": {
-		"message": "$1 在 $2 秒内未完成。已保留完成的字幕段。"
-	},
-	"readerCliUnavailable": {
-		"message": "$1 不可用，请检查 Native Messaging Host 和 CLI 安装。"
 	},
 	"readerBlendImages": {
 		"message": "融合图片"
@@ -942,8 +1279,14 @@
 	"readerJapaneseReadingsProgress": {
 		"message": "正在生成读音（$1/$2）…"
 	},
-	"readerJapaneseReadingsTimeoutRetry": {
-		"message": "已保留完成的字幕段。点击“重试”将使用更小的批次继续。"
+	"readerJapaneseTranslationProgress": {
+		"message": "正在翻译为日语（$1/$2）…"
+	},
+	"readerTranscriptTranslationBatchFailed": {
+		"message": "部分字幕批次未能完成，请重试以继续。"
+	},
+	"readerTranscriptRetrying": {
+		"message": "服务繁忙，$1 秒后重试…"
 	},
 	"readerAiCancelled": {
 		"message": "AI 请求已取消。"
@@ -977,9 +1320,6 @@
 	},
 	"readerRegenerateReadingsConfirm": {
 		"message": "要重新生成日语读音吗？这会再次发起 AI 请求。"
-	},
-	"readerRetry": {
-		"message": "重试"
 	},
 	"readerContinueRemaining": {
 		"message": "继续剩余内容（已完成 $1/$2）"
@@ -1101,9 +1441,6 @@
 	"readerTaskRangeNextFiveMinutes": {
 		"message": "接下来 5 分钟"
 	},
-	"readerTechnicalDetails": {
-		"message": "技术详情"
-	},
 	"readerTheme": {
 		"message": "主题"
 	},
@@ -1143,9 +1480,6 @@
 	"readerViewFullSize": {
 		"message": "查看原始大小"
 	},
-	"recommended": {
-		"message": "推荐"
-	},
 	"refresh": {
 		"message": "刷新"
 	},
@@ -1176,12 +1510,6 @@
 	"resetDefaultTemplateDescription": {
 		"message": "移除对默认模板的所有更改。"
 	},
-	"resetProvidersAndModels": {
-		"message": "重置默认模型"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "将提供商和模型重置为默认设置。"
-	},
 	"save": {
 		"message": "保存"
 	},
@@ -1199,9 +1527,6 @@
 	},
 	"searchVariables": {
 		"message": "搜索变量..."
-	},
-	"selectProvider": {
-		"message": "选择一个提供商"
 	},
 	"selectTemplateToExport": {
 		"message": "请选择要导出的模板。"
@@ -1323,9 +1648,6 @@
 	"thinking": {
 		"message": "思考中"
 	},
-	"unknownProvider": {
-		"message": "未知的提供商"
-	},
 	"updateAvailable": {
 		"message": "有可用更新。"
 	},
@@ -1359,57 +1681,6 @@
 				"content": "<strong>"
 			}
 		}
-	},
-	"languageLearningReadinessApiMissing": {
-		"message": "添加并启用一个 API 模型"
-	},
-	"languageLearningReadinessApiConfigMissing": {
-		"message": "请完成所选模型的提供商和 API 密钥配置"
-	},
-	"languageLearningReadinessApiReady": {
-		"message": "API 模型已就绪"
-	},
-	"languageLearningReadinessBrowserLanguage": {
-		"message": "回答语言使用浏览器语言"
-	},
-	"languageLearningReadinessCliFailed": {
-		"message": "本地 CLI 连接需要处理"
-	},
-	"languageLearningReadinessCliReady": {
-		"message": "本地 CLI 连接已就绪"
-	},
-	"languageLearningReadinessCliUnchecked": {
-		"message": "检查所选本地 CLI 的连接"
-	},
-	"languageLearningReadinessDescription": {
-		"message": "完成这些检查后，即可在阅读器中使用翻译、解释和日语读音。"
-	},
-	"languageLearningReadinessEnable": {
-		"message": "启用解释器"
-	},
-	"languageLearningReadinessEnabled": {
-		"message": "解释器已启用"
-	},
-	"languageLearningReadinessIncomplete": {
-		"message": "完成上面的项目，然后重新检查。"
-	},
-	"languageLearningReadinessLanguage": {
-		"message": "回答语言：$1"
-	},
-	"languageLearningReadinessReaderSettings": {
-		"message": "阅读器设置"
-	},
-	"languageLearningReadinessReady": {
-		"message": "语言学习功能已就绪"
-	},
-	"languageLearningReadinessReadyDescription": {
-		"message": "现在可以直接在阅读器中使用语言学习操作。"
-	},
-	"languageLearningReadinessReview": {
-		"message": "检查设置"
-	},
-	"languageLearningReadinessTitle": {
-		"message": "设置语言学习功能"
 	},
 	"readerAutoPause": {
 		"message": "每句结束后暂停"

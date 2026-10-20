@@ -11,7 +11,8 @@ import {
 } from '../managers/template-manager';
 import { updateTemplateList, showTemplateEditor, initializeAddPropertyButton, initializeTemplateValidation } from '../managers/template-ui';
 import { initializeGeneralSettings } from '../managers/general-settings';
-import { showSettingsSection, initializeSidebar } from '../managers/settings-section-ui';
+import { showSettingsSection, initializeSidebar, type SettingsSection } from '../managers/settings-section-ui';
+import type { AiSettingsSection } from '../settings/ai/index';
 import { initializeReaderSettings } from '../managers/reader-settings';
 import { initializeAutoSave } from '../utils/auto-save';
 import { handleTemplateDrag, initializeDragAndDrop } from '../utils/drag-and-drop';
@@ -32,19 +33,38 @@ declare global {
 	}
 }
 
-let interpreterModulePromise: Promise<typeof import('../managers/interpreter-settings')> | null = null;
-let interpreterInitializationPromise: Promise<void> | null = null;
+let aiSettingsPromise: Promise<AiSettingsSection> | null = null;
 
-async function ensureInterpreterSettings(): Promise<void> {
-	const module = await (interpreterModulePromise ??= import(/* webpackChunkName: 'settings-interpreter' */ '../managers/interpreter-settings'));
-	if (!interpreterInitializationPromise) {
-		interpreterInitializationPromise = module.initializeInterpreterSettings().catch(error => {
-			interpreterInitializationPromise = null;
+/**
+ * Loads the AI section (lazy `settings-ai` chunk) once. It also drives the template editor's
+ * prompt-context visibility, so the templates section loads it too. Storage work only: loading
+ * never sends a model request.
+ */
+function ensureAiSettings(): Promise<AiSettingsSection> {
+	aiSettingsPromise ??= import(/* webpackChunkName: 'settings-ai' */ '../settings/ai/index')
+		.then(module => module.initializeAiSettings())
+		.then(section => {
+			// Saves a pending prompt-context edit when the page goes away or is hidden; a hidden tab
+			// can be closed or discarded without another event.
+			window.addEventListener('pagehide', () => section.dispose(), { once: true });
+			document.addEventListener('visibilitychange', () => {
+				if (document.visibilityState === 'hidden') section.flush();
+			});
+			return section;
+		})
+		.catch(error => {
+			aiSettingsPromise = null;
 			throw error;
 		});
-	}
-	await interpreterInitializationPromise;
-	module.updatePromptContextVisibility();
+	return aiSettingsPromise;
+}
+
+/** `interpreter` is the section's former name, still used by older links. */
+function settingsSectionFromUrl(section: string | null): SettingsSection | undefined {
+	if (section === 'interpreter') return 'ai';
+	return section === 'general' || section === 'ai' || section === 'properties' || section === 'highlighter' || section === 'reader'
+		? section
+		: undefined;
 }
 
 window.cleanupTemplateStorage = cleanupTemplateStorage;
@@ -55,12 +75,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 	// Apply section from URL params immediately to avoid flash (DOM only, no side effects)
 	const { section: initialSection } = getUrlParameters();
-	const targetSection = (initialSection === 'general' || initialSection === 'interpreter' || initialSection === 'properties' || initialSection === 'highlighter' || initialSection === 'reader') ? initialSection : 'general';
+	const targetSection = settingsSectionFromUrl(initialSection) ?? 'general';
 	document.addEventListener('settings-section-change', event => {
 		const section = (event as CustomEvent<{ section?: string }>).detail?.section;
-		if (section === 'interpreter' || section === 'templates') {
-			void ensureInterpreterSettings().catch(error => {
-				console.error('Error initializing interpreter settings:', error);
+		if (section === 'ai' || section === 'templates') {
+			void ensureAiSettings().catch(error => {
+				console.error('Error initializing AI settings:', error);
 			});
 		}
 	});
@@ -77,11 +97,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 			await initializeGeneralSettings();
 			await initializeReaderSettings();
 			
-			if (targetSection === 'interpreter') {
+			if (targetSection === 'ai') {
 				try {
-					await ensureInterpreterSettings();
+					await ensureAiSettings();
 				} catch (error) {
-					console.error('Error initializing interpreter settings, continuing with defaults:', error);
+					console.error('Error initializing AI settings, continuing without them:', error);
 				}
 			}
 			
@@ -232,8 +252,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 	async function handleUrlParameters(): Promise<void> {
 		const { section, templateId } = getUrlParameters();
 
-		if (section === 'general' || section === 'interpreter' || section === 'properties' || section === 'highlighter' || section === 'reader') {
-			showSettingsSection(section);
+		const settingsSection = settingsSectionFromUrl(section);
+		if (settingsSection) {
+			showSettingsSection(settingsSection);
 		} else if (templateId) {
 			const template = findTemplateById(templateId);
 			if (template) {

@@ -1,0 +1,634 @@
+// AI settings section (Phase 5). Everything is namespaced `ai-*` so the old Interpreter rules in
+// interpreter.scss can be removed on their own. Logical properties keep the layout right in RTL.
+
+#ai-section,
+#ai-catalog-modal,
+#ai-connection-modal,
+#ai-profile-modal {
+	// `.setting-item.mod-horizontal` and friends set `display`, which would beat `[hidden]`.
+	[hidden] {
+		display: none !important;
+	}
+}
+
+.ai-group-description {
+	padding-inline: 1rem;
+	margin-bottom: 0;
+}
+
+.ai-empty-state {
+	margin: 0;
+	padding: 0.75rem 0;
+	font-size: var(--font-ui-smaller);
+}
+
+// --- Error card ---------------------------------------------------------------------------------
+
+.ai-settings-error {
+	margin-bottom: 1rem;
+}
+
+// The card itself is shared with the popup and the Reader (`_ai-error-card.scss`); Settings adds
+// its corner shape.
+.ai-error-card {
+	corner-shape: var(--corner-shape);
+}
+
+// --- Status badges ------------------------------------------------------------------------------
+
+.ai-status-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	flex-shrink: 0;
+	max-width: 14rem;
+	padding: 0.125rem 0.5rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 1rem;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smallest);
+	font-weight: 500;
+	line-height: 1.4;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+
+	&::before {
+		content: '';
+		flex-shrink: 0;
+		width: 0.375rem;
+		height: 0.375rem;
+		border-radius: 50%;
+		background-color: currentColor;
+	}
+	&.is-ok {
+		color: var(--text-success);
+		background-color: var(--background-modifier-success);
+		border-color: var(--background-modifier-success-border);
+	}
+	&.is-failing,
+	&.is-unavailable {
+		color: var(--text-error);
+		background-color: var(--background-modifier-error);
+		border-color: var(--background-modifier-error-border);
+	}
+	&.is-key-missing {
+		color: var(--text-warning);
+		background-color: var(--background-modifier-warning);
+		border-color: var(--background-modifier-warning-border);
+	}
+	&.is-unsupported,
+	&.is-unset {
+		color: var(--text-faint);
+		&::before {
+			background-color: transparent;
+			box-shadow: inset 0 0 0 1px currentColor;
+		}
+	}
+}
+
+// --- Kind icons ---------------------------------------------------------------------------------
+
+.ai-kind-icon-container {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 2rem;
+	height: 2rem;
+	padding: 0.375rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 50%;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	overflow: hidden;
+	svg {
+		width: 1rem;
+		height: 1rem;
+	}
+}
+
+// Provider marks come from icons.scss (`span.icon-<preset>`); anything else gets a generic mark.
+.ai-kind-icon {
+	display: block;
+	width: 100%;
+	height: 100%;
+	background-color: var(--text-normal);
+	mask-size: contain;
+	mask-repeat: no-repeat;
+	mask-position: 50% 50%;
+	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7V5a2 2 0 0 1 2-2h2'/%3E%3Cpath d='M17 3h2a2 2 0 0 1 2 2v2'/%3E%3Cpath d='M21 17v2a2 2 0 0 1-2 2h-2'/%3E%3Cpath d='M7 21H5a2 2 0 0 1-2-2v-2'/%3E%3Cpath d='M7 8h8'/%3E%3Cpath d='M7 12h10'/%3E%3Cpath d='M7 16h6'/%3E%3C/svg%3E");
+}
+
+// --- Connections --------------------------------------------------------------------------------
+
+.ai-connection-list {
+	display: flex;
+	flex-direction: column;
+}
+
+.ai-connection-item {
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ai-connection-card {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 0.625rem 0;
+	line-height: 1.25;
+}
+
+// Test sits under the card, aligned with the name; the cost note comes first when it applies.
+.ai-connection-test-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+	padding-inline-start: 2.75rem;
+	padding-bottom: 0.625rem;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+}
+
+.ai-connection-cost-note,
+.ai-connection-test-result-note {
+	color: var(--text-muted);
+}
+
+.ai-connection-test-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	button {
+		width: auto;
+	}
+}
+
+.ai-connection-test-progress {
+	color: var(--text-muted);
+}
+
+.ai-connection-test-result {
+	&.is-ok {
+		padding: 0.5rem 0.75rem;
+		background-color: var(--background-modifier-success);
+		border: 1px solid var(--background-modifier-success-border);
+		border-radius: var(--radius-m);
+		corner-shape: var(--corner-shape);
+	}
+	.ai-connection-test-result-title {
+		font-weight: 600;
+		color: var(--text-success);
+	}
+	.ai-connection-test-result-line {
+		margin-top: 0.125rem;
+		color: var(--text-normal);
+		overflow-wrap: anywhere;
+	}
+	.ai-connection-test-result-note {
+		margin-top: 0.25rem;
+	}
+}
+
+.ai-connection-info {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.ai-connection-name,
+.ai-connection-host {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ai-connection-name {
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+}
+
+.ai-connection-host {
+	margin-top: 0.125rem;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	// Hosts are left-to-right even in RTL pages.
+	unicode-bidi: plaintext;
+	text-align: start;
+}
+
+.ai-connection-actions,
+.ai-profile-actions {
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+	.clickable-icon {
+		height: var(--clickable-icon-size);
+		width: var(--clickable-icon-size);
+	}
+}
+
+.ai-connections-items > .add-btn,
+#ai-connections > .add-btn {
+	padding-top: 0.5rem;
+}
+
+.ai-native-cli {
+	border-top: 1px solid var(--background-modifier-border);
+	padding-bottom: 0.75rem;
+
+	.ai-native-cli-actions {
+		flex-shrink: 0;
+		justify-content: flex-end;
+		gap: 0.5rem;
+	}
+	.ai-add-cli-button {
+		width: auto;
+		gap: 0.375rem;
+		svg {
+			width: 0.875rem;
+			height: 0.875rem;
+		}
+	}
+	.native-cli-install-guide {
+		margin-top: 0;
+	}
+	.native-cli-install-copy {
+		width: auto;
+		margin-top: 0.5rem;
+	}
+}
+
+// --- Catalog picker -----------------------------------------------------------------------------
+
+#ai-catalog-modal .modal {
+	max-width: 560px;
+}
+
+.ai-catalog-list {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+	gap: 0.5rem;
+	margin-top: 0.75rem;
+}
+
+button.ai-catalog-option {
+	justify-content: flex-start;
+	gap: 0.625rem;
+	height: auto;
+	min-height: 3rem;
+	padding: 0.5rem 0.75rem;
+	text-align: start;
+	white-space: normal;
+	background-color: var(--background-primary);
+	box-shadow: 0 0 0 1px var(--background-modifier-border);
+	border-radius: var(--radius-m);
+
+	@media (hover: hover) {
+		&:hover {
+			background-color: var(--background-modifier-hover);
+			box-shadow: 0 0 0 1px var(--background-modifier-border-hover);
+		}
+	}
+	&:focus-visible {
+		box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+	}
+	.ai-kind-icon-container {
+		width: 1.75rem;
+		height: 1.75rem;
+		padding: 0.3125rem;
+	}
+}
+
+.ai-catalog-option-text {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	line-height: 1.25;
+}
+
+.ai-catalog-option-name {
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+	color: var(--text-normal);
+}
+
+.ai-catalog-option-host {
+	font-size: var(--font-ui-smallest);
+	color: var(--text-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	unicode-bidi: plaintext;
+}
+
+// --- Dialogs ------------------------------------------------------------------------------------
+
+#ai-connection-modal .modal,
+#ai-profile-modal .modal {
+	max-width: 500px;
+}
+
+.ai-modal-subtitle {
+	margin-top: 0.125rem;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	&:empty {
+		display: none;
+	}
+}
+
+.ai-settings-form {
+	display: flex;
+	flex-direction: column;
+
+	.setting-item {
+		margin: 0.5rem 0;
+	}
+	.setting-item:not(.mod-horizontal) {
+		.setting-item-info label {
+			margin: 0 0 0.125rem;
+			font-size: var(--font-ui-small);
+			font-weight: 600;
+		}
+		.setting-item-description {
+			margin: 0.125rem 0 0.5rem;
+		}
+		.setting-item-control {
+			display: block;
+			input,
+			select {
+				width: 100%;
+			}
+		}
+	}
+	.setting-item.mod-horizontal {
+		padding: 0.25rem 0;
+		.setting-item-info label {
+			font-size: var(--font-ui-small);
+			font-weight: 600;
+		}
+	}
+	// Beats the stacked `.setting-item-control` rule above: key and Show share one line.
+	.setting-item .setting-item-control.ai-api-key-control {
+		display: flex;
+		gap: 0.5rem;
+		input {
+			flex: 1 1 auto;
+			width: auto;
+			min-width: 0;
+		}
+		button {
+			flex-shrink: 0;
+			width: auto;
+			min-width: 4rem;
+		}
+	}
+}
+
+.ai-connection-advanced {
+	margin-top: 0.25rem;
+	summary {
+		width: fit-content;
+		cursor: pointer;
+		color: var(--text-muted);
+		font-size: var(--font-ui-small);
+	}
+}
+
+.ai-form-error-container {
+	margin-top: 0.5rem;
+}
+
+.ai-form-error {
+	color: var(--text-error);
+	font-size: var(--font-ui-small);
+}
+
+// --- Models -------------------------------------------------------------------------------------
+
+.ai-profile-group {
+	padding: 0.5rem 0 0.25rem;
+	& + .ai-profile-group {
+		border-top: 1px solid var(--background-modifier-border);
+	}
+	.add-btn {
+		margin-inline-start: 1.75rem;
+		padding-top: 0.25rem;
+	}
+}
+
+.ai-profile-group-header {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.25rem 0;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	.ai-kind-icon-container {
+		width: 1.5rem;
+		height: 1.5rem;
+		padding: 0.25rem;
+		svg {
+			width: 0.875rem;
+			height: 0.875rem;
+		}
+	}
+}
+
+.ai-profile-group-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ai-profile-list {
+	margin-inline-start: 2rem;
+}
+
+.ai-profile-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.25rem 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+	line-height: 1.25;
+	&:last-child {
+		border-bottom: none;
+	}
+	&.is-disabled .ai-profile-info {
+		opacity: 0.6;
+	}
+	.checkbox-container {
+		margin-inline-start: 0.5rem;
+	}
+}
+
+.ai-profile-info {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.ai-profile-name,
+.ai-profile-details {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ai-profile-name {
+	font-size: var(--font-ui-small);
+}
+
+.ai-profile-details {
+	margin-top: 0.125rem;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.ai-profile-model-not-listed {
+	cursor: help;
+}
+
+// --- Diagnostics --------------------------------------------------------------------------------
+
+.ai-diagnostics-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 0;
+	button {
+		width: auto;
+	}
+}
+
+.ai-diagnostics-copied {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.ai-diagnostics-list {
+	max-height: 20rem;
+	overflow-y: auto;
+}
+
+.ai-diagnostics-entry {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	grid-template-areas:
+		'time summary outcome'
+		'time details details';
+	column-gap: 0.75rem;
+	padding: 0.375rem 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+	&:last-child {
+		border-bottom: none;
+	}
+	.ai-diagnostics-time {
+		grid-area: time;
+		color: var(--text-faint);
+		font-variant-numeric: tabular-nums;
+	}
+	.ai-diagnostics-summary {
+		grid-area: summary;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ai-diagnostics-outcome {
+		grid-area: outcome;
+		font-weight: 500;
+	}
+	.ai-diagnostics-details {
+		grid-area: details;
+		color: var(--text-muted);
+	}
+	&.is-ok .ai-diagnostics-outcome {
+		color: var(--text-success);
+	}
+	&.is-error .ai-diagnostics-outcome {
+		color: var(--text-error);
+	}
+	&.is-cancelled .ai-diagnostics-outcome {
+		color: var(--text-faint);
+	}
+}
+
+// --- Routing, language, interpreter -------------------------------------------------------------
+
+.ai-routing-row {
+	.setting-item-control {
+		flex-shrink: 0;
+		gap: 0.5rem;
+	}
+	select {
+		max-width: 14rem;
+	}
+	&.mod-default .setting-item-info label {
+		font-weight: 600;
+	}
+}
+
+#ai-response-language {
+	width: 14rem;
+}
+
+.ai-prompt-context-item textarea {
+	width: 100%;
+	min-height: 5rem;
+}
+
+@media (max-width: 768px) {
+	// Badge under the name, actions stay on the side.
+	.ai-connection-card {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		grid-template-areas:
+			'icon info actions'
+			'icon badge actions';
+		column-gap: 0.75rem;
+		row-gap: 0.25rem;
+		.ai-kind-icon-container { grid-area: icon; }
+		.ai-connection-info { grid-area: info; }
+		.ai-status-badge {
+			grid-area: badge;
+			justify-self: start;
+			max-width: 100%;
+		}
+		.ai-connection-actions { grid-area: actions; }
+	}
+	.ai-connection-test-panel {
+		padding-inline-start: 0;
+	}
+	.ai-profile-list {
+		margin-inline-start: 0;
+	}
+	.ai-profile-group .add-btn {
+		margin-inline-start: 0;
+	}
+	.ai-routing-row .setting-item-control {
+		flex-wrap: wrap;
+		justify-content: flex-start;
+		select {
+			max-width: none;
+			flex: 1 1 100%;
+		}
+	}
+	#ai-response-language {
+		width: 100%;
+	}
+	.ai-native-cli .ai-native-cli-actions {
+		flex-wrap: wrap;
+		justify-content: flex-start;
+		button {
+			flex: 1 1 auto;
+		}
+	}
+	.ai-catalog-list {
+		grid-template-columns: 1fr;
+	}
+}

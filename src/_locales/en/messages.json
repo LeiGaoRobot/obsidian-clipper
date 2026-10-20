@@ -5,20 +5,8 @@
 	"activity": {
 		"message": "Activity"
 	},
-	"addModel": {
-		"message": "+ Add model"
-	},
-	"addModelTitle": {
-		"message": "Add model"
-	},
 	"addProperty": {
 		"message": "+ Add property"
-	},
-	"addProvider": {
-		"message": "+ Add provider"
-	},
-	"addProviderTitle": {
-		"message": "Add provider"
 	},
 	"addToObsidian": {
 		"message": "Add to Obsidian"
@@ -74,11 +62,503 @@
 	"aiRequestCancelled": {
 		"message": "AI request cancelled."
 	},
-	"aiLanguageToolsRequireInterpreter": {
-		"message": "Enable Interpreter and configure a model before using AI language tools."
+	"aiErrorNotConfiguredTitle": {
+		"message": "AI isn't set up"
 	},
-	"aiLanguageToolsRequireModel": {
-		"message": "Enable an Interpreter model before using AI language tools."
+	"aiErrorNotConfiguredBody": {
+		"message": "Enable AI features and choose a model in the AI section of Settings."
+	},
+	"aiErrorCredentialMissingTitle": {
+		"message": "API key missing"
+	},
+	"aiErrorCredentialMissingBody": {
+		"message": "This connection needs an API key on this device. Add it in Settings."
+	},
+	"aiErrorAuthTitle": {
+		"message": "API key rejected"
+	},
+	"aiErrorAuthBody": {
+		"message": "The provider rejected the API key. Check or replace it in Settings."
+	},
+	"aiErrorModelUnavailableTitle": {
+		"message": "Model not available"
+	},
+	"aiErrorModelUnavailableBody": {
+		"message": "The provider couldn't find this model, or your account can't use it. Check the model ID or choose another model."
+	},
+	"aiErrorRateLimitedTitle": {
+		"message": "Too many requests"
+	},
+	"aiErrorRateLimitedBody": {
+		"message": "The provider is limiting requests right now. Wait a moment, then try again."
+	},
+	"aiErrorQuotaTitle": {
+		"message": "Quota or credit used up"
+	},
+	"aiErrorQuotaBody": {
+		"message": "Your provider account has run out of quota or credit. Check your plan or billing, or choose another model."
+	},
+	"aiErrorTimeoutTitle": {
+		"message": "Request timed out"
+	},
+	"aiErrorTimeoutBody": {
+		"message": "The model took too long to respond. Try again."
+	},
+	"aiErrorNetworkTitle": {
+		"message": "Network error"
+	},
+	"aiErrorNetworkBody": {
+		"message": "Couldn't reach the provider. Check your connection and the base URL, then try again."
+	},
+	"aiErrorHostMissingTitle": {
+		"message": "Local CLI host not installed"
+	},
+	"aiErrorHostMissingBody": {
+		"message": "The Native Messaging Host isn't installed or couldn't start. Copy the install command, run it once in Terminal, then reload the extension."
+	},
+	"aiErrorHostOutdatedTitle": {
+		"message": "Local CLI host is out of date"
+	},
+	"aiErrorHostOutdatedBody": {
+		"message": "The installed Native Messaging Host is older than this extension. Copy the install command and run it again."
+	},
+	"aiErrorHostUnsupportedTitle": {
+		"message": "Local CLIs aren't supported here"
+	},
+	"aiErrorHostUnsupportedBody": {
+		"message": "This browser can't run local CLIs. Choose an API model instead."
+	},
+	"aiErrorCliMissingTitle": {
+		"message": "CLI not found"
+	},
+	"aiErrorCliMissingBody": {
+		"message": "The Native Messaging Host couldn't find or start this CLI. Install it, then run the install command again so the Host records its path."
+	},
+	"aiErrorCliNotAuthenticatedTitle": {
+		"message": "CLI not signed in"
+	},
+	"aiErrorCliNotAuthenticatedBody": {
+		"message": "Sign in to this CLI in Terminal, then try again."
+	},
+	"aiErrorBadResponseTitle": {
+		"message": "Couldn't read the response"
+	},
+	"aiErrorBadResponseBody": {
+		"message": "The model's response wasn't in the expected format. Try again, or choose another model."
+	},
+	"aiErrorIncompleteTitle": {
+		"message": "Result incomplete"
+	},
+	"aiErrorIncompleteBody": {
+		"message": "Some parts are missing. Choose Continue to request only the missing parts."
+	},
+	"aiErrorCancelledTitle": {
+		"message": "Cancelled"
+	},
+	"aiErrorCancelledBody": {
+		"message": "The request was cancelled."
+	},
+	"aiErrorProviderErrorTitle": {
+		"message": "Provider error"
+	},
+	"aiErrorProviderErrorBody": {
+		"message": "The provider returned an error. Try again later, or check the details."
+	},
+	"aiSettings": {
+		"message": "AI"
+	},
+	"aiConnections": {
+		"message": "Connections"
+	},
+	"aiConnectionsDescription": {
+		"message": "API providers and local CLIs that can run AI tasks. API keys are stored only on this device, in the browser's local extension storage. They don't sync to your other devices and aren't encrypted."
+	},
+	"aiConnectionsEmpty": {
+		"message": "No connections yet. Add an API provider or a local CLI to get started."
+	},
+	"aiAddApiProvider": {
+		"message": "+ Add API provider"
+	},
+	"aiCatalogTitle": {
+		"message": "Add API provider"
+	},
+	"aiCatalogDescription": {
+		"message": "Choose a provider, or choose Custom for any other endpoint."
+	},
+	"aiCatalogCustomDescription": {
+		"message": "Any other endpoint"
+	},
+	"aiConnectionAddTitle": {
+		"message": "Add API provider"
+	},
+	"aiConnectionEditTitle": {
+		"message": "Edit connection"
+	},
+	"aiConnectionLabel": {
+		"message": "Name"
+	},
+	"aiConnectionLabelDescription": {
+		"message": "Shown in Settings and in model menus."
+	},
+	"aiConnectionLabelRequired": {
+		"message": "Enter a name for this connection."
+	},
+	"aiConnectionBaseUrlDescription": {
+		"message": "The provider's chat endpoint. Replace any {placeholders} with your own values."
+	},
+	"aiConnectionBaseUrlInvalid": {
+		"message": "Enter the full endpoint URL, starting with https:// or http://, with any {placeholders} replaced."
+	},
+	"aiConnectionApiKeyDescription": {
+		"message": "Stored only on this device."
+	},
+	"aiConnectionShowKey": {
+		"message": "Show"
+	},
+	"aiConnectionHideKey": {
+		"message": "Hide"
+	},
+	"aiConnectionApiKeyRequired": {
+		"message": "Requires API key"
+	},
+	"aiConnectionApiKeyRequiredDescription": {
+		"message": "Turn off for local servers that accept requests without a key."
+	},
+	"aiConnectionMaxConcurrency": {
+		"message": "Max concurrent requests"
+	},
+	"aiConnectionMaxConcurrencyDescription": {
+		"message": "How many requests a long job, such as a transcript translation, sends to this connection at once. Leave blank to use the default."
+	},
+	"aiConnectionMaxConcurrencyPlaceholder": {
+		"message": "Default"
+	},
+	"aiConnectionMaxConcurrencyInvalid": {
+		"message": "Enter a whole number from 1 to $1, or leave it blank."
+	},
+	"aiConnectionDeleteConfirm": {
+		"message": "Delete “$1”? Its $2 model(s) and its API key on this device are deleted too."
+	},
+	"aiConnectionUnnamed": {
+		"message": "Unnamed connection"
+	},
+	"aiConnectionTest": {
+		"message": "Test"
+	},
+	"aiConnectionTestCostNote": {
+		"message": "Test may send a minimal request to the provider, which the provider may bill."
+	},
+	"aiConnectionTestCostNoteCli": {
+		"message": "Test runs the CLI once for each model, which may count against your CLI plan or be billed."
+	},
+	"aiTestStepListing": {
+		"message": "Checking the key by listing models…"
+	},
+	"aiTestStepStructured": {
+		"message": "Checking structured output…"
+	},
+	"aiTestStepProbe": {
+		"message": "Sending a minimal test request…"
+	},
+	"aiTestStepHealth": {
+		"message": "Checking the local CLI host…"
+	},
+	"aiTestStepExec": {
+		"message": "Running the CLI…"
+	},
+	"aiTestStepExecProfile": {
+		"message": "Running the CLI with $1…"
+	},
+	"aiTestResultOk": {
+		"message": "The connection works."
+	},
+	"aiTestResultModels": {
+		"message": "$1 of $2 models found in the provider’s list."
+	},
+	"aiTestResultNotListed": {
+		"message": "Not listed: $1. Check the model IDs."
+	},
+	"aiTestResultStructured": {
+		"message": "Structured output: $1"
+	},
+	"aiTestResultBillable": {
+		"message": "This Test sent a minimal request, which the provider may bill."
+	},
+	"aiTestResultOneShot": {
+		"message": "This browser reaches the CLI host one request at a time. Cancel stops waiting but cannot stop a CLI run that has started."
+	},
+	"aiTestResultListingUnavailable": {
+		"message": "The model listing isn't available at this address (HTTP $1). Check the base URL. This Test sends no billable request, so nothing else was checked."
+	},
+	"aiTestResultListingUnavailableAddModel": {
+		"message": "This server has no model listing (HTTP $1), so this free Test couldn't check it. Add a model, then Test again: Test then sends a minimal request, which the provider may bill."
+	},
+	"aiStructuredOutputJsonSchema": {
+		"message": "JSON schema"
+	},
+	"aiStructuredOutputJsonObject": {
+		"message": "JSON object"
+	},
+	"aiStructuredOutputNone": {
+		"message": "Not supported (plain text)"
+	},
+	"aiCliCodex": {
+		"message": "Codex CLI"
+	},
+	"aiCliGrok": {
+		"message": "Grok CLI"
+	},
+	"aiCliConnectionHost": {
+		"message": "Local CLI on this computer"
+	},
+	"aiCliAlreadyAdded": {
+		"message": "$1 is already added."
+	},
+	"aiAddLocalCli": {
+		"message": "Add local CLI"
+	},
+	"aiAddLocalCliDescription": {
+		"message": "Run tasks with a Codex or Grok CLI installed on this computer, through the Native Messaging Host. Install the host once with the command below."
+	},
+	"aiAddCli": {
+		"message": "Add $1"
+	},
+	"aiStatusUntested": {
+		"message": "Untested"
+	},
+	"aiStatusOk": {
+		"message": "OK"
+	},
+	"aiStatusFailing": {
+		"message": "Failing"
+	},
+	"aiStatusFailingReason": {
+		"message": "Failing: $1"
+	},
+	"aiStatusKeyMissing": {
+		"message": "Key missing on this device"
+	},
+	"aiStatusUnsupported": {
+		"message": "Unsupported in this browser"
+	},
+	"aiProfiles": {
+		"message": "Models"
+	},
+	"aiProfilesDescription": {
+		"message": "The models each connection offers. Only enabled models appear in task routing and model menus."
+	},
+	"aiProfilesEmpty": {
+		"message": "Add a connection first, then add its models here."
+	},
+	"aiAddProfile": {
+		"message": "+ Add model"
+	},
+	"aiProfileAddTitle": {
+		"message": "Add model"
+	},
+	"aiProfileEditTitle": {
+		"message": "Edit model"
+	},
+	"aiProfileModelDescription": {
+		"message": "The model identifier from your provider."
+	},
+	"aiProfileCodexModelDescription": {
+		"message": "Leave empty to use the Codex CLI default model."
+	},
+	"aiProfileModelRequired": {
+		"message": "Enter a model ID."
+	},
+	"aiProfileLabelDescription": {
+		"message": "Optional. Leave empty to show the model ID."
+	},
+	"aiProfileEffort": {
+		"message": "Reasoning effort"
+	},
+	"aiProfileEffortDescription": {
+		"message": "Higher effort can take longer and use more tokens. Unsupported model and effort combinations fail without fallback."
+	},
+	"aiProfileEffortDefault": {
+		"message": "Use Codex CLI default"
+	},
+	"aiProfileEffortValue": {
+		"message": "Effort: $1"
+	},
+	"aiProfileCliDefault": {
+		"message": "CLI default model"
+	},
+	"aiProfileUnnamed": {
+		"message": "Unnamed model"
+	},
+	"aiProfileCopyLabel": {
+		"message": "$1 (copy)"
+	},
+	"aiProfileDeleteConfirm": {
+		"message": "Delete “$1”? Any task routing that uses it is cleared."
+	},
+	"aiProfileEnabled": {
+		"message": "Enable $1"
+	},
+	"aiProfileOrphanGroup": {
+		"message": "Missing connection"
+	},
+	"aiProfileModelNotListed": {
+		"message": "Model not listed"
+	},
+	"aiProfileModelNotListedTitle": {
+		"message": "The last Test did not find this model in the provider’s list. Check the model ID."
+	},
+	"aiRouting": {
+		"message": "Task routing"
+	},
+	"aiRoutingDescription": {
+		"message": "Choose the model for each task. Tasks set to Use default follow the default model."
+	},
+	"aiRoutingDefault": {
+		"message": "Default model"
+	},
+	"aiRoutingDefaultDescription": {
+		"message": "Used by every task set to Use default."
+	},
+	"aiRoutingNone": {
+		"message": "None"
+	},
+	"aiRoutingUseDefault": {
+		"message": "Use default"
+	},
+	"aiRoutingNotSet": {
+		"message": "Not set"
+	},
+	"aiRoutingUnavailable": {
+		"message": "Model unavailable"
+	},
+	"aiRoutingDisabledProfile": {
+		"message": "$1 (disabled)"
+	},
+	"aiRoutingMissingProfile": {
+		"message": "Deleted model"
+	},
+	"aiTaskInterpret": {
+		"message": "Interpreter"
+	},
+	"aiTaskInterpretDescription": {
+		"message": "Prompt variables in templates."
+	},
+	"aiTaskEdit": {
+		"message": "AI edit"
+	},
+	"aiTaskEditDescription": {
+		"message": "Editing clippings in the popup and side panel."
+	},
+	"aiTaskTranslate": {
+		"message": "Subtitle translation"
+	},
+	"aiTaskTranslateDescription": {
+		"message": "Bilingual subtitles in Reader."
+	},
+	"aiTaskReading": {
+		"message": "Japanese readings"
+	},
+	"aiTaskReadingDescription": {
+		"message": "Readings for Japanese subtitles in Reader."
+	},
+	"aiTaskExplain": {
+		"message": "Explanations"
+	},
+	"aiTaskExplainDescription": {
+		"message": "Word and sentence explanations in Reader."
+	},
+	"aiLanguage": {
+		"message": "Language"
+	},
+	"aiEnabled": {
+		"message": "Enable AI features"
+	},
+	"aiEnabledDescription": {
+		"message": "Lets Interpreter, AI edits, and Reader's language tools use the models set up above."
+	},
+	"aiErrorTechnicalDetails": {
+		"message": "Technical details"
+	},
+	"aiErrorActionRetry": {
+		"message": "Try again"
+	},
+	"aiErrorActionSwitchProfile": {
+		"message": "Choose another model"
+	},
+	"aiErrorActionOpenSettings": {
+		"message": "Open AI settings"
+	},
+	"aiErrorSwitchProfileSelect": {
+		"message": "Model to retry with"
+	},
+	"aiSettingsSaveFailedTitle": {
+		"message": "Couldn't save AI settings"
+	},
+	"aiSettingsQuotaItemTooLarge": {
+		"message": "This change is too large for browser sync storage, which allows 8 KB per item. Shorten the prompt context, or remove connections or models you don't use."
+	},
+	"aiSettingsQuotaTotal": {
+		"message": "Browser sync storage is full. Remove settings or templates you don't use, then try again."
+	},
+	"aiSettingsQuotaWriteRate": {
+		"message": "Too many changes in a short time. Wait a minute, then try again."
+	},
+	"aiSettingsUnexpectedBody": {
+		"message": "Something went wrong while saving. Reload Settings and try again."
+	},
+	"aiSettingsNotWritableTitle": {
+		"message": "AI settings aren't set up on this device"
+	},
+	"aiSettingsNotWritableBody": {
+		"message": "This change wasn't saved because there are no AI settings to update yet. Reload Settings and try again."
+	},
+	"aiSettingsBootstrapFailedTitle": {
+		"message": "Couldn't set up AI settings on this device"
+	},
+	"aiSettingsBootstrapFailedBody": {
+		"message": "Your previous AI settings are unchanged. Reload Settings to try again."
+	},
+	"aiSettingsBootstrapQuotaTotal": {
+		"message": "Browser sync storage is full, so AI settings couldn't be set up on this device. Your previous AI settings are unchanged. Free up space, for example by removing templates you don't use, then reload Settings."
+	},
+	"aiSettingsBootstrapItemTooLarge": {
+		"message": "Your previous AI settings couldn't be moved to this version: the “$1” item is larger than the 8 KB that browser sync storage allows per item. Your previous AI settings are unchanged, and AI settings stay read-only on this device. If you report this problem, include the technical details below."
+	},
+	"aiSettingsConnectionMissingTitle": {
+		"message": "This connection was deleted"
+	},
+	"aiSettingsProfileMissingTitle": {
+		"message": "This model was deleted"
+	},
+	"aiSettingsItemMissingBody": {
+		"message": "It was deleted while you were editing it, possibly on another device. Your changes weren't saved."
+	},
+	"aiDiagnostics": {
+		"message": "Diagnostics"
+	},
+	"aiDiagnosticsDescription": {
+		"message": "The last 100 model runs and connection Tests in this browser, kept until the browser closes. Prompts, page content, and API keys are never recorded."
+	},
+	"aiDiagnosticsEmpty": {
+		"message": "No AI requests yet."
+	},
+	"aiDiagnosticsUnavailable": {
+		"message": "Diagnostics need session storage, which this browser does not provide."
+	},
+	"aiDiagnosticsClear": {
+		"message": "Clear"
+	},
+	"aiDiagnosticsCopy": {
+		"message": "Copy as JSON"
+	},
+	"aiDiagnosticsCancelled": {
+		"message": "Cancelled"
+	},
+	"aiDiagnosticsFallback": {
+		"message": "Retried without structured output"
+	},
+	"aiDiagnosticsGroups": {
+		"message": "$1 groups, $2 retries"
 	},
 	"allHighlights": {
 		"message": "All highlights"
@@ -94,9 +574,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "Display your saved highlights when you load a page. Turn off to only display highlights when highlighter mode is activated."
-	},
-	"apiKeyMissing": {
-		"message": "No API key"
 	},
 	"apiKeysWarning": {
 		"message": "By using an external provider you agree to their terms and privacy policy. Interpreter requests are sent directly to the provider you choose. Obsidian does not gather or store any data about your requests."
@@ -127,9 +604,6 @@
 	},
 	"cancel": {
 		"message": "Cancel"
-	},
-	"cannotDeleteProvider": {
-		"message": "Cannot delete provider \"$1\" because it is being used by $2 model(s)."
 	},
 	"changelog": {
 		"message": "Changelog"
@@ -228,12 +702,6 @@
 	"deleteHighlightsForPage": {
 		"message": "Delete all highlights for this page?"
 	},
-	"deleteModelConfirm": {
-		"message": "Are you sure you want to delete this model?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Are you sure you want to delete this provider?"
-	},
 	"disableHighlighter": {
 		"message": "Turn off highlighter"
 	},
@@ -266,12 +734,6 @@
 	"edit": {
 		"message": "Edit"
 	},
-	"editModel": {
-		"message": "Edit model"
-	},
-	"editProvider": {
-		"message": "Edit provider"
-	},
 	"editTemplate": {
 		"message": "Edit template"
 	},
@@ -283,26 +745,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Highlight content on web pages that you can save to Obsidian."
-	},
-	"enableInterpreter": {
-		"message": "Enable interpreter"
-	},
-	"enableInterpreterDescription": {
-		"message": "Use natural language to extract data from pages. For example, you can use the template syntax $strong_start${{\"a summary of the page\"}}$strong_end$. Requires an API key or custom model configured below.  $link_start$Learn more$link_end$.",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Open reading view"
@@ -375,9 +817,6 @@
 	"failedToProcessInterpreter": {
 		"message": "Interpreter processing failed. Please try again."
 	},
-	"failedToResetProviders": {
-		"message": "Failed to reset providers and models"
-	},
 	"failedToResetTemplate": {
 		"message": "Failed to reset default template. Please try again."
 	},
@@ -386,9 +825,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Failed to save file"
-	},
-	"failedToSaveProvider": {
-		"message": "Failed to save provider. Please try again."
 	},
 	"feedback": {
 		"message": "Feedback"
@@ -494,17 +930,8 @@
 	"interpreter": {
 		"message": "Interpreter"
 	},
-	"interpreterExecutionMode": {
-		"message": "Execution mode"
-	},
-	"interpreterExecutionModeApi": {
-		"message": "API provider"
-	},
 	"interpreterExecutionModeCodex": {
 		"message": "Codex CLI"
-	},
-	"interpreterExecutionModeDescription": {
-		"message": "Use an API provider, or a locally installed Grok/Codex CLI through Chrome Native Messaging. The CLI modes require a one-time host installation."
 	},
 	"interpreterExecutionModeGrok": {
 		"message": "Grok CLI"
@@ -512,14 +939,23 @@
 	"interpreterContext": {
 		"message": "Interpreter context"
 	},
+	"interpreterPartialStatus": {
+		"message": "Partial"
+	},
+	"interpreterPartialTitle": {
+		"message": "Some prompts were not answered."
+	},
+	"interpreterPartialBody": {
+		"message": "The model answered $1 of $2 prompts. The unanswered prompts below stay as placeholders in the note. Fill them in, or add the note to Obsidian as it is. To interpret again, reopen Web Clipper."
+	},
 	"interpreterContextDescription": {
-		"message": "The context used to interpret prompt variables. Overrides the default context defined in $link_start$Interpreter settings$link_end$. Variables can be used here.",
+		"message": "The context used to interpret prompt variables. Overrides the default context defined in $link_start$AI settings$link_end$. Variables can be used here.",
 		"placeholders": {
 			"link_end": {
 				"content": "</a>"
 			},
 			"link_start": {
-				"content": "<a href=\"?section=interpreter\">"
+				"content": "<a href=\"?section=ai\">"
 			}
 		}
 	},
@@ -535,41 +971,23 @@
 	"lastUsed": {
 		"message": "Last used"
 	},
-	"nativeCliFailed": {
-		"message": "The local CLI request failed. Check the CLI output and Native Messaging Host installation."
+	"nativeCliInstallCopied": {
+		"message": "Install command copied. Run it once in Terminal, reload the extension, then check the connection."
 	},
-	"nativeCliHealth": {
-		"message": "Local CLI connection"
+	"nativeCliInstallCopy": {
+		"message": "Copy install command"
 	},
-	"nativeCliHealthCheck": {
-		"message": "Check connection"
+	"nativeCliInstallCopyFailed": {
+		"message": "Could not copy automatically. Select and copy the command above."
 	},
-	"nativeCliHealthChecking": {
-		"message": "Checking the Native Messaging Host and selected CLI…"
+	"nativeCliInstallDescription": {
+		"message": "First-time setup: copy and run this command once in Terminal. It includes this extension's ID and source path, so it works from any directory."
 	},
-	"nativeCliHealthDescription": {
-		"message": "Check the Native Messaging Host and selected CLI without sending page content."
+	"nativeCliInstallSourceUnavailable": {
+		"message": "This packaged build does not contain its local source path. Install the separate Native Messaging Host companion instead."
 	},
-	"nativeCliHealthFailed": {
-		"message": "Connection check failed ($1): $2"
-	},
-	"nativeCliHealthLastRun": {
-		"message": "Last run: $1 at $2."
-	},
-	"nativeCliHealthReady": {
-		"message": "Connected to $1 (protocol $2)."
-	},
-	"nativeCliRunStatusCancelled": {
-		"message": "cancelled"
-	},
-	"nativeCliRunStatusFailed": {
-		"message": "failed"
-	},
-	"nativeCliRunStatusSuccess": {
-		"message": "successful"
-	},
-	"nativeCliUnavailable": {
-		"message": "The local CLI is unavailable. Install the Native Messaging Host and make sure the selected CLI is installed and signed in."
+	"nativeCliInstallUnsupported": {
+		"message": "The guided Native Messaging installer currently supports Google Chrome on macOS and Linux."
 	},
 	"legacyMode": {
 		"message": "Legacy mode"
@@ -585,24 +1003,6 @@
 	},
 	"modelName": {
 		"message": "Display name"
-	},
-	"modelNameDescription": {
-		"message": "The name of the model you want to display in the interface."
-	},
-	"modelProvider": {
-		"message": "Provider"
-	},
-	"modelProviderDescription": {
-		"message": "Select the provider for this model."
-	},
-	"modelProviderPlaceholder": {
-		"message": "Provider"
-	},
-	"modelRequiredFields": {
-		"message": "Model name, Provider, and Model ID are required."
-	},
-	"models": {
-		"message": "Models"
 	},
 	"modelsListFor": {
 		"message": "Models list for $1"
@@ -708,12 +1108,6 @@
 	"pleaseReload": {
 		"message": "Please try reloading the page."
 	},
-	"popularModels": {
-		"message": "Popular models"
-	},
-	"popularModelsDescription": {
-		"message": "Choose from commonly used models or enter custom model details."
-	},
 	"popup": {
 		"message": "Popup"
 	},
@@ -759,47 +1153,14 @@
 	"propertyValue": {
 		"message": "Property value"
 	},
-	"provider": {
-		"message": "Provider"
-	},
 	"providerApiKey": {
 		"message": "API key"
-	},
-	"providerApiKeyDescription": {
-		"message": "Your API key for this provider."
 	},
 	"providerBaseUrl": {
 		"message": "Base URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "The API endpoint URL for this provider."
-	},
 	"providerModelId": {
 		"message": "Model ID"
-	},
-	"providerModelIdDescription": {
-		"message": "The identifier of the model from your provider. Typically a short name without spaces."
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Model ID"
-	},
-	"providerName": {
-		"message": "Provider name"
-	},
-	"providerNameDescription": {
-		"message": "Display name for this provider."
-	},
-	"providerPreset": {
-		"message": "Preset"
-	},
-	"providerPresetDescription": {
-		"message": "Choose a provider or create a custom one."
-	},
-	"providerRequiredFields": {
-		"message": "Provider name and Base URL are required."
-	},
-	"providers": {
-		"message": "Providers"
 	},
 	"rateExtensionDescription": {
 		"message": "Are you enjoying Web Clipper? Help us by giving it a rating."
@@ -839,30 +1200,6 @@
 	},
 	"readerBilingualSubtitlesRestoreDescription": {
 		"message": "Show completed translations when they are already saved. Missing translations are never generated automatically."
-	},
-	"readerCliConfig": {
-		"message": "$1 is not configured. Check the local host configuration and try again."
-	},
-	"readerCliFailed": {
-		"message": "$1 could not complete this task. You can retry or switch execution mode."
-	},
-	"readerCliInvalid": {
-		"message": "The $1 request was invalid. Rebuild the extension and reinstall the Native Messaging Host."
-	},
-	"readerCliLaunchFailed": {
-		"message": "$1 could not be started. Confirm that it is installed and signed in."
-	},
-	"readerCliProtocolMismatch": {
-		"message": "The extension and Native Messaging Host versions do not match. Reinstall the host."
-	},
-	"readerCliResponseTooLarge": {
-		"message": "$1 returned too much data. Retry a smaller transcript range."
-	},
-	"readerCliTimeout": {
-		"message": "$1 did not finish within $2 seconds. Completed segments were kept."
-	},
-	"readerCliUnavailable": {
-		"message": "$1 is unavailable. Check the Native Messaging Host and CLI installation."
 	},
 	"readerBlendImages": {
 		"message": "Blend images"
@@ -942,8 +1279,14 @@
 	"readerJapaneseReadingsProgress": {
 		"message": "Generating readings ($1/$2)…"
 	},
-	"readerJapaneseReadingsTimeoutRetry": {
-		"message": "Completed segments were kept. Retry will continue with smaller batches."
+	"readerJapaneseTranslationProgress": {
+		"message": "Translating to Japanese ($1/$2)…"
+	},
+	"readerTranscriptTranslationBatchFailed": {
+		"message": "Some transcript batches could not be completed. Retry to continue."
+	},
+	"readerTranscriptRetrying": {
+		"message": "Provider busy, retrying in $1 s…"
 	},
 	"readerAiCancelled": {
 		"message": "AI request cancelled."
@@ -977,9 +1320,6 @@
 	},
 	"readerRegenerateReadingsConfirm": {
 		"message": "Generate the Japanese readings again? This will make another AI request."
-	},
-	"readerRetry": {
-		"message": "Retry"
 	},
 	"readerContinueRemaining": {
 		"message": "Continue remaining ($1/$2 complete)"
@@ -1101,9 +1441,6 @@
 	"readerTaskRangeNextFiveMinutes": {
 		"message": "Next 5 minutes"
 	},
-	"readerTechnicalDetails": {
-		"message": "Technical details"
-	},
 	"readerTheme": {
 		"message": "Theme"
 	},
@@ -1143,9 +1480,6 @@
 	"readerViewFullSize": {
 		"message": "View full size"
 	},
-	"recommended": {
-		"message": "recommended"
-	},
 	"refresh": {
 		"message": "Refresh"
 	},
@@ -1176,12 +1510,6 @@
 	"resetDefaultTemplateDescription": {
 		"message": "Remove any changes you've made to the default template."
 	},
-	"resetProvidersAndModels": {
-		"message": "Reset default models"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Reset providers and models to the default settings."
-	},
 	"save": {
 		"message": "Save"
 	},
@@ -1199,9 +1527,6 @@
 	},
 	"searchVariables": {
 		"message": "Search variables..."
-	},
-	"selectProvider": {
-		"message": "Select a provider"
 	},
 	"selectTemplateToExport": {
 		"message": "Please select a template to export."
@@ -1323,9 +1648,6 @@
 	"thinking": {
 		"message": "thinking"
 	},
-	"unknownProvider": {
-		"message": "Unknown provider"
-	},
 	"updateAvailable": {
 		"message": "An update is available."
 	},
@@ -1359,57 +1681,6 @@
 				"content": "<strong>"
 			}
 		}
-	},
-	"languageLearningReadinessApiMissing": {
-		"message": "Add and enable an API model"
-	},
-	"languageLearningReadinessApiConfigMissing": {
-		"message": "Complete the selected model provider and API key"
-	},
-	"languageLearningReadinessApiReady": {
-		"message": "API model is ready"
-	},
-	"languageLearningReadinessBrowserLanguage": {
-		"message": "Response language uses your browser language"
-	},
-	"languageLearningReadinessCliFailed": {
-		"message": "Local CLI connection needs attention"
-	},
-	"languageLearningReadinessCliReady": {
-		"message": "Local CLI connection is ready"
-	},
-	"languageLearningReadinessCliUnchecked": {
-		"message": "Check the selected local CLI connection"
-	},
-	"languageLearningReadinessDescription": {
-		"message": "Complete these checks before using translation, explanations, or Japanese readings in Reader."
-	},
-	"languageLearningReadinessEnable": {
-		"message": "Enable Interpreter"
-	},
-	"languageLearningReadinessEnabled": {
-		"message": "Interpreter is enabled"
-	},
-	"languageLearningReadinessIncomplete": {
-		"message": "Complete the items above, then run the check again."
-	},
-	"languageLearningReadinessLanguage": {
-		"message": "Response language: $1"
-	},
-	"languageLearningReadinessReaderSettings": {
-		"message": "Reader settings"
-	},
-	"languageLearningReadinessReady": {
-		"message": "Language learning is ready"
-	},
-	"languageLearningReadinessReadyDescription": {
-		"message": "You can use language-learning actions directly in Reader."
-	},
-	"languageLearningReadinessReview": {
-		"message": "Review setup"
-	},
-	"languageLearningReadinessTitle": {
-		"message": "Set up language learning"
 	},
 	"readerAutoPause": {
 		"message": "Pause after each sentence"

@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "गतिविधि"
 	},
-	"addModel": {
-		"message": "+ Model jodein"
-	},
-	"addModelTitle": {
-		"message": "Model jodein"
-	},
 	"addProperty": {
 		"message": "+ Property jodein"
-	},
-	"addProvider": {
-		"message": "+ Provider jodein"
-	},
-	"addProviderTitle": {
-		"message": "Provider jodein"
 	},
 	"addToObsidian": {
 		"message": "Obsidian me save karein"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "Page load hone par aapke save kiye gaye highlights dikhayein. Highlighter mode active hone par hi highlights dikhane ke liye band karein."
-	},
-	"apiKeyMissing": {
-		"message": "API key nahi hai"
 	},
 	"apiKeysWarning": {
 		"message": "External provider ka use karte samay, aap unki terms aur privacy policy se agree karte hain..."
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "Cancel"
-	},
-	"cannotDeleteProvider": {
-		"message": "Provider \"$1\" ko nahi hata sakte kyunki yeh $2 model(s) dwara upyog kiya ja raha hai."
 	},
 	"changelog": {
 		"message": "Changelog"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "इस पेज के लिए सभी हाइलाइट्स हटाएँ?"
 	},
-	"deleteModelConfirm": {
-		"message": "Kya aap is model ko hatana chahte hain?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Kya aap is provider ko hatana chahte hain?"
-	},
 	"disableHighlighter": {
 		"message": "Highlighter band karein"
 	},
@@ -212,12 +188,6 @@
 	"edit": {
 		"message": "संपादित करें"
 	},
-	"editModel": {
-		"message": "Model edit karein"
-	},
-	"editProvider": {
-		"message": "Provider edit karein"
-	},
 	"editTemplate": {
 		"message": "Template edit karein"
 	},
@@ -226,26 +196,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Web page par content highlight karein jise aap Obsidian mein save kar sakte hain."
-	},
-	"enableInterpreter": {
-		"message": "Interpreter enable karein"
-	},
-	"enableInterpreterDescription": {
-		"message": "Page se data nikalne ke liye natural language ka upyog karein. Udaharan ke liye, aap template syntax $strong_start${{\"page ka summary\"}}$strong_end$ ka upyog kar sakte hain. Niche configure kiye gaye API key ya custom model ki zarurat hai. $link_start$Aur janein$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "पठन दृश्य खोलें"
@@ -318,9 +268,6 @@
 	"failedToProcessInterpreter": {
 		"message": "Interpreter processing fail. Kripya dobara koshish karein."
 	},
-	"failedToResetProviders": {
-		"message": "Providers aur models reset karne mein fail"
-	},
 	"failedToResetTemplate": {
 		"message": "Default template reset karne mein fail. Kripya dobara koshish karein."
 	},
@@ -329,9 +276,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "File save karne mein fail"
-	},
-	"failedToSaveProvider": {
-		"message": "Provider save karne mein fail. Kripya dobara koshish karein."
 	},
 	"feedback": {
 		"message": "प्रतिक्रिया"
@@ -478,24 +422,6 @@
 	"modelName": {
 		"message": "Display name"
 	},
-	"modelNameDescription": {
-		"message": "Interface mein display karne ke liye model ka naam."
-	},
-	"modelProvider": {
-		"message": "Provider"
-	},
-	"modelProviderDescription": {
-		"message": "Model provider, jaise Ollama, OpenRouter, Google, etc."
-	},
-	"modelProviderPlaceholder": {
-		"message": "Provider"
-	},
-	"modelRequiredFields": {
-		"message": "Model name, Provider, aur Model ID jaruri hain."
-	},
-	"models": {
-		"message": "Models"
-	},
 	"modelsListFor": {
 		"message": "$1 के लिए मॉडल सूची"
 	},
@@ -600,12 +526,6 @@
 	"pleaseReload": {
 		"message": "Kripya page reload karne ki koshish karein."
 	},
-	"popularModels": {
-		"message": "लोकप्रिय मॉडल"
-	},
-	"popularModelsDescription": {
-		"message": "सामान्य रूप से प्रयुक्त मॉडलों में से चुनें या कस्टम मॉडल विवरण दर्ज करें।"
-	},
 	"popup": {
 		"message": "पॉपअप"
 	},
@@ -651,47 +571,14 @@
 	"propertyValue": {
 		"message": "Property value"
 	},
-	"provider": {
-		"message": "Provider"
-	},
 	"providerApiKey": {
 		"message": "API key"
-	},
-	"providerApiKeyDescription": {
-		"message": "Is provider ke liye aapki API key."
 	},
 	"providerBaseUrl": {
 		"message": "Base URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "Is provider ke liye API endpoint URL."
-	},
 	"providerModelId": {
 		"message": "Model ID"
-	},
-	"providerModelIdDescription": {
-		"message": "Aapke provider se model ka identifier. Generally spaces ke bina ek short name."
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Model ID"
-	},
-	"providerName": {
-		"message": "Provider name"
-	},
-	"providerNameDescription": {
-		"message": "Is provider ke liye display name."
-	},
-	"providerPreset": {
-		"message": "Preset"
-	},
-	"providerPresetDescription": {
-		"message": "Ek provider chunein ya custom banayein."
-	},
-	"providerRequiredFields": {
-		"message": "Provider name aur Base URL jaruri hain."
-	},
-	"providers": {
-		"message": "Providers"
 	},
 	"rateExtensionDescription": {
 		"message": "क्या आप वेब क्लिपर का आनंद ले रहे हैं? हमारी मदद करें इसे रेटिंग देकर।"
@@ -849,9 +736,6 @@
 	"readerViewFullSize": {
 		"message": "पूर्ण आकार में देखें"
 	},
-	"recommended": {
-		"message": "सिफारिश की गई"
-	},
 	"refresh": {
 		"message": "Refresh"
 	},
@@ -882,12 +766,6 @@
 	"resetDefaultTemplateDescription": {
 		"message": "Default template mein kiye gaye sabhi changes ko remove karein."
 	},
-	"resetProvidersAndModels": {
-		"message": "Default models reset karein"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Providers aur models ko default settings par reset karein."
-	},
 	"save": {
 		"message": "Save"
 	},
@@ -905,9 +783,6 @@
 	},
 	"searchVariables": {
 		"message": "Variables search karein..."
-	},
-	"selectProvider": {
-		"message": "Provider select karein"
 	},
 	"selectTemplateToExport": {
 		"message": "Kripya export karne ke liye ek template select karein."
@@ -1028,9 +903,6 @@
 	},
 	"thinking": {
 		"message": "Soch raha hai"
-	},
-	"unknownProvider": {
-		"message": "Unknown provider"
 	},
 	"updateAvailable": {
 		"message": "Update available hai."

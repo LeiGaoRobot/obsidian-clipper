@@ -1,12 +1,18 @@
-import type { Settings } from '../types/types';
+import { describeAiError } from '../ai/error-messages';
+import { AiError } from '../ai/errors';
+import { resolveProfile } from '../ai/resolve';
+import type { AiSettingsView } from '../ai/types';
+import { createAiAction } from '../ai/ui/action';
+import { clearAiErrorCard, renderAiErrorCard } from '../ai/ui/error-card';
 import { replaceTextSelection } from './language-learning';
-import { isRequestCancelled } from './request-cancellation';
 
 interface LanguageLearningPopupOptions {
 	doc?: Document;
 	enabled: boolean;
 	transformContent: (content: string, instruction: string, signal?: AbortSignal) => Promise<string>;
 	getMessage: (key: string) => string;
+	/** The error card's Open AI settings. Without it the card offers Retry only. */
+	openSettings?: () => void;
 }
 
 const AI_EDIT_PRESET_MESSAGE_KEYS: Record<string, string> = {
@@ -16,19 +22,25 @@ const AI_EDIT_PRESET_MESSAGE_KEYS: Record<string, string> = {
 	'study-notes': 'aiEditInstructionStudyNotes'
 };
 
-export function isLanguageLearningPopupAvailable(
-	settings: Pick<Settings, 'interpreterEnabled' | 'interpreterExecutionMode' | 'models'>
-): boolean {
-	if (!settings.interpreterEnabled) return false;
-	return (settings.interpreterExecutionMode ?? 'api') !== 'api'
-		|| settings.models.some(model => model.enabled);
+/**
+ * Whether the popup shows the AI edit tools: AI is on and `edit` resolves to a profile, or fails
+ * only for a reason the tools' error card explains (a key missing on this device, or a CLI this
+ * browser cannot reach).
+ */
+export function isLanguageLearningPopupAvailable(view: AiSettingsView): boolean {
+	if (!view.enabled) return false;
+	const resolved = resolveProfile(view, 'edit');
+	return resolved.ok
+		|| resolved.error.code === 'credential-missing'
+		|| resolved.error.code === 'host-unsupported';
 }
 
 export function initializeLanguageLearningPopup({
 	doc = document,
 	enabled,
 	transformContent,
-	getMessage
+	getMessage,
+	openSettings
 }: LanguageLearningPopupOptions): void {
 	const container = doc.getElementById('language-learning-tools') as HTMLElement;
 	const noteContentField = doc.getElementById('note-content-field') as HTMLTextAreaElement;
@@ -42,16 +54,20 @@ export function initializeLanguageLearningPopup({
 	const cancelButton = doc.getElementById('ai-edit-cancel-btn') as HTMLButtonElement;
 	const cancelRequestButton = doc.getElementById('ai-edit-cancel-request-btn') as HTMLButtonElement;
 	const status = doc.getElementById('ai-edit-status') as HTMLElement;
+	const errorCard = doc.getElementById('ai-edit-error') as HTMLElement;
 	if (!container || !noteContentField || !presetSelect || !instructionField || !previewButton
-		|| !undoButton || !preview || !previewContent || !applyButton || !cancelButton || !cancelRequestButton || !status) return;
+		|| !undoButton || !preview || !previewContent || !applyButton || !cancelButton || !cancelRequestButton || !status
+		|| !errorCard) return;
 
 	container.style.display = enabled ? 'block' : 'none';
 	if (!enabled) return;
 
-	interface PendingEdit {
+	interface EditSource {
 		sourceValue: string;
 		selectionStart: number;
 		selectionEnd: number;
+	}
+	interface PendingEdit extends EditSource {
 		output: string;
 	}
 	interface UndoEdit {
@@ -63,7 +79,8 @@ export function initializeLanguageLearningPopup({
 
 	let pendingEdit: PendingEdit | null = null;
 	let undoEdit: UndoEdit | null = null;
-	let activeRequest: AbortController | null = null;
+	// One request at a time; a settlement after a cancel or a newer request changes nothing.
+	const action = createAiAction<string>();
 
 	const showStatus = (message: string, isError = false) => {
 		status.textContent = message;
@@ -85,8 +102,51 @@ export function initializeLanguageLearningPopup({
 	});
 	updateInstruction();
 
-	previewButton.addEventListener('click', async () => {
+	/** Shows one request's progress and outcome; `launch` starts it on the controller. */
+	const runPreview = async (source: EditSource, launch: () => Promise<string | undefined>) => {
+		clearAiErrorCard(errorCard);
+		previewButton.disabled = true;
+		previewButton.setAttribute('aria-busy', 'true');
+		cancelRequestButton.hidden = false;
+		showStatus(getMessage('thinking'));
+		const output = await launch();
+		// A newer request owns the controls now.
+		if (action.state.status === 'running') return;
+		previewButton.disabled = false;
+		previewButton.removeAttribute('aria-busy');
+		cancelRequestButton.hidden = true;
+
+		const { state } = action;
+		if (state.status === 'done' && output !== undefined) {
+			pendingEdit = { ...source, output };
+			previewContent.textContent = output;
+			preview.style.display = 'block';
+			showStatus('');
+		} else if (state.status === 'error' && state.error) {
+			showStatus('');
+			renderAiErrorCard(errorCard, describeAiError(state.error), {
+				handlers: {
+					// The same content and instruction again, previewed against the same source. Once the
+					// note has changed, that preview could never be applied, so nothing is sent.
+					retry: () => {
+						if (noteContentField.value !== source.sourceValue) {
+							clearAiErrorCard(errorCard);
+							showStatus(getMessage('aiEditContentChanged'), true);
+							return;
+						}
+						void runPreview(source, () => action.retry());
+					},
+					...(openSettings ? { openSettings } : {})
+				}
+			});
+		} else {
+			showStatus(getMessage('aiRequestCancelled'));
+		}
+	};
+
+	previewButton.addEventListener('click', () => {
 		hidePreview();
+		clearAiErrorCard(errorCard);
 		const sourceValue = noteContentField.value;
 		const hasSelection = noteContentField.selectionEnd > noteContentField.selectionStart;
 		const selectionStart = hasSelection ? noteContentField.selectionStart : 0;
@@ -98,36 +158,15 @@ export function initializeLanguageLearningPopup({
 			return;
 		}
 
-		previewButton.disabled = true;
-		previewButton.setAttribute('aria-busy', 'true');
-		cancelRequestButton.hidden = false;
-		showStatus(getMessage('thinking'));
-		const requestController = new AbortController();
-		activeRequest = requestController;
-		try {
-			const output = await transformContent(content, instruction, requestController.signal);
-			if (!output.trim()) throw new Error(getMessage('emptyResponse'));
-			pendingEdit = { sourceValue, selectionStart, selectionEnd, output };
-			previewContent.textContent = output;
-			preview.style.display = 'block';
-			showStatus('');
-		} catch (error) {
-			showStatus(
-				isRequestCancelled(error) || requestController.signal.aborted
-					? getMessage('aiRequestCancelled')
-					: error instanceof Error ? error.message : getMessage('error'),
-				!isRequestCancelled(error) && !requestController.signal.aborted
-			);
-		} finally {
-			if (activeRequest === requestController) activeRequest = null;
-			previewButton.disabled = false;
-			previewButton.removeAttribute('aria-busy');
-			cancelRequestButton.hidden = true;
-		}
+		void runPreview({ sourceValue, selectionStart, selectionEnd }, () => action.start(async signal => {
+			const output = await transformContent(content, instruction, signal);
+			if (!output.trim()) throw new AiError('bad-response', { task: 'edit', detail: getMessage('emptyResponse') });
+			return output;
+		}));
 	});
 
 	cancelRequestButton.addEventListener('click', () => {
-		activeRequest?.abort();
+		action.cancel();
 	});
 
 	applyButton.addEventListener('click', () => {

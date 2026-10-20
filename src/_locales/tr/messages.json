@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "Aktivite"
 	},
-	"addModel": {
-		"message": "+ Model ekle"
-	},
-	"addModelTitle": {
-		"message": "Model ekle"
-	},
 	"addProperty": {
 		"message": "+ Özellik ekle"
-	},
-	"addProvider": {
-		"message": "+ Sağlayıcı ekle"
-	},
-	"addProviderTitle": {
-		"message": "Sağlayıcı ekle"
 	},
 	"addToObsidian": {
 		"message": "Obsidian'a ekle"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "Sayfa yüklendiğinde kaydettiğiniz vurguları gösterir. Vurguları yalnızca vurgulayıcı modu etkinken göstermek için kapatın."
-	},
-	"apiKeyMissing": {
-		"message": "API anahtarı yok"
 	},
 	"apiKeysWarning": {
 		"message": "Harici sağlayıcı kullandığınızda, onların şartlarını ve gizlilik politikasını kabul edersiniz..."
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "İptal"
-	},
-	"cannotDeleteProvider": {
-		"message": "\"$1\" sağlayıcısı $2 model tarafından kullanıldığı için silinemez."
 	},
 	"changelog": {
 		"message": "Değişiklik günlüğü"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "Bu sayfa için tüm vurgular silinsin mi?"
 	},
-	"deleteModelConfirm": {
-		"message": "Bu modeli silmek istediğinizden emin misiniz?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Bu sağlayıcıyı silmek istediğinizden emin misiniz?"
-	},
 	"disableHighlighter": {
 		"message": "Vurgulayıcıyı devre dışı bırak"
 	},
@@ -212,12 +188,6 @@
 	"edit": {
 		"message": "Düzenle"
 	},
-	"editModel": {
-		"message": "Modeli düzenle"
-	},
-	"editProvider": {
-		"message": "Sağlayıcıyı düzenle"
-	},
 	"editTemplate": {
 		"message": "Şablonu düzenle"
 	},
@@ -226,26 +196,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Web sayfalarındaki Obsidian'a kaydedebileceğiniz içeriği vurgulayın."
-	},
-	"enableInterpreter": {
-		"message": "Yorumlayıcıyı etkinleştir"
-	},
-	"enableInterpreterDescription": {
-		"message": "Sayfalardan veri çıkarmak için doğal dil kullanın. Örneğin, $strong_start${{\"sayfanın özeti\"}}$strong_end$ şablon sözdizimini kullanabilirsiniz. Aşağıda yapılandırılmış bir API anahtarı veya özel model gerektirir. $link_start$Daha fazla bilgi$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Okuma görünümünü aç"
@@ -318,9 +268,6 @@
 	"failedToProcessInterpreter": {
 		"message": "Yorumlayıcı işlemi başarısız oldu. Lütfen tekrar deneyin."
 	},
-	"failedToResetProviders": {
-		"message": "Sağlayıcılar ve modeller sıfırlanamadı"
-	},
 	"failedToResetTemplate": {
 		"message": "Varsayılan şablon sıfırlanamadı. Lütfen tekrar deneyin."
 	},
@@ -329,9 +276,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Dosya kaydedilemedi"
-	},
-	"failedToSaveProvider": {
-		"message": "Sağlayıcı kaydedilemedi. Lütfen tekrar deneyin."
 	},
 	"feedback": {
 		"message": "Geri bildirim"
@@ -478,24 +422,6 @@
 	"modelName": {
 		"message": "Görünen ad"
 	},
-	"modelNameDescription": {
-		"message": "Arayüzde görüntülemek istediğiniz model adı."
-	},
-	"modelProvider": {
-		"message": "Sağlayıcı"
-	},
-	"modelProviderDescription": {
-		"message": "Model sağlayıcı, örneğin Ollama, OpenRouter, Google, vb."
-	},
-	"modelProviderPlaceholder": {
-		"message": "Sağlayıcı"
-	},
-	"modelRequiredFields": {
-		"message": "Model adı, Sağlayıcı ve Model ID gereklidir."
-	},
-	"models": {
-		"message": "Modeller"
-	},
 	"modelsListFor": {
 		"message": "$1 için modeller listesi"
 	},
@@ -600,12 +526,6 @@
 	"pleaseReload": {
 		"message": "Lütfen sayfayı yeniden yüklemeyi deneyin."
 	},
-	"popularModels": {
-		"message": "Popüler modeller"
-	},
-	"popularModelsDescription": {
-		"message": "Sık kullanılan modellerden seçin veya özel model detaylarını girin."
-	},
 	"popup": {
 		"message": "Açılır Pencere"
 	},
@@ -651,47 +571,14 @@
 	"propertyValue": {
 		"message": "Özellik değeri"
 	},
-	"provider": {
-		"message": "Sağlayıcı"
-	},
 	"providerApiKey": {
 		"message": "API anahtarı"
-	},
-	"providerApiKeyDescription": {
-		"message": "Bu sağlayıcı için API anahtarınız."
 	},
 	"providerBaseUrl": {
 		"message": "Temel URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "Bu sağlayıcı için API uç noktası URL'si."
-	},
 	"providerModelId": {
 		"message": "Model ID"
-	},
-	"providerModelIdDescription": {
-		"message": "Sağlayıcınızdan modelin tanımlayıcısı. Genellikle boşluk içermeyen kısa bir ad."
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Model ID"
-	},
-	"providerName": {
-		"message": "Sağlayıcı adı"
-	},
-	"providerNameDescription": {
-		"message": "Bu sağlayıcı için görünen ad."
-	},
-	"providerPreset": {
-		"message": "Ön ayar"
-	},
-	"providerPresetDescription": {
-		"message": "Bir sağlayıcı seçin veya özel bir tane oluşturun."
-	},
-	"providerRequiredFields": {
-		"message": "Sağlayıcı adı ve Temel URL gereklidir."
-	},
-	"providers": {
-		"message": "Sağlayıcılar"
 	},
 	"rateExtensionDescription": {
 		"message": "Web Clipper'ı beğeniyor musunuz? Bize bir puan vererek yardımcı olun."
@@ -849,9 +736,6 @@
 	"readerViewFullSize": {
 		"message": "Tam boyutta görüntüle"
 	},
-	"recommended": {
-		"message": "önerilen"
-	},
 	"refresh": {
 		"message": "Yenile"
 	},
@@ -882,12 +766,6 @@
 	"resetDefaultTemplateDescription": {
 		"message": "Varsayılan şablonda yapılan tüm değişiklikleri kaldır."
 	},
-	"resetProvidersAndModels": {
-		"message": "Varsayılan modelleri sıfırla"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Sağlayıcıları ve modelleri varsayılan ayarlara sıfırla."
-	},
 	"save": {
 		"message": "Kaydet"
 	},
@@ -905,9 +783,6 @@
 	},
 	"searchVariables": {
 		"message": "Değişkenleri ara..."
-	},
-	"selectProvider": {
-		"message": "Sağlayıcı seç"
 	},
 	"selectTemplateToExport": {
 		"message": "Lütfen dışa aktarmak için bir şablon seçin."
@@ -1028,9 +903,6 @@
 	},
 	"thinking": {
 		"message": "Düşünüyor"
-	},
-	"unknownProvider": {
-		"message": "Bilinmeyen sağlayıcı"
 	},
 	"updateAvailable": {
 		"message": "Güncelleme mevcut."

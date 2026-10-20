@@ -1,0 +1,79 @@
+// The shared AI error card (`src/ai/ui/error-card.ts`), imported by both `style.scss` (popup, side
+// panel, Settings) and `reader.scss` (the Reader, a content script in the host page's document).
+// The Reader's stylesheet does not define the error and small-font variables, so each has a
+// fallback built from variables it does define; the extension pages use their own values.
+
+.ai-error-card {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.75rem;
+	padding: 0.75rem 1rem;
+	background-color: var(--background-modifier-error, color-mix(in srgb, var(--color-red) 10%, transparent));
+	border: 1px solid var(--background-modifier-error-border, color-mix(in srgb, var(--color-red) 15%, transparent));
+	border-radius: var(--radius-m);
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+
+	.ai-error-card-icon {
+		display: flex;
+		padding-top: 0.125rem;
+		color: var(--text-error, var(--color-red));
+	}
+	.ai-error-card-content {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.ai-error-card-title {
+		font-weight: 600;
+		color: var(--text-normal);
+	}
+	.ai-error-card-body {
+		margin-top: 0.125rem;
+		color: var(--text-muted);
+	}
+	.ai-error-card-detail {
+		margin-top: 0.5rem;
+		font-size: var(--font-ui-smaller, 12px);
+		color: var(--text-muted);
+		summary {
+			cursor: pointer;
+			width: fit-content;
+		}
+		code {
+			display: block;
+			margin-top: 0.375rem;
+			padding: 0.375rem 0.5rem;
+			border-radius: var(--radius-s);
+			background-color: var(--background-secondary, var(--background-primary-alt));
+			color: var(--text-normal);
+			white-space: pre-wrap;
+			overflow-wrap: anywhere;
+			user-select: text;
+			-webkit-user-select: text;
+		}
+	}
+	.ai-error-card-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.625rem;
+		button {
+			width: auto;
+		}
+	}
+	.ai-error-card-switch {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		select {
+			max-width: 12rem;
+		}
+	}
+	.ai-error-card-dismiss {
+		flex-shrink: 0;
+		margin-inline-start: auto;
+		margin-top: -0.25rem;
+		margin-inline-end: -0.5rem;
+	}
+}

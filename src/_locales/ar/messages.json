@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "النشاط"
 	},
-	"addModel": {
-		"message": "+ إضافة نموذج"
-	},
-	"addModelTitle": {
-		"message": "إضافة نموذج"
-	},
 	"addProperty": {
 		"message": "+ إضافة خاصية"
-	},
-	"addProvider": {
-		"message": "+ أضف مزود"
-	},
-	"addProviderTitle": {
-		"message": "أضف مزود"
 	},
 	"addToObsidian": {
 		"message": "إضافة إلى أوبسيديان"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "عرض التظليلات المحفوظة عند تحميل الصفحة. قم بإيقافها لعرض التظليلات فقط عند تفعيل وضع التظليل."
-	},
-	"apiKeyMissing": {
-		"message": "لا يوجد مفتاح API"
 	},
 	"apiKeysWarning": {
 		"message": "باستخدام مزود خارجي، فإنك توافق على شروطهم وسياسة الخصوصية الخاصة بهم. يتم إرسال طلبات المفسر مباشرة إلى المزود الذي تختاره. لا يقوم Obsidian بجمع أو تخزين أي بيانات حول طلباتك."
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "إلغاء"
-	},
-	"cannotDeleteProvider": {
-		"message": "لا يمكن حذف المزود \"$1\" لأنه يتم استخدامه بواسطة $2 نموذج (نماذج)."
 	},
 	"changelog": {
 		"message": "سجل التغييرات"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "حذف جميع التمييزات لهذه الصفحة؟"
 	},
-	"deleteModelConfirm": {
-		"message": "هل أنت متأكد من أنك تريد حذف هذا النموذج؟"
-	},
-	"deleteProviderConfirm": {
-		"message": "هل أنت متأكد أنك تريد حذف هذا المزود؟"
-	},
 	"disableHighlighter": {
 		"message": "تعطيل المظلل"
 	},
@@ -212,12 +188,6 @@
 	"edit": {
 		"message": "تحرير"
 	},
-	"editModel": {
-		"message": "تعديل النموذج"
-	},
-	"editProvider": {
-		"message": "تعديل المزود"
-	},
 	"editTemplate": {
 		"message": "تعديل القالب"
 	},
@@ -226,26 +196,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "قم بتظليل المحتوى على صفحات الويب الذي تريد حفظه في أوبسيديان."
-	},
-	"enableInterpreter": {
-		"message": "تمكين المفسر"
-	},
-	"enableInterpreterDescription": {
-		"message": "استخدم اللغة الطبيعية لاستخراج البيانات من الصفحات. على سبيل المثال، يمكنك استخدام صيغة القالب $strong_start${{\"ملخص للصفحة\"}}$strong_end$. يتطلب مفتاح API أو نموذج مخصص تم تكوينه أدناه. $link_start$تعلم المزيد$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "فتح وضع القراءة"
@@ -318,9 +268,6 @@
 	"failedToProcessInterpreter": {
 		"message": "فشلت معالجة المفسر. يرجى المحاولة مرة أخرى."
 	},
-	"failedToResetProviders": {
-		"message": "فشل في إعادة تعيين المزودين والنماذج"
-	},
 	"failedToResetTemplate": {
 		"message": "فشل إعادة تعيين القالب الافتراضي. يرجى المحاولة مرة أخرى."
 	},
@@ -329,9 +276,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "فشل حفظ الملف"
-	},
-	"failedToSaveProvider": {
-		"message": "فشل في حفظ المزود. يرجى المحاولة مرة أخرى."
 	},
 	"feedback": {
 		"message": "الملاحظات"
@@ -478,24 +422,6 @@
 	"modelName": {
 		"message": "اسم النموذج"
 	},
-	"modelNameDescription": {
-		"message": "اسم النموذج الذي تريد عرضه في الواجهة."
-	},
-	"modelProvider": {
-		"message": "المزود"
-	},
-	"modelProviderDescription": {
-		"message": "مزود النموذج، على سبيل المثال Ollama أو OpenRouter أو Google، إلخ."
-	},
-	"modelProviderPlaceholder": {
-		"message": "المزود"
-	},
-	"modelRequiredFields": {
-		"message": "اسم النموذج، المزود، ومعرف النموذج مطلوبين."
-	},
-	"models": {
-		"message": "النماذج"
-	},
 	"modelsListFor": {
 		"message": "قائمة النماذج لـ $1"
 	},
@@ -600,12 +526,6 @@
 	"pleaseReload": {
 		"message": "يرجى محاولة إعادة تحميل الصفحة."
 	},
-	"popularModels": {
-		"message": "النماذج الشائعة"
-	},
-	"popularModelsDescription": {
-		"message": "اختر من النماذج المستخدمة بشكل شائع أو أدخل تفاصيل النموذج المخصص."
-	},
 	"popup": {
 		"message": "القائمة المنبثقة"
 	},
@@ -651,47 +571,14 @@
 	"propertyValue": {
 		"message": "قيمة الخاصية"
 	},
-	"provider": {
-		"message": "المزود"
-	},
 	"providerApiKey": {
 		"message": "مفتاح API"
-	},
-	"providerApiKeyDescription": {
-		"message": "مفتاح API الخاص بك لهذا المزود."
 	},
 	"providerBaseUrl": {
 		"message": "URL الأساسي"
 	},
-	"providerBaseUrlDescription": {
-		"message": "URL نقطة النهاية لل API لهذا المزود."
-	},
 	"providerModelId": {
 		"message": "معرف النموذج"
-	},
-	"providerModelIdDescription": {
-		"message": "معرف النموذج من المزود الخاص بك. عادةً ما يكون اسمًا قصيرًا بدون مسافات."
-	},
-	"providerModelIdPlaceholder": {
-		"message": "معرف النموذج"
-	},
-	"providerName": {
-		"message": "اسم المزود"
-	},
-	"providerNameDescription": {
-		"message": "اسم العرض لهذا المزود."
-	},
-	"providerPreset": {
-		"message": "الإعداد المسبق"
-	},
-	"providerPresetDescription": {
-		"message": "اختر مزود أو أنشئ واحدًا مخصصًا."
-	},
-	"providerRequiredFields": {
-		"message": "اسم المزود وURL الأساسي مطلوبين."
-	},
-	"providers": {
-		"message": "المزودون"
 	},
 	"rateExtensionDescription": {
 		"message": "هل تستمتع بـ Web Clipper؟ ساعدنا عن طريق تقييمه."
@@ -849,9 +736,6 @@
 	"readerViewFullSize": {
 		"message": "عرض بالحجم الكامل"
 	},
-	"recommended": {
-		"message": "موصى به"
-	},
 	"refresh": {
 		"message": "تحديث"
 	},
@@ -882,12 +766,6 @@
 	"resetDefaultTemplateDescription": {
 		"message": "إزالة أي تغييرات قمت بها على القالب الافتراضي."
 	},
-	"resetProvidersAndModels": {
-		"message": "إعادة تعيين النماذج الافتراضية"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "إعادة تعيين المزودين والنماذج إلى الإعدادات الافتراضية."
-	},
 	"save": {
 		"message": "حفظ"
 	},
@@ -905,9 +783,6 @@
 	},
 	"searchVariables": {
 		"message": "البحث عن المتغيرات..."
-	},
-	"selectProvider": {
-		"message": "اختر مزود"
 	},
 	"selectTemplateToExport": {
 		"message": "الرجاء اختيار قالب للتصدير."
@@ -1028,9 +903,6 @@
 	},
 	"thinking": {
 		"message": "يفكر"
-	},
-	"unknownProvider": {
-		"message": "مزود غير معروف"
 	},
 	"updateAvailable": {
 		"message": "يتوفر تحديث جديد."

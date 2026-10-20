@@ -124,6 +124,22 @@
 	}
 }
 
+// AI settings rows get touch-sized spacing; the error card's dismiss stays reachable.
+.is-mobile,
+.is-tablet {
+	.ai-connection-card,
+	.ai-profile-row {
+		padding-block: 0.5rem;
+	}
+	.ai-error-card .ai-error-card-dismiss {
+		margin: 0;
+	}
+	button.ai-catalog-option {
+		min-height: 3.25rem;
+		border-radius: var(--radius-m);
+	}
+}
+
 
 
 .resizing { 

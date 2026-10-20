@@ -8,7 +8,11 @@ const outputDirectories = ['dist', 'dist_firefox', 'dist_safari'];
 const verify = process.argv.includes('--verify');
 
 const entryBudgets = {
-	'background.js': 900_000,
+	// The service worker measures about 200 KB (200,441 bytes after the Phase 7 review; 973,666 at
+	// the end of Phase 6, when the unused buildNativeCliRequest pulled the template filters in).
+	// A filter or Defuddle import reaching the worker would add back about 770 KB: catching that is
+	// this budget's job, so it stays close to the measured size.
+	'background.js': 240_000,
 	'content.js': 1_425_000,
 	'highlights.js': 1_450_000,
 	'popup.js': 1_350_000,
@@ -20,11 +24,18 @@ const entryBudgets = {
 const chunkBudgets = {
 	'popup-language-learning.js': 30_000,
 	'reader-content-extraction.js': 380_000,
-	'reader-language-learning.js': 160_000,
+	// 166,178 bytes measured after the Phase 7 review (173,656 when derived mode read v1 through
+	// migrate.ts, which brought the catalog and providers.json; v1-settings.ts reads it without
+	// them now). Budget is the measured size plus about 10%.
+	'reader-language-learning.js': 183_000,
 	'reader-markdown.js': 10_000,
 	'reader-syntax-highlighting.js': 250_000,
-	'settings-interpreter.js': 60_000,
-	'src_utils_language-learning-runtime_ts.js': 40_000,
+	// The AI settings section: about 103 KB in Phase 5b; 124 KB measured in Phase 5c after the
+	// connection Test panel, the Diagnostics panel, and the model-listing badges. About 17% headroom.
+	'settings-ai.js': 145_000,
+	// The runtime the Popup and Reader chunks share: 33,469 bytes measured at the end of Phase 7
+	// (33,958 at the end of Phase 6). Budget is the measured size plus about 10%.
+	'language-learning-runtime.js': 37_000,
 	'vendors-node_modules_defuddle_dist_index_full_js.js': 800_000
 };
 

@@ -1,28 +1,23 @@
 import browser from './browser-polyfill';
-import { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating, InterpreterExecutionMode, TranscriptLayoutMode } from '../types/types';
+import { Settings, PropertyType, HistoryEntry, Rating, TranscriptLayoutMode } from '../types/types';
 import { debugLog } from './debug';
 import { DEFAULT_LANGUAGE_LEARNING_FOLDER } from './language-learning-defaults';
 
-export type { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating };
+export type { Settings, PropertyType, HistoryEntry, Rating };
 
-export let generalSettings: Settings = {
+/** What `loadSettings` falls back to for anything not stored. Never mutated: copy it first. */
+export const DEFAULT_SETTINGS: Readonly<Settings> = {
 	vaults: [],
+	showMoreActionsButton: false,
 	betaFeatures: false,
 	legacyMode: false,
 	silentOpen: false,
 	openBehavior: 'popup',
 	highlighterEnabled: true,
-	alwaysShowHighlights: false,
+	alwaysShowHighlights: true,
 	highlightBehavior: 'highlight-inline',
-	showMoreActionsButton: false,
-	interpreterModel: '',
-	models: [],
-	providers: [],
-	interpreterEnabled: false,
-	interpreterAutoRun: false,
-	interpreterExecutionMode: 'api',
-	defaultPromptContext: '',
 	propertyTypes: [],
+	saveBehavior: 'addToObsidian',
 	readerSettings: {
 		fontSize: 16,
 		lineHeight: 1.6,
@@ -54,9 +49,10 @@ export let generalSettings: Settings = {
 		share: 0
 	},
 	history: [],
-	ratings: [],
-	saveBehavior: 'addToObsidian'
+	ratings: []
 };
+
+export let generalSettings: Settings = structuredClone(DEFAULT_SETTINGS);
 
 export function setLocalStorage(key: string, value: any): Promise<void> {
 	return browser.storage.local.set({ [key]: value });
@@ -105,15 +101,6 @@ interface StorageData {
 		learningFolder?: string;
 		customCss?: string;
 	};
-	interpreter_settings?: {
-		interpreterModel?: string;
-		models?: ModelConfig[];
-		providers?: Provider[];
-		interpreterEnabled?: boolean;
-		interpreterAutoRun?: boolean;
-		interpreterExecutionMode?: InterpreterExecutionMode;
-		defaultPromptContext?: string;
-	};
 	property_types?: PropertyType[];
 	stats?: {
 		addToObsidian: number;
@@ -131,59 +118,8 @@ const CURRENT_MIGRATION_VERSION = 1;
 export async function loadSettings(): Promise<Settings> {
 	const data = await browser.storage.sync.get(null) as StorageData;
 	
-	// Load default settings first
-	const defaultSettings: Settings = {
-		vaults: [],
-		showMoreActionsButton: false,
-		betaFeatures: false,
-		legacyMode: false,
-		silentOpen: false,
-		openBehavior: 'popup',
-		highlighterEnabled: true,
-		alwaysShowHighlights: true,
-		highlightBehavior: 'highlight-inline',
-		interpreterModel: '',
-		models: [],
-		providers: [],
-		interpreterEnabled: false,
-		interpreterAutoRun: false,
-		interpreterExecutionMode: 'api',
-		defaultPromptContext: '',
-		propertyTypes: [],
-		saveBehavior: 'addToObsidian',
-		readerSettings: {
-			fontSize: 16,
-			lineHeight: 1.6,
-			maxWidth: 38,
-			lightTheme: 'default',
-			darkTheme: 'same',
-			appearance: 'auto',
-			fonts: [],
-			defaultFont: '',
-			blendImages: true,
-			colorLinks: false,
-			followLinks: true,
-			pinPlayer: true,
-			autoScroll: true,
-			highlightActiveLine: true,
-			transcriptLayout: 'reading',
-			compactPlayer: false,
-			bilingualSubtitles: false,
-			japaneseReadings: false,
-			learningResponseLanguage: '',
-			learningVault: '',
-			learningFolder: DEFAULT_LANGUAGE_LEARNING_FOLDER,
-			customCss: ''
-		},
-		stats: {
-			addToObsidian: 0,
-			saveFile: 0,
-			copyToClipboard: 0,
-			share: 0
-		},
-		history: [],
-		ratings: [],
-	};
+	// Fresh defaults: the loaded settings share no objects with DEFAULT_SETTINGS
+	const defaultSettings = structuredClone(DEFAULT_SETTINGS);
 
 	// Update migration version if needed
 	if (!data.migrationVersion || data.migrationVersion < CURRENT_MIGRATION_VERSION) {
@@ -193,13 +129,6 @@ export async function loadSettings(): Promise<Settings> {
 
 	// Validate and sanitize data to prevent corruption
 	const sanitizedVaults = Array.isArray(data.vaults) ? data.vaults.filter(v => typeof v === 'string') : [];
-	const sanitizedModels = Array.isArray(data.interpreter_settings?.models) 
-		? data.interpreter_settings.models.filter(m => m && typeof m === 'object' && typeof m.id === 'string') 
-		: [];
-	const sanitizedProviders = Array.isArray(data.interpreter_settings?.providers) 
-		? data.interpreter_settings.providers.filter(p => p && typeof p === 'object' && typeof p.id === 'string') 
-		: [];
-	const storedExecutionMode = data.interpreter_settings?.interpreterExecutionMode;
 
 	// Load user settings
 	const loadedSettings: Settings = {
@@ -214,15 +143,6 @@ export async function loadSettings(): Promise<Settings> {
 		highlighterEnabled: data.highlighter_settings?.highlighterEnabled ?? defaultSettings.highlighterEnabled,
 		alwaysShowHighlights: data.highlighter_settings?.alwaysShowHighlights ?? defaultSettings.alwaysShowHighlights,
 		highlightBehavior: data.highlighter_settings?.highlightBehavior ?? defaultSettings.highlightBehavior,
-		interpreterModel: data.interpreter_settings?.interpreterModel || defaultSettings.interpreterModel,
-		models: sanitizedModels,
-		providers: sanitizedProviders,
-		interpreterEnabled: data.interpreter_settings?.interpreterEnabled ?? defaultSettings.interpreterEnabled,
-		interpreterAutoRun: data.interpreter_settings?.interpreterAutoRun ?? defaultSettings.interpreterAutoRun,
-		interpreterExecutionMode: storedExecutionMode === 'grok' || storedExecutionMode === 'codex'
-			? storedExecutionMode
-			: defaultSettings.interpreterExecutionMode,
-		defaultPromptContext: data.interpreter_settings?.defaultPromptContext || defaultSettings.defaultPromptContext,
 		propertyTypes: data.property_types || defaultSettings.propertyTypes,
 		readerSettings: {
 			fontSize: data.reader_settings?.fontSize ?? defaultSettings.readerSettings.fontSize,
@@ -265,7 +185,8 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 	if (settings) {
 		generalSettings = { ...generalSettings, ...settings };
 	}
-
+	// AI settings are written only by the v2 store (`ai_*` keys). `interpreter_settings` is left as
+	// it is in sync storage, for older builds and the per-device key import.
 	await browser.storage.sync.set({
 		vaults: generalSettings.vaults,
 		general_settings: {
@@ -280,15 +201,6 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 			highlighterEnabled: generalSettings.highlighterEnabled,
 			alwaysShowHighlights: generalSettings.alwaysShowHighlights,
 			highlightBehavior: generalSettings.highlightBehavior
-		},
-		interpreter_settings: {
-			interpreterModel: generalSettings.interpreterModel,
-			models: generalSettings.models,
-			providers: generalSettings.providers,
-			interpreterEnabled: generalSettings.interpreterEnabled,
-			interpreterAutoRun: generalSettings.interpreterAutoRun,
-			interpreterExecutionMode: generalSettings.interpreterExecutionMode ?? 'api',
-			defaultPromptContext: generalSettings.defaultPromptContext
 		},
 		property_types: generalSettings.propertyTypes,
 		reader_settings: {

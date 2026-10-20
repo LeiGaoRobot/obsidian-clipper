@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "Aktivität"
 	},
-	"addModel": {
-		"message": "+ Modell hinzufügen"
-	},
-	"addModelTitle": {
-		"message": "Modell hinzufügen"
-	},
 	"addProperty": {
 		"message": "+ Eigenschaft hinzufügen"
-	},
-	"addProvider": {
-		"message": "+ Anbieter hinzufügen"
-	},
-	"addProviderTitle": {
-		"message": "Anbieter hinzufügen"
 	},
 	"addToObsidian": {
 		"message": "Zu Obsidian hinzufügen"
@@ -40,9 +28,6 @@
 	},
 	"alwaysShowHighlightsDescription": {
 		"message": "Zeigt Deine gespeicherten Markierungen beim Laden einer Seite an. Deaktiviere dies, um Markierungen nur anzuzeigen, wenn der Markiermodus aktiviert ist."
-	},
-	"apiKeyMissing": {
-		"message": "Kein API-Schlüssel"
 	},
 	"apiKeysWarning": {
 		"message": "Durch die Nutzung eines externen Anbieters stimmst du dessen Nutzungsbedingungen und Datenschutzrichtlinien zu. Interpreter-Anfragen werden direkt an den von Dir gewählten Anbieter gesendet. Obsidian sammelt und speichert keine Daten über Deine Anfragen."
@@ -73,9 +58,6 @@
 	},
 	"cancel": {
 		"message": "Abbrechen"
-	},
-	"cannotDeleteProvider": {
-		"message": "Anbieter \"$1\" kann nicht gelöscht werden, da er von $2 Modell(en) verwendet wird."
 	},
 	"changelog": {
 		"message": "Änderungsverlauf"
@@ -174,12 +156,6 @@
 	"deleteHighlightsForPage": {
 		"message": "Alle Hervorhebungen für diese Seite löschen?"
 	},
-	"deleteModelConfirm": {
-		"message": "Bist Du sicher, dass Du dieses Modell löschen möchtest?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Bist Du sicher, dass Du diesen Anbieter löschen möchtest?"
-	},
 	"disableHighlighter": {
 		"message": "Marker deaktivieren"
 	},
@@ -212,12 +188,6 @@
 	"edit": {
 		"message": "Bearbeiten"
 	},
-	"editModel": {
-		"message": "Modell bearbeiten"
-	},
-	"editProvider": {
-		"message": "Anbieter bearbeiten"
-	},
 	"editTemplate": {
 		"message": "Vorlage bearbeiten"
 	},
@@ -226,26 +196,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Hebe Inhalte auf Webseiten hervor, die Du in Obsidian speichern möchtest."
-	},
-	"enableInterpreter": {
-		"message": "Interpreter aktivieren"
-	},
-	"enableInterpreterDescription": {
-		"message": "Nutze natürliche Sprache, um Daten aus Seiten zu extrahieren. Du kannst zum Beispiel die Vorlagensyntax $strong_start${{\"eine Zusammenfassung der Seite\"}}$strong_end$ verwenden. Erfordert einen API-Schlüssel oder ein unten konfiguriertes benutzerdefiniertes Modell. $link_start$Mehr erfahren$link_end$.",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Leseansicht öffnen"
@@ -318,9 +268,6 @@
 	"failedToProcessInterpreter": {
 		"message": "Interpreter-Verarbeitung fehlgeschlagen. Bitte versuche es erneut."
 	},
-	"failedToResetProviders": {
-		"message": "Fehler beim Zurücksetzen von Anbietern und Modellen"
-	},
 	"failedToResetTemplate": {
 		"message": "Standardvorlage konnte nicht zurückgesetzt werden. Bitte versuche es erneut."
 	},
@@ -329,9 +276,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Datei konnte nicht gespeichert werden"
-	},
-	"failedToSaveProvider": {
-		"message": "Speichern des Anbieters fehlgeschlagen. Bitte versuche es erneut."
 	},
 	"feedback": {
 		"message": "Feedback"
@@ -478,24 +422,6 @@
 	"modelName": {
 		"message": "Modellname"
 	},
-	"modelNameDescription": {
-		"message": "Der Name des Modells, der in der Benutzeroberfläche angezeigt werden soll."
-	},
-	"modelProvider": {
-		"message": "Anbieter"
-	},
-	"modelProviderDescription": {
-		"message": "Der Modellanbieter, z.B. Ollama, OpenRouter, Google, etc."
-	},
-	"modelProviderPlaceholder": {
-		"message": "Anbieter"
-	},
-	"modelRequiredFields": {
-		"message": "Modellname, Anbieter und Modell-ID sind erforderlich."
-	},
-	"models": {
-		"message": "Modelle"
-	},
 	"modelsListFor": {
 		"message": "Modelleliste für $1"
 	},
@@ -600,12 +526,6 @@
 	"pleaseReload": {
 		"message": "Bitte versuche, die Seite neu zu laden."
 	},
-	"popularModels": {
-		"message": "Beliebte Modelle"
-	},
-	"popularModelsDescription": {
-		"message": "Wählen Sie aus häufig verwendeten Modellen oder geben Sie benutzerdefinierte Modellinformationen ein."
-	},
 	"popup": {
 		"message": "Popup"
 	},
@@ -651,47 +571,14 @@
 	"propertyValue": {
 		"message": "Eigenschaftswert"
 	},
-	"provider": {
-		"message": "Anbieter"
-	},
 	"providerApiKey": {
 		"message": "API-Schlüssel"
-	},
-	"providerApiKeyDescription": {
-		"message": "Dein API-Schlüssel für diesen Anbieter."
 	},
 	"providerBaseUrl": {
 		"message": "Basis-URL"
 	},
-	"providerBaseUrlDescription": {
-		"message": "Die API-Endpunkt-URL für diesen Anbieter."
-	},
 	"providerModelId": {
 		"message": "Modell-ID"
-	},
-	"providerModelIdDescription": {
-		"message": "Die Kennung des Modells von Deinem Anbieter. Typischerweise ein kurzer Name ohne Leerzeichen."
-	},
-	"providerModelIdPlaceholder": {
-		"message": "Modell-ID"
-	},
-	"providerName": {
-		"message": "Anbietername"
-	},
-	"providerNameDescription": {
-		"message": "Anzeigename für diesen Anbieter."
-	},
-	"providerPreset": {
-		"message": "Voreinstellung"
-	},
-	"providerPresetDescription": {
-		"message": "Wähle einen Anbieter aus oder erstelle einen benutzerdefinierten."
-	},
-	"providerRequiredFields": {
-		"message": "Anbietername und Basis-URL sind erforderlich."
-	},
-	"providers": {
-		"message": "Anbieter"
 	},
 	"rateExtensionDescription": {
 		"message": "Gefällt Ihnen der Web Clipper? Helfen Sie uns, indem Sie ihm eine Bewertung geben."
@@ -849,9 +736,6 @@
 	"readerViewFullSize": {
 		"message": "In voller Größe anzeigen"
 	},
-	"recommended": {
-		"message": "empfohlen"
-	},
 	"refresh": {
 		"message": "Aktualisieren"
 	},
@@ -882,12 +766,6 @@
 	"resetDefaultTemplateDescription": {
 		"message": "Entferne alle Änderungen, die Du an der Standardvorlage vorgenommen hast."
 	},
-	"resetProvidersAndModels": {
-		"message": "Standardmodelle zurücksetzen"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Setze Anbieter und Modelle auf die Standardeinstellungen zurück."
-	},
 	"save": {
 		"message": "Speichern"
 	},
@@ -905,9 +783,6 @@
 	},
 	"searchVariables": {
 		"message": "Variablen suchen..."
-	},
-	"selectProvider": {
-		"message": "Wähle einen Anbieter aus"
 	},
 	"selectTemplateToExport": {
 		"message": "Bitte wähle eine Vorlage zum Exportieren aus."
@@ -1028,9 +903,6 @@
 	},
 	"thinking": {
 		"message": "Denke nach"
-	},
-	"unknownProvider": {
-		"message": "Unbekannter Anbieter"
 	},
 	"updateAvailable": {
 		"message": "Ein Update ist verfügbar."
