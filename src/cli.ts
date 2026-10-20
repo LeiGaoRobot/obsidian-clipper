@@ -253,7 +253,8 @@ async function main(): Promise<void> {
 			if (hasSchemaTrigs) {
 				const DefuddleClass = (await import('defuddle')).default;
 				parsedDocument = linkedomParser.parseFromString(html, 'text/html');
-				const defuddle = new DefuddleClass((parsedDocument.documentElement || parsedDocument) as unknown as Document, { url: args.url });
+				// The Document itself, as `clip` passes it: Defuddle extracts nothing from documentElement.
+				const defuddle = new DefuddleClass(parsedDocument as unknown as Document, { url: args.url });
 				const defuddleResult = defuddle.parse();
 				matched = matchTemplate(templates, args.url, defuddleResult.schemaOrgData);
 			}
