@@ -35,7 +35,7 @@ Interpreter works with almost any language model provider, including options tha
 2. Under **Connections**, select **Add API provider**, choose your provider (or **Custom**), and enter its API key. See [[Interpret web pages#Models|models]] below.
 3. Under **Models**, add the model you want to use for that connection. The first model you add becomes the **Default model** in **Task routing**.
 4. Optionally select **Test** on the connection to check the key and the model. See [[Interpret web pages#Test a connection|Test a connection]].
-5. Under **Interpreter**, toggle on **Enable AI features**.
+5. At the top of the **AI** section, turn on **Enable AI features**. Adding a model does not turn it on: if it is off when you add your first model, a note next to the switch says so.
 6. Add [[Variables|prompt variables]] to your [[Obsidian Web Clipper/Templates|templates]].
 7. If your template includes prompt variables, the Interpreter section will be visible when you [[Clip web pages|clip a page]]. Click **interpret** to process the prompt variables.
 
@@ -94,7 +94,7 @@ Interpreter asks the model for one JSON object with an answer for every prompt v
 
 The whole process can take milliseconds or more than 30 seconds depending on the model you use and the amount of data you are processing. API responses are streamed, so long answers keep arriving instead of stalling. A request stops with a timeout error after 60 seconds without any data, or after five minutes in total. Closing the extension window cancels a running Interpreter request.
 
-If a request fails, Interpreter shows an error card with what went wrong (for example a rejected API key, an unavailable model, a rate limit, or a missing local CLI) and what to do next. Select **Try again** to send the request again with the context and model shown at that moment, so you can shorten the context or choose another model first. Selecting **Add to Obsidian** after an error also runs Interpreter again; if that run fails too, the error card stays and nothing is saved. When the fix is in Settings, such as a missing or rejected API key, AI features that are not set up, or a Native Messaging Host or CLI that is not installed, the card also offers **Open AI settings**, which opens the **AI** section of Web Clipper settings. Select **Technical details** to see the provider's raw message.
+If a request fails, Interpreter shows an error card with what went wrong (for example a rejected API key, an unavailable model, a rate limit, or a missing local CLI) and what to do next. Select **Try again** to send the request again with the context and model shown at that moment, so you can shorten the context or choose another model first. Selecting **Add to Obsidian** after an error also runs Interpreter again; if that run fails too, the error card stays and nothing is saved. When the fix is in Settings, such as a missing or rejected API key, AI features that are not set up, or a Native Messaging Host or CLI that is not installed, the card also offers **Open AI settings**, which opens the **AI** section of Web Clipper settings. Select **Technical details** to see the provider's raw message. While the card is shown, the model menu stays above it, so you can choose another model before **Try again**. If the card does not fit in the window, Web Clipper scrolls it into view.
 
 ## Context
 
@@ -145,7 +145,7 @@ In general we recommend using small models with Web Clipper because they are fas
 
 To add a custom provider and/or model go to Web Clipper **[[Settings]]** → **AI**:
 
-- **Connections → Add API provider** to configure preset and custom providers. Choose **Custom** for any other endpoint. Turn off **Requires API key** for a local server that accepts requests without a key. Under **Advanced**, **Max concurrent requests** limits how many requests a long job, such as a transcript translation, sends to the connection at once.
+- **Connections → Add API provider** to configure preset and custom providers. Choose **Custom** for any other endpoint. Turn off **Requires API key** for a local server that accepts requests without a key. The option appears for **Custom** and for presets that can run without a key, such as Ollama; presets that always need a key, such as OpenAI, do not show it. Under **Advanced**, **Max concurrent requests** limits how many requests a long job, such as a transcript translation, sends to the connection at once.
 - **Models → Add model** to add a model to a connection. The model ID field suggests the preset's popular models. Use the toggle to disable a model without deleting it; only enabled models appear in **Task routing** and model menus.
 - **Task routing** to choose the **Default model** and, optionally, a different model for each task.
 

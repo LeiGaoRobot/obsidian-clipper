@@ -577,6 +577,12 @@ button.ai-catalog-option {
 	width: 14rem;
 }
 
+// Shown next to the master switch when a first model is added while AI is off.
+.ai-enabled-hint {
+	margin-top: 0.25rem;
+	color: var(--text-accent);
+}
+
 .ai-prompt-context-item textarea {
 	width: 100%;
 	min-height: 5rem;

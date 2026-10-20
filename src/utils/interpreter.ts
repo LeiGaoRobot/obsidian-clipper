@@ -288,6 +288,8 @@ async function runInterpreter(
 	// `processing` at once.
 	clearInterpreterMessage(message);
 	container?.classList.remove('done', 'partial', 'error');
+	// The error card replaced the button's label; a new run shows the button again.
+	if (interpretBtn.classList.contains('error')) interpretBtn.style.display = 'inline-block';
 	interpretBtn.classList.remove('done', 'partial', 'error', 'cancelled');
 	interpretBtn.textContent = getMessage('thinking');
 	interpretBtn.classList.add('processing');
@@ -384,6 +386,8 @@ function showInterpreterFailure(
 	ui.interpretBtn.textContent = getMessage('error');
 	ui.interpretBtn.classList.add('error');
 	ui.interpretBtn.disabled = true;
+	// The card's title already names the error, so the button's "Error" label is not shown too.
+	ui.interpretBtn.style.display = 'none';
 	ui.container?.classList.add('error');
 	ui.timer.style.display = 'none';
 
@@ -402,6 +406,8 @@ function showInterpreterFailure(
 		}
 	});
 	ui.message.style.display = 'block';
+	// The popup has a fixed height: bring the whole card, its actions included, into view.
+	ui.message.scrollIntoView?.({ block: 'nearest' });
 }
 
 function clearInterpreterMessage(container: HTMLElement): void {

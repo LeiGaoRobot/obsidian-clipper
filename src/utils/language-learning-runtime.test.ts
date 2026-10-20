@@ -326,12 +326,18 @@ describe('Configured language learning runtime', () => {
 		});
 	});
 
-	test('lists every enabled profile, CLI included, labelled connection · model', async () => {
+	test('lists every enabled profile, CLI included, labelled connection · model, with its name and group', async () => {
 		mocks.loadAiSettings.mockResolvedValue(storedView());
 
 		await expect(configuredLanguageLearning.listProfiles()).resolves.toEqual([
-			{ id: 'gpt', label: 'OpenAI · gpt-5', kind: 'openai-compatible' },
-			{ id: 'codex-default', label: 'interpreterExecutionModeCodex · gpt-5-codex', kind: 'cli-codex' }
+			{ id: 'gpt', label: 'OpenAI · gpt-5', name: 'gpt-5', group: 'OpenAI', kind: 'openai-compatible' },
+			{
+				id: 'codex-default',
+				label: 'interpreterExecutionModeCodex · gpt-5-codex',
+				name: 'gpt-5-codex',
+				group: 'interpreterExecutionModeCodex',
+				kind: 'cli-codex'
+			}
 		]);
 	});
 
@@ -342,9 +348,21 @@ describe('Configured language learning runtime', () => {
 		});
 
 		await expect(configuredLanguageLearning.listProfiles()).resolves.toEqual([
-			{ id: 'model-1', label: 'Provider · Model', kind: 'openai-compatible' },
-			{ id: 'legacy-cli-codex-default', label: 'interpreterExecutionModeCodex', kind: 'cli-codex' },
-			{ id: 'legacy-cli-grok-default', label: 'interpreterExecutionModeGrok', kind: 'cli-grok' }
+			{ id: 'model-1', label: 'Provider · Model', name: 'Model', group: 'Provider', kind: 'openai-compatible' },
+			{
+				id: 'legacy-cli-codex-default',
+				label: 'interpreterExecutionModeCodex',
+				name: 'interpreterExecutionModeCodex',
+				group: 'interpreterExecutionModeCodex',
+				kind: 'cli-codex'
+			},
+			{
+				id: 'legacy-cli-grok-default',
+				label: 'interpreterExecutionModeGrok',
+				name: 'interpreterExecutionModeGrok',
+				group: 'interpreterExecutionModeGrok',
+				kind: 'cli-grok'
+			}
 		]);
 	});
 

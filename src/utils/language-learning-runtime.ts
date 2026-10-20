@@ -29,6 +29,7 @@ import {
 	findProfileConnection,
 	listEnabledProfileGroups,
 	profileDisplayLabel,
+	profileDisplayName,
 	routedProfileId,
 	saveTaskProfile
 } from './ai-profiles';
@@ -254,6 +255,8 @@ export const configuredLanguageLearning = {
 		return listEnabledProfileGroups(view).flatMap(group => group.profiles.map(profile => ({
 			id: profile.id,
 			label: profileDisplayLabel(profile, group.connection),
+			name: profileDisplayName(profile, group.connection),
+			group: group.label,
 			kind: group.connection.kind
 		})));
 	},

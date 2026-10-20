@@ -399,7 +399,8 @@
 	min-width: 0;
 	padding: 7px 9px;
 	font-family: var(--font-ui);
-	font-size: var(--font-ui-smaller);
+	// The Reader defines no smaller UI size; outside More the bar would inherit the article's.
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 	background: color-mix(in srgb, var(--background-primary-alt) 82%, transparent);
 	border: 1px solid var(--background-modifier-border);
@@ -695,10 +696,17 @@
 		font-family: var(--font-monospace);
 		background: var(--background-primary-alt);
 	}
+	.ai-error-card-switch {
+		max-width: 100%;
+		min-width: 0;
+	}
+	// Options are profile names under their connection; a long name still ends in an ellipsis.
 	.ai-error-card-switch select {
 		font: inherit;
 		min-height: 30px;
-		max-width: 160px;
+		min-width: 0;
+		max-width: 14rem;
+		text-overflow: ellipsis;
 		color: var(--text-normal);
 		background: var(--background-primary);
 		border: 1px solid var(--background-modifier-border);

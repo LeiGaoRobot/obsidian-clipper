@@ -19,8 +19,11 @@ export type AiErrorCardIcon = 'alert' | 'dismiss';
 export interface AiErrorCardOptions {
 	doc?: Document;
 	handlers?: Partial<Record<AiErrorCardAction, AiErrorCardHandler>>;
-	/** The profiles for `switchProfile`'s select; without them the action is a plain button. */
-	profiles?: { id: string; label: string }[];
+	/**
+	 * The profiles for `switchProfile`'s select; without them the action is a plain button. Profiles
+	 * with a `group` (their connection's name) are listed under it, as Settings' routing does.
+	 */
+	profiles?: { id: string; label: string; group?: string }[];
 	selectedProfileId?: string;
 	/** Completed work, which relabels `retry` as Continue remaining (n of m). */
 	progress?: { completed: number; total: number };
@@ -112,11 +115,22 @@ function actionControls(doc: Document, description: AiErrorDescription, options:
 		const group = element(doc, 'div', 'ai-error-card-switch');
 		const select = element(doc, 'select', 'ai-error-card-profile-select');
 		select.setAttribute('aria-label', getMessage('aiErrorSwitchProfileSelect'));
-		select.append(...profiles.map(profile => {
+		let optgroup: HTMLOptGroupElement | undefined;
+		for (const profile of profiles) {
 			const option = element(doc, 'option', undefined, profile.label);
 			option.value = profile.id;
-			return option;
-		}));
+			if (profile.group === undefined) {
+				optgroup = undefined;
+				select.appendChild(option);
+				continue;
+			}
+			if (optgroup?.label !== profile.group) {
+				optgroup = element(doc, 'optgroup');
+				optgroup.label = profile.group;
+				select.appendChild(optgroup);
+			}
+			optgroup.appendChild(option);
+		}
 		select.value = profiles.some(profile => profile.id === options.selectedProfileId)
 			? options.selectedProfileId as string
 			: profiles[0].id;

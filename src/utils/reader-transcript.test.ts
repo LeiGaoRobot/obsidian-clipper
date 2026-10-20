@@ -624,6 +624,34 @@ describe('Transcript cleanup on Reader navigation', () => {
 		expect(document.documentElement.hasAttribute('data-transcript-layout')).toBe(false);
 	});
 
+	test('the transcript task bar sits outside More, so a running task shows progress and Cancel', async () => {
+		vi.stubGlobal('CSS', {});
+		const clicks = captureTrustedClicks();
+		const article = transcriptArticle();
+		wireTranscript(document, article, settings, scroll, undefined, {
+			translateTranscript: vi.fn(() => new Promise<string[]>(() => {})),
+			annotateJapaneseTranscript: vi.fn(),
+			explainSelection: vi.fn()
+		});
+		const moreControls = document.querySelector('.player-controls-more') as HTMLDetailsElement;
+		const taskBar = document.querySelector('.player-learning-task') as HTMLElement;
+		expect(taskBar.parentElement?.classList.contains('player-toggles')).toBe(true);
+		expect(moreControls.contains(taskBar)).toBe(false);
+		expect(taskBar.hidden).toBe(true);
+
+		await clicks.click(document.querySelector('.player-learning-bilingual'));
+		await flushPromises();
+		clicks.restore();
+
+		expect(moreControls.open).toBe(false);
+		expect(taskBar.hidden).toBe(false);
+		expect(taskBar.getAttribute('aria-busy')).toBe('true');
+		expect((taskBar.querySelector('.player-learning-cancel') as HTMLButtonElement).hidden).toBe(false);
+
+		readerTranscript.cleanupTranscript(document);
+		expect(document.querySelector('.player-learning-task')).toBeNull();
+	});
+
 	test('cleanupTranscript leaves the document as before the transcript was wired', () => {
 		vi.stubGlobal('CSS', {});
 		const article = transcriptArticle();

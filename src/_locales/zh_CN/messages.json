@@ -44,6 +44,9 @@
 	"aiEditPresetCustom": {
 		"message": "自定义"
 	},
+	"aiEditPresetLabel": {
+		"message": "AI 编辑方式"
+	},
 	"aiEditPresetPolish": {
 		"message": "润色"
 	},
@@ -474,7 +477,10 @@
 		"message": "启用 AI 功能"
 	},
 	"aiEnabledDescription": {
-		"message": "允许解释器、AI 编辑和阅读器的语言工具使用上面设置的模型。"
+		"message": "允许解释器、AI 编辑和阅读器的语言工具使用下方设置的模型。"
+	},
+	"aiEnabledOffHint": {
+		"message": "AI 功能目前已关闭，你添加的模型暂时不会被使用。打开此开关即可使用。"
 	},
 	"aiErrorTechnicalDetails": {
 		"message": "技术详情"
@@ -576,7 +582,7 @@
 		"message": "加载页面时显示已保存的高亮内容。关闭此选项则仅在高亮模式激活时显示高亮。"
 	},
 	"apiKeysWarning": {
-		"message": "使用外部提供商即表示您同意其条款和隐私政策。解释器请求直接发送给您选择的提供商。Obsidian 不会收集或存储任何关于您请求的数据。"
+		"message": "使用外部提供商即表示您同意其条款和隐私政策。AI 功能的请求（包括解释器、AI 编辑、阅读器的翻译、读音标注和解释，以及连接测试）都会直接发送给您选择的提供商。Obsidian 不会收集或存储任何关于您请求的数据。"
 	},
 	"appendToDaily": {
 		"message": "添加到日记末尾"
@@ -1423,11 +1429,17 @@
 	"readerSwitchAndRetry": {
 		"message": "切换并重试"
 	},
+	"readerTaskBatches": {
+		"message": "预计约 $1 批"
+	},
+	"readerTaskBatchesOne": {
+		"message": "预计约 $1 批"
+	},
 	"readerTaskElapsed": {
 		"message": "$1 秒"
 	},
 	"readerTaskEstimate": {
-		"message": "$1 段 · 预计约 $2 批"
+		"message": "$1 · $2"
 	},
 	"readerTaskRange": {
 		"message": "AI 范围"
@@ -1440,6 +1452,12 @@
 	},
 	"readerTaskRangeNextFiveMinutes": {
 		"message": "接下来 5 分钟"
+	},
+	"readerTaskSegments": {
+		"message": "$1 段"
+	},
+	"readerTaskSegmentsOne": {
+		"message": "$1 段"
 	},
 	"readerTheme": {
 		"message": "主题"

@@ -4,6 +4,7 @@ import { CATALOG } from '../../ai/catalog';
 import type { TestConnectionOptions } from '../../ai/client';
 import { AiError } from '../../ai/errors';
 import type { AiTestResult } from '../../ai/types';
+import { offersApiKeyRequiredToggle } from './connections';
 import { initializeAiSettings, type InitializeAiSettingsOptions } from './index';
 import {
 	API_CONNECTION,
@@ -154,6 +155,42 @@ describe('Catalog picker and connection dialog', () => {
 		]);
 		expect(local.data.ai_credentials).toEqual({ 'connection-1': 'sk-new' });
 		expect(badge('connection-1')?.textContent).toBe('Untested');
+	});
+
+	test('Requires API key is offered for Custom and keyless presets, not for presets that always need a key', async () => {
+		await section({ connections: [API_CONNECTION, LOCAL_CONNECTION] });
+		const item = () => document.getElementById('ai-connection-api-key-required-item')!;
+		const cancel = () => (document.querySelector('#ai-connection-modal .ai-connection-cancel-btn') as HTMLButtonElement).click();
+		const add = (presetId: string) => {
+			(document.getElementById('ai-add-api-provider') as HTMLAnchorElement).click();
+			(document.querySelector(`#ai-catalog-list [data-preset-id="${presetId}"]`) as HTMLButtonElement).click();
+		};
+
+		add('openai');
+		expect(item().hidden).toBe(true);
+		expect(input('ai-connection-api-key-required').checked).toBe(true);
+		cancel();
+		add('ollama');
+		expect(item().hidden).toBe(false);
+		expect(input('ai-connection-api-key-required').checked).toBe(false);
+		cancel();
+		add('');
+		expect(item().hidden).toBe(false);
+		cancel();
+
+		(document.querySelector('[data-connection-id="openai"] .ai-connection-edit') as HTMLButtonElement).click();
+		expect(item().hidden).toBe(true);
+		cancel();
+		(document.querySelector('[data-connection-id="ollama"] .ai-connection-edit') as HTMLButtonElement).click();
+		expect(item().hidden).toBe(false);
+	});
+
+	test('an edited preset connection that already runs without a key keeps the toggle', () => {
+		const openai = CATALOG.find(entry => entry.id === 'openai');
+		expect(offersApiKeyRequiredToggle(openai)).toBe(false);
+		expect(offersApiKeyRequiredToggle(openai, { apiKeyRequired: true })).toBe(false);
+		expect(offersApiKeyRequiredToggle(openai, { apiKeyRequired: false })).toBe(true);
+		expect(offersApiKeyRequiredToggle(undefined)).toBe(true);
 	});
 
 	test('the API key is a password field with a Show toggle', async () => {

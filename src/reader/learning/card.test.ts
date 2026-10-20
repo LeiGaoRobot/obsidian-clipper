@@ -115,6 +115,37 @@ describe('Reader learning card', () => {
 		expect(document.querySelector('.ai-error-card-detail')).toBeNull();
 	});
 
+	test('the profile switch lists profile names under their connection, as Settings routing does', async () => {
+		const card = createLearningCard({
+			doc: document,
+			tools: tools({
+				listProfiles: vi.fn().mockResolvedValue([
+					{ id: 'fast', label: 'Mock OpenAI-compatible · Mock fast', name: 'Mock fast', group: 'Mock OpenAI-compatible', kind: 'openai-compatible' },
+					{ id: 'large', label: 'Mock OpenAI-compatible · Mock large', name: 'Mock large', group: 'Mock OpenAI-compatible', kind: 'openai-compatible' },
+					{ id: 'codex', label: 'Codex CLI', name: 'Codex CLI', group: 'Codex CLI', kind: 'cli-codex' }
+				]),
+				setTaskProfile: vi.fn()
+			}),
+			signal: wiring.signal
+		});
+
+		card.showError('transcript', 'readerBilingualSubtitles', new AiError('quota', { task: 'translate', profileId: 'large' }), {
+			task: 'translate',
+			retry: vi.fn()
+		});
+		await flushPromises();
+
+		const select = document.querySelector('.ai-error-card-profile-select') as HTMLSelectElement;
+		expect(Array.from(select.querySelectorAll('optgroup'), group => [
+			group.label,
+			Array.from(group.querySelectorAll('option'), option => option.textContent)
+		])).toEqual([
+			['Mock OpenAI-compatible', ['Mock fast', 'Mock large']],
+			['Codex CLI', ['Codex CLI']]
+		]);
+		expect(select.value).toBe('large');
+	});
+
 	test('a failed profile switch reports the failure and does not retry', async () => {
 		const setTaskProfile = vi.fn().mockRejectedValue(new Error('not set up'));
 		const card = createLearningCard({

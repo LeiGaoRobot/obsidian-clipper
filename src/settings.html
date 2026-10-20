@@ -545,6 +545,9 @@
 							<h2 data-i18n="aiSettings">AI</h2>
 						</div>
 						<div id="ai-settings-error" class="ai-settings-error" hidden></div>
+						<div class="setting-group" id="ai-enabled-group">
+							<div id="ai-enabled"></div>
+						</div>
 						<div class="setting-group" id="ai-connections-group">
 							<div class="setting-item setting-item-heading">
 								<h3 data-i18n="aiConnections">Connections</h3>
@@ -864,7 +867,7 @@
 								<button type="button" id="ai-connection-api-key-toggle" aria-controls="ai-connection-api-key" aria-pressed="false" data-i18n="aiConnectionShowKey">Show</button>
 							</div>
 						</div>
-						<div class="setting-item mod-horizontal mod-toggle">
+						<div class="setting-item mod-horizontal mod-toggle" id="ai-connection-api-key-required-item">
 							<div class="setting-item-info">
 								<label for="ai-connection-api-key-required" data-i18n="aiConnectionApiKeyRequired">Requires API key</label>
 								<div class="setting-item-description" data-i18n="aiConnectionApiKeyRequiredDescription">Turn off for local servers that accept requests without a key.</div>

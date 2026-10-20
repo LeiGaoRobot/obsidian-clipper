@@ -45,6 +45,49 @@ describe('Interpreter panel', () => {
 		expect(textarea().placeholder).toBe('{{fullHtml}}');
 	});
 
+	test('the master switch is at the top of the AI section, above Connections', async () => {
+		await section({ enabled: false });
+		const switchInput = checkbox('ai-interpreter-enabled');
+		expect(switchInput.closest('#ai-enabled')).not.toBeNull();
+		expect(document.getElementById('ai-interpreter')?.contains(switchInput)).toBe(false);
+		const connections = document.getElementById('ai-connections-group')!;
+		expect(switchInput.compareDocumentPosition(connections) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		const aiSection = document.getElementById('ai-section')!;
+		expect(aiSection.querySelector('.setting-group')?.id).toBe('ai-enabled-group');
+	});
+
+	test('adding the first model while AI is off shows a hint next to the switch until it is on', async () => {
+		const connection = { id: 'openai', kind: 'openai-compatible' as const, label: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', apiKeyRequired: true };
+		const { handle } = await section({ enabled: false, connections: [connection] });
+		const hint = () => document.querySelector<HTMLElement>('#ai-enabled .ai-enabled-hint')!;
+		expect(hint().hidden).toBe(true);
+
+		await handle.controller.addProfile({ connectionId: 'openai', label: '', model: 'gpt-5' });
+		await settle();
+		expect(hint().hidden).toBe(false);
+		expect(hint().textContent).toBe("AI features are off, so the models you add aren't used yet. Turn this on to use them.");
+		expect(hint().getAttribute('role')).toBe('status');
+		expect(checkbox('ai-interpreter-enabled').checked).toBe(false);
+
+		toggle('ai-interpreter-enabled', true);
+		expect(hint().hidden).toBe(true);
+		await settle();
+		expect(hint().hidden).toBe(true);
+	});
+
+	test('no hint for models already stored, or when AI is on', async () => {
+		const connection = { id: 'openai', kind: 'openai-compatible' as const, label: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', apiKeyRequired: true };
+		const profile = { id: 'gpt', connectionId: 'openai', model: 'gpt-5', label: '', enabled: true };
+		await section({ enabled: false, connections: [connection], profiles: [profile] });
+		expect(document.querySelector<HTMLElement>('#ai-enabled .ai-enabled-hint')?.hidden).toBe(true);
+
+		loadSettingsDocument();
+		const { handle } = await section({ enabled: true, connections: [connection] });
+		await handle.controller.addProfile({ connectionId: 'openai', label: '', model: 'gpt-5' });
+		await settle();
+		expect(document.querySelector<HTMLElement>('#ai-enabled .ai-enabled-hint')?.hidden).toBe(true);
+	});
+
 	test('enable and auto-run write ai_interpreter through the controller', async () => {
 		const { sync, handle } = await section({ enabled: false, autoRun: false });
 		const setEnabled = vi.spyOn(handle.controller, 'setInterpreterEnabled');

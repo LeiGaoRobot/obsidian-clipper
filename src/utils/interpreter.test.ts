@@ -339,6 +339,27 @@ describe('Interpreter', () => {
 		error.mockRestore();
 	});
 
+	test('the error card replaces the button label and is scrolled into view', async () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		const scrollIntoView = vi.fn();
+		Element.prototype.scrollIntoView = scrollIntoView;
+		mocks.runAiTask.mockRejectedValueOnce(new AiError('provider-error', { status: 500 }));
+
+		await handleInterpreterUI(template, {}, 1, 'https://example.com');
+
+		// The card's title names the error, so the button's "Error" label is not shown above it.
+		expect(interpretButton().style.display).toBe('none');
+		expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+		expect(scrollIntoView.mock.contexts[0]).toBe(document.getElementById('interpreter-error'));
+
+		cardAction('retry').click();
+		expect(interpretButton().style.display).toBe('inline-block');
+		await vi.waitFor(() => expect(interpretButton().classList.contains('done')).toBe(true));
+		expect(interpretButton().style.display).toBe('inline-block');
+		delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+		error.mockRestore();
+	});
+
 	test('Retry sends the same request again and shows its result', async () => {
 		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		mocks.runAiTask.mockRejectedValueOnce(new AiError('network'));

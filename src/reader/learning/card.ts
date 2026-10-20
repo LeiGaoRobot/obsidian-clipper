@@ -29,6 +29,15 @@ export interface LearningCardErrorOptions {
 	onProfileSwitched?: (option: TranscriptProfileOption) => void;
 }
 
+/** A profile as the error card's switch lists it: its own name, under its connection's name. */
+function toSelectProfile(option: TranscriptProfileOption): { id: string; label: string; group?: string } {
+	return {
+		id: option.id,
+		label: option.name ?? option.label,
+		...(option.group !== undefined ? { group: option.group } : {})
+	};
+}
+
 export interface LearningCard {
 	element: HTMLElement;
 	readonly owner: LearningCardOwner | null;
@@ -261,7 +270,8 @@ export function createLearningCard({ doc, tools, signal, onClose }: LearningCard
 			renderAiErrorCard(body, description, {
 				doc,
 				handlers: { retry, openSettings, ...(switchProfile ? { switchProfile } : {}) },
-				...(profiles ? { profiles, selectedProfileId } : {}),
+				// Grouped by connection and named by profile, as Settings' routing lists them.
+				...(profiles ? { profiles: profiles.map(toSelectProfile), selectedProfileId } : {}),
 				...(options.progress ? { progress: options.progress } : {})
 			});
 		};

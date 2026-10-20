@@ -99,6 +99,19 @@ export function createBadgeElement(doc: Document, badge: ConnectionBadge): HTMLE
 	return element;
 }
 
+/**
+ * Whether the connection dialog shows Requires API key: for Custom endpoints and presets that run
+ * without a key (local servers such as Ollama). A preset that always needs a key hides it, unless
+ * the connection being edited already differs from the preset, so that choice stays editable.
+ */
+export function offersApiKeyRequiredToggle(
+	entry: CatalogEntry | undefined,
+	connection?: Pick<Connection, 'apiKeyRequired'>
+): boolean {
+	if (!entry || !entry.apiKeyRequired) return true;
+	return connection !== undefined && connection.apiKeyRequired !== true;
+}
+
 /** The kind icon: the provider's mark for catalog presets, a terminal for CLIs. */
 export function createKindIcon(doc: Document, connection: Pick<Connection, 'kind' | 'label' | 'presetId' | 'baseUrl'>): HTMLElement {
 	const container = createElement(doc, 'div', 'ai-kind-icon-container');
@@ -236,6 +249,7 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 	const apiKeyToggle = doc.getElementById('ai-connection-api-key-toggle') as HTMLButtonElement | null;
 	const apiKeyDescription = doc.getElementById('ai-connection-api-key-description');
 	const apiKeyRequiredInput = doc.getElementById('ai-connection-api-key-required') as HTMLInputElement | null;
+	const apiKeyRequiredItem = doc.getElementById('ai-connection-api-key-required-item');
 	const concurrencyInput = doc.getElementById('ai-connection-max-concurrency') as HTMLInputElement | null;
 	const advanced = doc.getElementById('ai-connection-advanced') as HTMLDetailsElement | null;
 	const errorContainer = doc.getElementById('ai-connection-error');
@@ -315,6 +329,7 @@ export function createConnectionsPanel(options: ConnectionsPanelOptions): Connec
 		apiKeyInput.value = connection ? controller.state.view.credentials[connection.id] ?? '' : '';
 		apiKeyRequiredInput.checked = connection ? connection.apiKeyRequired === true : preset?.apiKeyRequired ?? true;
 		syncToggle(apiKeyRequiredInput);
+		if (apiKeyRequiredItem) apiKeyRequiredItem.hidden = !offersApiKeyRequiredToggle(entry, connection);
 		concurrencyInput.value = connection?.maxConcurrency !== undefined ? String(connection.maxConcurrency) : '';
 		if (advanced) advanced.open = connection?.maxConcurrency !== undefined;
 		setApiKeyDescription(entry, labelInput.value || entry?.name || '');

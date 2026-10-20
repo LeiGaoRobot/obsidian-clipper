@@ -151,6 +151,27 @@ describe('Language learning popup', () => {
 		expect(fixture.content.value).toBe('Before difficult after.');
 		});
 
+	test('shows the request Cancel only while a preview runs, and names the mode select', async () => {
+		const fixture = createPopupFixture();
+		let resolve: (output: string) => void = () => undefined;
+		const transformContent = vi.fn(() => new Promise<string>(done => { resolve = done; }));
+		initializeLanguageLearningPopup({
+			enabled: true,
+			transformContent,
+			getMessage: key => `message:${key}`
+		});
+
+		const presetSelect = document.getElementById('ai-edit-preset') as HTMLSelectElement;
+		expect(presetSelect.getAttribute('aria-label')).toBe('message:aiEditPresetLabel');
+		expect(fixture.cancelRequestButton.hidden).toBe(true);
+
+		fixture.previewButton.click();
+		expect(fixture.cancelRequestButton.hidden).toBe(false);
+		resolve('simple');
+		await vi.waitFor(() => expect(fixture.preview.style.display).toBe('block'));
+		expect(fixture.cancelRequestButton.hidden).toBe(true);
+	});
+
 	test('cancels an in-flight AI edit request', async () => {
 		const fixture = createPopupFixture();
 		const transformContent = vi.fn((_content: string, _instruction: string, signal?: AbortSignal) => new Promise<string>((_, reject) => {

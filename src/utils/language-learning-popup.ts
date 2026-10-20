@@ -61,6 +61,8 @@ export function initializeLanguageLearningPopup({
 
 	container.style.display = enabled ? 'block' : 'none';
 	if (!enabled) return;
+	// The select shows only the chosen mode, so it carries its own name for assistive technology.
+	presetSelect.setAttribute('aria-label', getMessage('aiEditPresetLabel'));
 
 	interface EditSource {
 		sourceValue: string;

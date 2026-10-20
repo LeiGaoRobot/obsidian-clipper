@@ -44,8 +44,24 @@ describe('Reader task bar', () => {
 		answer({ label: 'OpenAI · B', promptCharLimit: 7 });
 		await loading;
 		expect(engine?.textContent).toBe('OpenAI · B');
-		expect(estimate?.textContent).toBe('readerTaskEstimate:2,2');
+		expect(estimate?.textContent).toBe('readerTaskEstimate:readerTaskSegments:2,readerTaskBatches:2');
 		expect(taskBar.executionInfo?.label).toBe('OpenAI · B');
+	});
+
+	test('the estimate uses the singular message for one segment or one batch', async () => {
+		const { segments } = createTranscript(['First.', 'Second.']);
+		const taskBar = createTaskBar({
+			doc: document,
+			segments,
+			tools: { getExecutionInfo: vi.fn().mockResolvedValue({ label: 'OpenAI · B', promptCharLimit: 1000 }) },
+			onCancel: vi.fn()
+		});
+		const estimate = () => taskBar.element.querySelector('.player-learning-task-estimate')?.textContent;
+
+		await taskBar.loadExecutionInfo('translate', ['First.', 'Second.']);
+		expect(estimate()).toBe('readerTaskEstimate:readerTaskSegments:2,readerTaskBatchesOne:1');
+		await taskBar.loadExecutionInfo('translate', ['First.']);
+		expect(estimate()).toBe('readerTaskEstimate:readerTaskSegmentsOne:1,readerTaskBatchesOne:1');
 	});
 
 	test('leaves the estimate empty when getExecutionInfo fails', async () => {

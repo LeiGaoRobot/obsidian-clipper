@@ -483,6 +483,10 @@ export function wireTranscript(
 			const primaryAction = learningControls.items.querySelector(selector);
 			if (primaryAction) primaryActions.appendChild(primaryAction);
 		}
+		// The task bar (progress and Cancel) stays visible below the controls, More open or not; it
+		// is hidden until a task starts.
+		const taskBar = learningControls.items.querySelector('.player-learning-task');
+		if (taskBar) toggleBar.appendChild(taskBar);
 	}
 	// Set timestamp column width to the widest timestamp
 	let maxWidth = 0;

@@ -11,9 +11,20 @@
 	gap: 6px;
 }
 
+// The buttons take their label's width, so the mode select keeps room to show the chosen mode.
+.ai-edit-controls button {
+	flex: 0 0 auto;
+	width: auto;
+}
+
 #ai-edit-preset {
 	flex: 1;
 	min-width: 0;
+}
+
+// Base button styles set `display`, which would beat `[hidden]`.
+#ai-edit-cancel-request-btn[hidden] {
+	display: none;
 }
 
 #ai-edit-instruction {

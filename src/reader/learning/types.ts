@@ -64,8 +64,11 @@ export type ReaderAiTask = Extract<AiTask, 'translate' | 'reading' | 'explain'>;
 
 export interface TranscriptProfileOption {
 	id: string;
-	/** `connection · model`. */
+	/** `connection · model`, the task bar's engine label. */
 	label: string;
+	/** The profile's own name and its connection's name, for the error card's grouped select. */
+	name?: string;
+	group?: string;
 	kind: ConnectionKind;
 }
 

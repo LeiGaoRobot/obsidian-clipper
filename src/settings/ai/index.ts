@@ -134,6 +134,7 @@ export async function initializeAiSettings(options: InitializeAiSettingsOptions 
 		doc,
 		controller,
 		container: requireContainer(doc, 'ai-interpreter'),
+		enabledContainer: requireContainer(doc, 'ai-enabled'),
 		...(options.promptContextDebounceMs !== undefined ? { debounceMs: options.promptContextDebounceMs } : {})
 	});
 	const panels: AiSettingsPanel[] = [connections, nativeCli, profiles, routing, language, interpreter];

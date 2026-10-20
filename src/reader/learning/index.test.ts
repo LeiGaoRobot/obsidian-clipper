@@ -1147,7 +1147,7 @@ describe('Transcript language learning controls', () => {
 		expect(getExecutionInfo).toHaveBeenCalledWith('translate');
 		expect(controls.querySelector('.player-learning-task-engine')?.textContent).toBe('Grok CLI');
 		expect(controls.querySelector('.player-learning-task-estimate')?.textContent)
-			.toBe('readerTaskEstimate:2,2');
+			.toBe('readerTaskEstimate:readerTaskSegments:2,readerTaskBatches:2');
 		const select = document.querySelector('.language-learning-card .ai-error-card-profile-select') as HTMLSelectElement;
 		expect(Array.from(select.options, option => [option.value, option.textContent])).toEqual(
 			PROFILES.map(profile => [profile.id, profile.label])
@@ -1182,7 +1182,7 @@ describe('Transcript language learning controls', () => {
 
 		expect(getExecutionInfo).toHaveBeenCalledWith('reading');
 		expect(controls.querySelector('.player-learning-task-estimate')?.textContent)
-			.toBe('readerTaskEstimate:2,2');
+			.toBe('readerTaskEstimate:readerTaskSegments:2,readerTaskBatches:2');
 	});
 
 	test('Switch and retry routes the failed task to the chosen profile, then retries', async () => {

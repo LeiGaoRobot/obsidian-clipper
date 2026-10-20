@@ -32,8 +32,11 @@
 			--interpreter-background-color: var(--background-modifier-error);
 			--interpreter-border-color: var(--background-modifier-error-border);
 			--interpreter-text-color: var(--text-error);
+			// The error card below names the error; the model above it is a plain, muted label.
 			#model-select {
 				opacity: 1;
+				color: var(--text-muted);
+				font-family: var(--font-default);
 			}
 		}
 

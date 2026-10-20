@@ -1,10 +1,12 @@
-import { AI_INTERPRETER_KEY, AI_PROMPT_CONTEXT_KEY, type AiStorageKey } from '../../ai/settings';
+import { AI_INTERPRETER_KEY, AI_PROFILES_KEY, AI_PROMPT_CONTEXT_KEY, type AiStorageKey } from '../../ai/settings';
 import { getMessage } from '../../utils/i18n';
 import type { AiSettingsController, AiSettingsState } from './controller';
 import { createElement, createSettingItem, createToggle, debounce, finishRender, hasFocus, syncToggle } from './dom';
 import type { AiSettingsPanel } from './panel';
 
-// Interpreter panel: the AI master switch, auto-run, and the default prompt context. The prompt
+// Interpreter panel: the AI master switch (shown at the top of the section, in its own container,
+// with a hint when a first model is added while AI is off), auto-run, and the default prompt
+// context. The prompt
 // context is saved 500 ms after the last keystroke, which also keeps typing far below the sync
 // write-rate limit. When the page is hidden or goes away, an unsaved edit is written at once.
 
@@ -23,6 +25,8 @@ export interface InterpreterPanelOptions {
 	controller: AiSettingsController;
 	/** `#ai-interpreter`. */
 	container: HTMLElement;
+	/** `#ai-enabled`, at the top of the section: the master switch. */
+	enabledContainer: HTMLElement;
 	debounceMs?: number;
 }
 
@@ -34,13 +38,14 @@ export interface InterpreterPanel extends AiSettingsPanel {
 export function interpreterPanelState(state: AiSettingsState): unknown {
 	return {
 		enabled: state.view.enabled,
+		profileCount: state.view.profiles.length,
 		autoRun: state.view.interpreter.autoRun,
 		promptContext: state.view.interpreter.defaultPromptContext
 	};
 }
 
 export function createInterpreterPanel(options: InterpreterPanelOptions): InterpreterPanel {
-	const { doc, controller, container } = options;
+	const { doc, controller, container, enabledContainer } = options;
 
 	const enabledItem = createSettingItem(doc, {
 		label: getMessage('aiEnabled'),
@@ -50,6 +55,11 @@ export function createInterpreterPanel(options: InterpreterPanelOptions): Interp
 	});
 	const enabled = createToggle(doc, 'ai-interpreter-enabled', false);
 	enabledItem.control.appendChild(enabled.container);
+	// Adding a model does not turn AI on; the hint says so next to the switch instead.
+	const enableHint = createElement(doc, 'div', 'setting-item-description ai-enabled-hint', getMessage('aiEnabledOffHint'));
+	enableHint.setAttribute('role', 'status');
+	enableHint.hidden = true;
+	enabledItem.info.appendChild(enableHint);
 
 	const autoRunItem = createSettingItem(doc, {
 		label: getMessage('autoRunInterpreter'),
@@ -71,14 +81,28 @@ export function createInterpreterPanel(options: InterpreterPanelOptions): Interp
 	textarea.spellcheck = false;
 	contextItem.append(contextLabel, contextDescription, textarea);
 
+	const enabledItems = createElement(doc, 'div', 'setting-items');
+	enabledItems.append(enabledItem.item);
+	enabledContainer.replaceChildren(enabledItems);
+	finishRender(enabledContainer);
+
 	const items = createElement(doc, 'div', 'setting-items');
-	items.append(enabledItem.item, autoRunItem.item, contextItem);
+	items.append(autoRunItem.item, contextItem);
 	container.replaceChildren(items);
 	finishRender(container);
+
+	// The profile count of the last render; unknown before the first, so stored models show no hint.
+	let knownProfileCount: number | undefined;
+	let showEnableHint = false;
 
 	function render(state: AiSettingsState): void {
 		enabled.input.checked = state.view.enabled;
 		syncToggle(enabled.input);
+		const profileCount = state.view.profiles.length;
+		if (state.view.enabled) showEnableHint = false;
+		else if (knownProfileCount === 0 && profileCount > 0) showEnableHint = true;
+		knownProfileCount = profileCount;
+		enableHint.hidden = !showEnableHint;
 		autoRun.input.checked = state.view.interpreter.autoRun;
 		syncToggle(autoRun.input);
 		// Never overwrite what the user is typing; the debounced save catches up.
@@ -110,6 +134,10 @@ export function createInterpreterPanel(options: InterpreterPanelOptions): Interp
 
 	enabled.input.addEventListener('change', () => {
 		const checked = enabled.input.checked;
+		if (checked) {
+			showEnableHint = false;
+			enableHint.hidden = true;
+		}
 		updateTemplatePromptContextVisibility(doc, checked);
 		void controller.setInterpreterEnabled(checked).then(saved => {
 			if (!saved) render(controller.state);
@@ -127,7 +155,7 @@ export function createInterpreterPanel(options: InterpreterPanelOptions): Interp
 	textarea.addEventListener('change', () => savePromptContext.flush());
 
 	return {
-		keys: [AI_INTERPRETER_KEY, AI_PROMPT_CONTEXT_KEY] as readonly AiStorageKey[],
+		keys: [AI_INTERPRETER_KEY, AI_PROMPT_CONTEXT_KEY, AI_PROFILES_KEY] as readonly AiStorageKey[],
 		stateOf: interpreterPanelState,
 		render,
 		flush: flushNow,

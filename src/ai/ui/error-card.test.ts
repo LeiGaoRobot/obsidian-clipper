@@ -146,6 +146,30 @@ describe('renderAiErrorCard', () => {
 		expect(retry).not.toHaveBeenCalled();
 	});
 
+	test('profiles with a group are listed under it, in order', () => {
+		const root = container();
+		renderAiErrorCard(root, describeAiError(new AiError('quota')), {
+			handlers: { switchProfile: vi.fn() },
+			profiles: [
+				{ id: 'fast', label: 'Fast', group: 'OpenAI' },
+				{ id: 'large', label: 'Large', group: 'OpenAI' },
+				{ id: 'codex', label: 'Codex CLI', group: 'Codex CLI' }
+			],
+			selectedProfileId: 'large'
+		});
+
+		const select = root.querySelector('select') as HTMLSelectElement;
+		expect(Array.from(select.children, child => [
+			child.tagName,
+			(child as HTMLOptGroupElement).label,
+			Array.from(child.querySelectorAll('option'), option => [option.value, option.textContent])
+		])).toEqual([
+			['OPTGROUP', 'OpenAI', [['fast', 'Fast'], ['large', 'Large']]],
+			['OPTGROUP', 'Codex CLI', [['codex', 'Codex CLI']]]
+		]);
+		expect(select.value).toBe('large');
+	});
+
 	test('the select falls back to the first profile and follows the primary for other actions', () => {
 		const root = container();
 		renderAiErrorCard(root, timeout, {

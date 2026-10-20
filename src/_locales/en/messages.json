@@ -44,6 +44,9 @@
 	"aiEditPresetCustom": {
 		"message": "Custom"
 	},
+	"aiEditPresetLabel": {
+		"message": "AI edit mode"
+	},
 	"aiEditPresetPolish": {
 		"message": "Polish"
 	},
@@ -474,7 +477,10 @@
 		"message": "Enable AI features"
 	},
 	"aiEnabledDescription": {
-		"message": "Lets Interpreter, AI edits, and Reader's language tools use the models set up above."
+		"message": "Lets Interpreter, AI edits, and Reader's language tools use the models set up below."
+	},
+	"aiEnabledOffHint": {
+		"message": "AI features are off, so the models you add aren't used yet. Turn this on to use them."
 	},
 	"aiErrorTechnicalDetails": {
 		"message": "Technical details"
@@ -576,7 +582,7 @@
 		"message": "Display your saved highlights when you load a page. Turn off to only display highlights when highlighter mode is activated."
 	},
 	"apiKeysWarning": {
-		"message": "By using an external provider you agree to their terms and privacy policy. Interpreter requests are sent directly to the provider you choose. Obsidian does not gather or store any data about your requests."
+		"message": "By using an external provider you agree to their terms and privacy policy. Requests from AI features, including Interpreter, AI edits, Reader translations, readings, and explanations, and connection Tests, are sent directly to the provider you choose. Obsidian does not gather or store any data about your requests."
 	},
 	"appendToDaily": {
 		"message": "Add to daily note, at the bottom"
@@ -1423,11 +1429,17 @@
 	"readerSwitchAndRetry": {
 		"message": "Switch and retry"
 	},
+	"readerTaskBatches": {
+		"message": "about $1 batches"
+	},
+	"readerTaskBatchesOne": {
+		"message": "about $1 batch"
+	},
 	"readerTaskElapsed": {
 		"message": "$1s"
 	},
 	"readerTaskEstimate": {
-		"message": "$1 segments · about $2 batches"
+		"message": "$1 · $2"
 	},
 	"readerTaskRange": {
 		"message": "AI range"
@@ -1440,6 +1452,12 @@
 	},
 	"readerTaskRangeNextFiveMinutes": {
 		"message": "Next 5 minutes"
+	},
+	"readerTaskSegments": {
+		"message": "$1 segments"
+	},
+	"readerTaskSegmentsOne": {
+		"message": "$1 segment"
 	},
 	"readerTheme": {
 		"message": "Theme"

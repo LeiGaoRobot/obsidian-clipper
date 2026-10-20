@@ -165,7 +165,13 @@ export function createTaskBar({ doc, segments, tools, onCancel, now = Date.now }
 			engine.textContent = info.label;
 			const sourceChars = taskTexts.reduce((total, text) => total + text.length, 0);
 			const batches = Math.max(1, Math.ceil(sourceChars / Math.max(1, info.promptCharLimit)));
-			estimate.textContent = getMessage('readerTaskEstimate', [String(taskTexts.length), String(batches)]);
+			const segmentCount = taskTexts.length === 1
+				? getMessage('readerTaskSegmentsOne', '1')
+				: getMessage('readerTaskSegments', String(taskTexts.length));
+			const batchCount = batches === 1
+				? getMessage('readerTaskBatchesOne', '1')
+				: getMessage('readerTaskBatches', String(batches));
+			estimate.textContent = getMessage('readerTaskEstimate', [segmentCount, batchCount]);
 		},
 		useProfile(option) {
 			executionInfo = executionInfo
