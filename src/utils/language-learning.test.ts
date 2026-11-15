@@ -13,6 +13,9 @@ import {
 	isCompleteTranscriptReadings,
 	isCompleteTranscriptTranslations,
 	LanguageLearningTask,
+	limitGrammarLines,
+	MAX_GRAMMAR_SOURCE_CHARS,
+	parseTranscriptGrammar,
 	RunLanguageLearningJob,
 	SendLanguageLearningRequest,
 	TranscriptReadingProgress,
@@ -161,6 +164,79 @@ describe('Language learning assistant', () => {
 			instruction: 'Explain the selected word for a language learner in Simplified Chinese. Use only Simplified Chinese for all explanation text, labels, and translations. Include its lemma, pronunciation, meaning in this context, one concise usage note, and one example sentence. Return concise plain text.',
 			content: 'Selected word: encountered\nContext: I encountered an unfamiliar word.'
 		});
+	});
+
+	test('user can ask for the grammar points of a transcript range in one request', async () => {
+		const reply = JSON.stringify({
+			points: [
+				{
+					pattern: '〜っていう',
+					meaning: '引用或命名',
+					level: 'N3',
+					examples: [{ id: 7, quote: 'パニックにならないっていう' }, { id: 99, quote: 'not sent' }, { id: '8', quote: '' }, { id: 7, quote: 'again' }]
+				},
+				{ pattern: '', meaning: 'no pattern' },
+				{ pattern: '〜ばいい', meaning: '该怎么做', examples: [] }
+			]
+		});
+		const { sendRequest, calls } = fakeModel({ explain: () => `Here you go:\n${reply}` });
+		const assistant = createLanguageLearningAssistant(sendRequest);
+		const lines = [
+			{ id: 7, time: '54:40', text: 'パニックにならないっていうメンタリティ' },
+			{ id: 8, time: '55:08', text: 'できないっていうね' },
+			{ id: 9, text: '  ' }
+		];
+
+		const analysis = await assistant.analyzeTranscriptGrammar(lines, 'Simplified Chinese');
+
+		expect(analysis).toEqual({
+			points: [
+				{
+					pattern: '〜っていう',
+					meaning: '引用或命名',
+					level: 'N3',
+					examples: [{ id: 7, quote: 'パニックにならないっていう' }, { id: 8, quote: 'できないっていうね' }]
+				},
+				{ pattern: '〜ばいい', meaning: '该怎么做', examples: [] }
+			],
+			analyzedLines: 2,
+			totalLines: 3
+		});
+		expect(calls).toHaveLength(1);
+		expect(calls[0].task).toBe('explain');
+		const input = calls[0].input as AiTaskInput<'explain'>;
+		expect(input.instruction).toContain('in Simplified Chinese');
+		expect(JSON.parse(input.content)).toEqual({
+			lines: [
+				{ id: 7, time: '54:40', text: 'パニックにならないっていうメンタリティ' },
+				{ id: 8, time: '55:08', text: 'できないっていうね' }
+			]
+		});
+	});
+
+	test('grammar analysis sends only the leading lines that fit the size limit', async () => {
+		const { sendRequest, calls } = fakeModel({
+			explain: () => '{"points":[{"pattern":"〜て","meaning":"connects","examples":[{"id":0,"quote":"x"}]}]}'
+		});
+		const assistant = createLanguageLearningAssistant(sendRequest);
+		const lines = Array.from({ length: 10 }, (_, id) => ({ id, text: 'あ'.repeat(MAX_GRAMMAR_SOURCE_CHARS / 4) }));
+
+		const analysis = await assistant.analyzeTranscriptGrammar(lines, 'English');
+
+		expect(analysis.analyzedLines).toBe(3);
+		expect(analysis.totalLines).toBe(10);
+		expect(JSON.parse((calls[0].input as AiTaskInput<'explain'>).content).lines).toHaveLength(3);
+		expect(limitGrammarLines([{ id: 0, text: 'あ'.repeat(MAX_GRAMMAR_SOURCE_CHARS * 2) }])).toHaveLength(1);
+	});
+
+	test('a grammar reply without any usable point is a bad response', async () => {
+		const { sendRequest } = fakeModel({ explain: () => 'Sorry, I cannot help with that.' });
+		const assistant = createLanguageLearningAssistant(sendRequest);
+
+		await expect(assistant.analyzeTranscriptGrammar([{ id: 0, text: '雨です' }], 'English'))
+			.rejects.toMatchObject({ code: 'bad-response', task: 'explain' });
+		expect(() => parseTranscriptGrammar('{"points":[{"pattern":"x"}]}', [{ id: 0, text: 'x' }]))
+			.toThrow(expect.objectContaining({ code: 'bad-response' }));
 	});
 
 	test('user can ask for a sentence translation and grammar breakdown', async () => {

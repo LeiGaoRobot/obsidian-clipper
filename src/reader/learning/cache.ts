@@ -1,14 +1,21 @@
-import type { LearningSelection, TranscriptReadingSegments } from '../../utils/language-learning';
+import type {
+	LearningSelection,
+	TranscriptGrammarAnalysis,
+	TranscriptGrammarLine,
+	TranscriptReadingSegments
+} from '../../utils/language-learning';
 
 // Session-local caches of completed Reader work, each a 20-entry LRU. They never start model work;
 // they only let an explicit action or a Reader rewire reuse a result. Explanations are keyed by
-// response language, selection kind, selected text, and context.
+// response language, selection kind, selected text, and context; grammar analyses by response language
+// and the analyzed lines.
 
 const MAX_SESSION_CACHE_ENTRIES = 20;
 const japaneseReadingCache = new Map<string, TranscriptReadingSegments>();
 const transcriptTranslationCache = new Map<string, string[]>();
 const japaneseTranslationCache = new Map<string, string[]>();
 const explanationCache = new Map<string, string>();
+const grammarCache = new Map<string, TranscriptGrammarAnalysis>();
 
 function getJapaneseReadingCacheKey(segments: string[]): string {
 	return JSON.stringify(segments);
@@ -89,6 +96,40 @@ export function cacheExplanation(selection: LearningSelection, responseLanguage:
 	}
 }
 
+function getGrammarCacheKey(lines: readonly TranscriptGrammarLine[], responseLanguage: string): string {
+	return JSON.stringify([responseLanguage, lines.map(line => [line.id, line.text])]);
+}
+
+function cloneGrammarAnalysis(analysis: TranscriptGrammarAnalysis): TranscriptGrammarAnalysis {
+	return {
+		...analysis,
+		points: analysis.points.map(point => ({ ...point, examples: point.examples.map(example => ({ ...example })) }))
+	};
+}
+
+export function getCachedGrammarAnalysis(
+	lines: readonly TranscriptGrammarLine[],
+	responseLanguage: string
+): TranscriptGrammarAnalysis | null {
+	const cached = grammarCache.get(getGrammarCacheKey(lines, responseLanguage));
+	return cached ? cloneGrammarAnalysis(cached) : null;
+}
+
+export function cacheGrammarAnalysis(
+	lines: readonly TranscriptGrammarLine[],
+	responseLanguage: string,
+	analysis: TranscriptGrammarAnalysis
+): void {
+	const key = getGrammarCacheKey(lines, responseLanguage);
+	if (grammarCache.has(key)) grammarCache.delete(key);
+	grammarCache.set(key, cloneGrammarAnalysis(analysis));
+	while (grammarCache.size > MAX_SESSION_CACHE_ENTRIES) {
+		const oldestKey = grammarCache.keys().next().value;
+		if (oldestKey === undefined) break;
+		grammarCache.delete(oldestKey);
+	}
+}
+
 export function removeCachedJapaneseReadings(segments: string[]): void {
 	japaneseReadingCache.delete(getJapaneseReadingCacheKey(segments));
 }
@@ -102,4 +143,5 @@ export function clearTranscriptLanguageLearningCache(): void {
 	transcriptTranslationCache.clear();
 	japaneseTranslationCache.clear();
 	explanationCache.clear();
+	grammarCache.clear();
 }

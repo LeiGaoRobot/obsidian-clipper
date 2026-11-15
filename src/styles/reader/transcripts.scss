@@ -888,6 +888,74 @@
 	white-space: pre-wrap;
 	user-select: text;
 }
+.language-learning-grammar {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	white-space: normal;
+	p {
+		margin: 0;
+	}
+}
+.language-learning-grammar-note {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.language-learning-grammar-point {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.language-learning-grammar-pattern {
+	margin: 0;
+	font-size: 1.05em;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+.language-learning-grammar-level {
+	margin-left: 4px;
+	padding: 1px 6px;
+	border-radius: var(--radius-s);
+	background: var(--background-primary-alt);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: 400;
+	vertical-align: middle;
+}
+.language-learning-grammar-meaning {
+	color: var(--text-normal);
+}
+.language-learning-grammar-examples {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.language-learning-grammar-example {
+	display: block;
+	width: 100%;
+	padding: 4px 8px;
+	font: inherit;
+	text-align: left;
+	color: var(--text-normal);
+	background: transparent;
+	border: 0;
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	&:hover {
+		background: var(--background-primary-alt);
+	}
+	&:focus-visible {
+		outline: 2px solid var(--text-accent-hover);
+		outline-offset: 1px;
+	}
+}
+.language-learning-grammar-time {
+	color: var(--text-accent-hover);
+	font-variant-numeric: tabular-nums;
+}
 .language-learning-card-actions {
 	display: flex;
 	align-items: center;

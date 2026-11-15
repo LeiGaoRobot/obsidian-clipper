@@ -1291,6 +1291,21 @@
 	"readerAutoScrollDescription": {
 		"message": "Automatically scroll the transcript to follow playback."
 	},
+	"readerGrammarAnalysis": {
+		"message": "Grammar analysis"
+	},
+	"readerGrammarAnalyzing": {
+		"message": "Analyzing grammar…"
+	},
+	"readerGrammarEmpty": {
+		"message": "No grammar points were found in this range."
+	},
+	"readerGrammarJump": {
+		"message": "Play from $1: $2"
+	},
+	"readerGrammarTruncated": {
+		"message": "This range is long, so only its first $1 of $2 lines were analyzed. Choose a shorter AI range to analyze a later part."
+	},
 	"readerPlaybackControls": {
 		"message": "Playback"
 	},

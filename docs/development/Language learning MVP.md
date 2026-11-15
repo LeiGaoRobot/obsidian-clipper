@@ -44,6 +44,7 @@ This document describes the implemented language-learning MVP and the interfaces
 | `src/reader/learning/task-bar.ts` | The toolbar's progress pill: spinner, phase and `x / N` segment count, progress bar, engine, **Cancel**, and the status text; a view of the transcript action's state |
 | `src/reader/learning/card.ts` | The learning dialog (inert background, focus trap, Escape, focus return) for explanations, the Learning Center, and errors through the shared error card; every handler requires a trusted click. A user close (close button, Escape, or the loading **Cancel**) reports the card's owner through `onClose`, which cancels a running explanation. The body is `aria-live` except while it holds the `role="alert"` error card |
 | `src/reader/learning/translations.ts`, `readings.ts`, `explain.ts` | Bilingual subtitles, Japanese readings (with the Japanese translation before them), and selection explanations, each with restore, toggle, and alignment checks where they apply |
+| `src/reader/learning/grammar.ts` | Grammar analysis of the AI range: one `explain` request on the transcript action, a session cache keyed by response language and the analyzed lines, and example lines that seek through `seekToSegment` |
 | `src/reader/learning/selection.ts` | Selection extraction (word, sentence, cross-segment context) and the trusted selection trigger and double-click handling |
 | `src/reader/learning/cache.ts`, `japanese.ts`, `readings-render.ts`, `types.ts` | Pure session caches with their 20-entry LRU, Japanese-language detection, ruby rendering, and the shared types |
 | `src/utils/transcript-layout.ts` | Pure Reader transcript-layout switching, selected-state semantics, and layout class management |
@@ -94,10 +95,11 @@ The model interface is intentionally small. Popup and Reader know only how to tr
 
 ## Core interfaces
 
-`createLanguageLearningAssistant(sendRequest, { runJob })` accepts a single-request adapter and a transcript-job runner (`runTranscriptJob` in production) and returns four operations:
+`createLanguageLearningAssistant(sendRequest, { runJob })` accepts a single-request adapter and a transcript-job runner (`runTranscriptJob` in production) and returns five operations:
 
 - `transformContent(content, instruction)` returns revised Markdown.
 - `explainSelection(selection, responseLanguage)` returns a contextual explanation.
+- `analyzeTranscriptGrammar(lines, responseLanguage)` sends the leading lines that fit `MAX_GRAMMAR_SOURCE_CHARS` (24,000) as one `explain` request asking for `{"points":[{"pattern","meaning","level","examples":[{"id","quote"}]}]}`. `parseTranscriptGrammar` keeps points with a pattern and a meaning, at most 20, and examples only for line ids that were sent; a reply without a usable point is a `bad-response` error. The result reports how many lines were analyzed.
 - `translateTranscript(segments, targetLanguage, onProgress?, signal?)` runs one job, returns translations in the same order and length as the source segments, and reports batch progress, including retry waits.
 - `annotateJapaneseTranscript(segments, onProgress?, signal?)` runs one job, returns source-aligned text/reading tokens for Japanese kanji, and reports batch progress, including retry waits.
 
@@ -212,6 +214,7 @@ Preset instructions may contain `{{responseLanguage}}`; the runtime resolves the
 - **Study** controls use only the existing player adapter. Sentence repeat, A–B, auto-pause, speed, and shortcuts are independent from language-model state.
 - Cross-segment selections find both range endpoints and build context from every covered source segment. CJK selections use sentence punctuation, common polite endings, and a shorter word-length limit so unspaced Japanese sentences do not default to the word prompt.
 - Word and sentence explanations are cached by response language, selection kind, selected text, and context for the current wired transcript.
+- **Grammar analysis** (under **More**) starts only from a trusted click and runs on the transcript action, so the task bar's Cancel stops it and a late result changes nothing. Its card renders model output with `textContent`; an example's button requires a trusted click, closes the card, focuses and scrolls to the segment, and calls `seekToSegment`, which the Reader binds to the player's seek and segment start times.
 - An `AbortController` removes document and transcript listeners when Reader content changes.
 - SPA cleanup removes the selection action and learning card, removes the document listeners, and aborts in-flight requests (which cancels a running transcript job) even when navigation lands on an article without a transcript: `Reader.wireTranscript` and `teardownContent` go through `src/utils/reader-transcript-loader.ts`, which calls `cleanupTranscript(doc)` once the transcript modules were loaded. A page that never showed a transcript loads none of them.
 - The transcript click guard delays a normal seek and can restore the original playback time when a slower operating-system double-click arrives after that delay.

@@ -1,6 +1,8 @@
 import type {
 	LearningSelection,
 	LearningVocabularyEntry,
+	TranscriptGrammarAnalysis,
+	TranscriptGrammarLine,
 	TranscriptReadingProgress,
 	TranscriptReadingSegments,
 	TranscriptTranslationProgress
@@ -30,6 +32,8 @@ export interface TranscriptLanguageLearning {
 		signal?: AbortSignal
 	) => Promise<TranscriptReadingSegments>;
 	explainSelection: (selection: LearningSelection, signal?: AbortSignal) => Promise<string>;
+	/** One request over the selected range; runs on the Explanations model. */
+	analyzeTranscriptGrammar?: (lines: TranscriptGrammarLine[], signal?: AbortSignal) => Promise<TranscriptGrammarAnalysis>;
 	getExecutionInfo?: (task: TranscriptJobTask) => Promise<TranscriptExecutionInfo>;
 	/** Every enabled profile, for the error card's engine switch. */
 	listProfiles?: () => Promise<TranscriptProfileOption[]>;
@@ -108,6 +112,8 @@ export interface TranscriptLanguageLearningOptions {
 		value: boolean
 	) => void;
 	cancelPendingSeek: () => void;
+	/** Plays from a segment's start; a grammar example's link uses it. */
+	seekToSegment?: (index: number) => void;
 }
 
 /** A transcript flow the transcript action can run: its button, idle label, card title, and task. */

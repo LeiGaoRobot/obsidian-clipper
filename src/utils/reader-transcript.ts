@@ -535,7 +535,12 @@ export function wireTranscript(
 				restoreBilingualSubtitles: settings.bilingualSubtitles,
 				restoreJapaneseReadings: settings.japaneseReadings,
 				onPreferenceChange: (key, value) => onSettingChange?.(key, value),
-			cancelPendingSeek: transcriptClickGuard.cancel
+			cancelPendingSeek: transcriptClickGuard.cancel,
+			// Bound lazily: the player's seek and the segment times are set up below.
+			seekToSegment: index => {
+				const time = segmentTimes[index];
+				if (Number.isFinite(time)) seekTo(time);
+			}
 		});
 		for (const selector of ['.player-learning-bilingual', '.player-learning-readings']) {
 			const primaryAction = learningControls.items.querySelector(selector);

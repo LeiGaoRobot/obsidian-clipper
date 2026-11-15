@@ -2,6 +2,7 @@ import { getMessage } from '../../utils/i18n';
 import { createAiAction, type AiActionRun, type AiActionStatus } from '../../ai/ui/action';
 import { createLearningCard } from './card';
 import { createExplainFeature } from './explain';
+import { createGrammarFeature } from './grammar';
 import { createReadingsFeature } from './readings';
 import { getOriginalSegmentText, wireSelectionTrigger } from './selection';
 import { createTaskBar } from './task-bar';
@@ -15,8 +16,8 @@ import type {
 } from './types';
 
 // Reader transcript learning: composes the task bar, the learning card, bilingual subtitles,
-// Japanese readings, explanations and the selection trigger for one transcript. Two action
-// controllers carry the model work: one per transcript (bilingual and readings share it, so a new
+// Japanese readings, grammar analysis, explanations and the selection trigger for one transcript. Two action
+// controllers carry the model work: one per transcript (bilingual, readings and grammar share it, so a new
 // transcript task aborts the previous one) and one for explanations. Nothing here starts model
 // work on its own: only trusted user actions and the returned controller's methods do.
 
@@ -44,7 +45,8 @@ const LEARNING_CONTROL_SELECTOR = [
 	'.player-learning-task',
 	'.player-learning-readings',
 	'.player-learning-readings-edit',
-	'.player-learning-readings-regenerate'
+	'.player-learning-readings-regenerate',
+	'.player-learning-grammar'
 ].join(', ');
 
 export function cleanupTranscriptLanguageLearning(doc: Document): void {
@@ -65,7 +67,8 @@ export function wireTranscriptLanguageLearning({
 	restoreBilingualSubtitles,
 	restoreJapaneseReadings,
 	onPreferenceChange,
-	cancelPendingSeek
+	cancelPendingSeek,
+	seekToSegment
 }: TranscriptLanguageLearningOptions): TranscriptLanguageLearningController {
 	cleanupTranscriptLanguageLearning(doc);
 	const wiring = new AbortController();
@@ -187,6 +190,7 @@ export function wireTranscriptLanguageLearning({
 	};
 	const translations = createTranslationsFeature(context);
 	const readings = createReadingsFeature(context);
+	const grammar = createGrammarFeature(context, { card, seekToSegment });
 
 	const vocabularyButton = doc.createElement('button');
 	vocabularyButton.type = 'button';
@@ -208,7 +212,8 @@ export function wireTranscriptLanguageLearning({
 		taskBar.element,
 		readings.button,
 		readings.editButton,
-		readings.regenerateButton
+		readings.regenerateButton,
+		grammar.button
 	);
 
 	wireSelectionTrigger({

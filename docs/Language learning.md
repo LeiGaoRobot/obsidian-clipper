@@ -110,9 +110,15 @@ The explanation includes a natural translation, the grammar structure, and impor
 
 The selection action also works with touch selection on mobile browsers that support Reader transcripts. While an explanation or error card is open, the Reader behind it is inactive and keyboard focus stays inside the card. Press Escape to close it and return focus to the control that opened it.
 
+## Analyze the grammar of a video
+
+In a supported Reader transcript, open **More** and select **Grammar analysis**. Web Clipper sends the lines in the current **AI range**—the current segment, the next five minutes, or the entire transcript—in one request and opens a card that lists the grammar patterns a learner should study, most useful first. Each pattern shows a short meaning in your AI response language, an optional level such as JLPT N3, and up to three lines from the transcript where it is used. Select a line to close the card, scroll to it, and play the video from there. **Copy** copies the list as Markdown.
+
+A range longer than about 24,000 characters is analyzed from its start, and the card says how many lines were included; choose a shorter **AI range** to analyze a later part. The result for the same lines and response language is cached for the current browser session, so opening it again does not create another request. Grammar analysis uses the **Explanations** model. It runs as a transcript task: the progress pill shows it with **Cancel**, and starting it stops a running translation or readings task, as those stop each other. A failed analysis can be retried, or switched to another model, from its error card.
+
 ## Model selection and requests
 
-Each language-learning task uses the model **Settings → AI → Tasks** names for it: **AI edit** for AI edits, **Subtitle translation** for bilingual transcripts, **Japanese readings** for readings (and the Japanese translation before them), and **Explanations** for word and sentence explanations. A task set to **Use default** uses the default model. When a Reader request fails, the error card lists your enabled models; **Switch and retry** routes the task that failed to the chosen model and runs it again. A Codex CLI model's model ID and reasoning effort apply to each of its requests; effort availability depends on the selected model, and higher effort can take longer and use more tokens.
+Each language-learning task uses the model **Settings → AI → Tasks** names for it: **AI edit** for AI edits, **Subtitle translation** for bilingual transcripts, **Japanese readings** for readings (and the Japanese translation before them), and **Explanations** for word and sentence explanations and grammar analysis. A task set to **Use default** uses the default model. When a Reader request fails, the error card lists your enabled models; **Switch and retry** routes the task that failed to the chosen model and runs it again. A Codex CLI model's model ID and reasoning effort apply to each of its requests; effort availability depends on the selected model, and higher effort can take longer and use more tokens.
 
 The Reader error card shows what went wrong and what to do next, with the provider's raw message under **Technical details**. Its actions are:
 
@@ -130,6 +136,7 @@ The following actions can create model-provider usage:
 - Translating a transcript. A long transcript can create multiple requests, up to three at the same time for a hosted API provider, plus automatic retries.
 - Generating Japanese readings for a transcript. For non-Japanese source subtitles, the preceding Japanese translation and the reading stage can each create multiple requests in the same way.
 - Explaining a new word, phrase, or sentence that is not already cached for the session.
+- Analyzing the grammar of a transcript range that is not already cached for the session (one request).
 - Selecting **Test** on a connection in **Settings → AI**, when the connection shows the cost note: a structured-output probe or a 1-token request for an API provider, or one CLI run per Codex CLI model (one for Grok CLI). A Test without the cost note only lists models; if the provider has no model list, that Test fails instead of sending a billable request.
 
 Applying, cancelling, undoing, hiding, or showing an existing result does not make another model request.

@@ -12,6 +12,8 @@ import type { TranscriptJobIdentity, TranscriptJobTask } from '../ai/job-identit
 import {
 	JAPANESE_READING_JOB_IDENTITY,
 	LearningSelection,
+	TranscriptGrammarAnalysis,
+	TranscriptGrammarLine,
 	TranscriptReadingProgressHandler,
 	TranscriptReadingSegments,
 	TranscriptTranslationProgressHandler,
@@ -320,6 +322,11 @@ export const configuredLanguageLearning = {
 	async explainSelection(selection: LearningSelection, signal?: AbortSignal): Promise<string> {
 		const { assistant, responseLanguage } = await loadConfiguredAssistant();
 		return assistant.explainSelection(selection, responseLanguage, signal);
+	},
+
+	async analyzeTranscriptGrammar(lines: TranscriptGrammarLine[], signal?: AbortSignal): Promise<TranscriptGrammarAnalysis> {
+		const { assistant, responseLanguage } = await loadConfiguredAssistant();
+		return assistant.analyzeTranscriptGrammar(lines, responseLanguage, signal);
 	},
 
 	async annotateJapaneseTranscript(

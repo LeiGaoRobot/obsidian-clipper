@@ -1,5 +1,6 @@
 import {
 	isCompleteTranscriptReadings,
+	parseJsonCandidates,
 	type AiTaskInput,
 	type AiTaskOutput,
 	type TranscriptSegment
@@ -13,6 +14,7 @@ import type {
 import type { TranscriptJobIdentity, TranscriptJobTask } from '../ai/job-identity';
 import { isEmptySourceSegment } from '../ai/job-limits';
 import { throwIfRequestAborted } from '../ai/abort';
+import { AiError } from '../ai/errors';
 import type { AiTask } from '../ai/types';
 
 // Reading completeness is part of the reading contract; re-exported for restore validation.
@@ -121,9 +123,111 @@ export function isCompleteTranscriptTranslations(translations: readonly string[]
 		&& sources.every((source, index) => isCompleteTranscriptTranslationSegment(translations[index], source));
 }
 
+/** A transcript line sent for grammar analysis: its source index, timestamp label, and text. */
+export interface TranscriptGrammarLine {
+	id: number;
+	time?: string;
+	text: string;
+}
+
+/** A line of the transcript where a grammar point is used, by source index. */
+export interface TranscriptGrammarExample {
+	id: number;
+	quote: string;
+}
+
+export interface TranscriptGrammarPoint {
+	pattern: string;
+	meaning: string;
+	level?: string;
+	examples: TranscriptGrammarExample[];
+}
+
+export interface TranscriptGrammarAnalysis {
+	points: TranscriptGrammarPoint[];
+	/** Lines sent to the model; fewer than requested when the range exceeded the size limit. */
+	analyzedLines: number;
+	totalLines: number;
+}
+
+/** Source characters one grammar analysis sends; a longer range is analyzed from its start. */
+export const MAX_GRAMMAR_SOURCE_CHARS = 24_000;
+const MAX_GRAMMAR_POINTS = 20;
+const MAX_GRAMMAR_EXAMPLES = 4;
+
+/** The leading lines of `lines` that fit the grammar size limit; at least one. */
+export function limitGrammarLines(lines: readonly TranscriptGrammarLine[]): TranscriptGrammarLine[] {
+	const limited: TranscriptGrammarLine[] = [];
+	let chars = 0;
+	for (const line of lines) {
+		chars += line.text.length + 12;
+		if (limited.length > 0 && chars > MAX_GRAMMAR_SOURCE_CHARS) break;
+		limited.push(line);
+	}
+	return limited;
+}
+
+function grammarText(value: unknown): string {
+	return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * The grammar points of a model reply. A point needs a pattern and a meaning; its examples keep
+ * only lines that were sent, first-seen, and fall back to the line's own text for a missing quote.
+ * A reply with no usable point is a bad response.
+ */
+export function parseTranscriptGrammar(text: string, lines: readonly TranscriptGrammarLine[]): TranscriptGrammarPoint[] {
+	const sources = new Map(lines.map(line => [line.id, line.text]));
+	let best: TranscriptGrammarPoint[] = [];
+	for (const candidate of parseJsonCandidates(text)) {
+		const list = Array.isArray(candidate)
+			? candidate
+			: candidate && typeof candidate === 'object' && Array.isArray((candidate as { points?: unknown }).points)
+				? (candidate as { points: unknown[] }).points
+				: undefined;
+		if (!list) continue;
+		const points: TranscriptGrammarPoint[] = [];
+		for (const item of list) {
+			if (!item || typeof item !== 'object') continue;
+			const record = item as Record<string, unknown>;
+			const pattern = grammarText(record.pattern);
+			const meaning = grammarText(record.meaning);
+			if (!pattern || !meaning) continue;
+			const seen = new Set<number>();
+			const examples: TranscriptGrammarExample[] = [];
+			for (const example of Array.isArray(record.examples) ? record.examples : []) {
+				if (!example || typeof example !== 'object') continue;
+				const rawId = (example as Record<string, unknown>).id;
+				const id = typeof rawId === 'string' && /^\d+$/.test(rawId.trim()) ? Number(rawId) : rawId;
+				if (typeof id !== 'number' || !sources.has(id) || seen.has(id)) continue;
+				seen.add(id);
+				examples.push({ id, quote: grammarText((example as Record<string, unknown>).quote) || sources.get(id) || '' });
+				if (examples.length >= MAX_GRAMMAR_EXAMPLES) break;
+			}
+			const level = grammarText(record.level);
+			points.push({ pattern, meaning, ...(level ? { level } : {}), examples });
+			if (points.length >= MAX_GRAMMAR_POINTS) break;
+		}
+		if (points.length > best.length) best = points;
+	}
+	if (best.length === 0) {
+		throw new AiError('bad-response', {
+			task: 'explain',
+			detail: `The reply did not contain any grammar point.\n${text.trim().slice(0, 500)}`
+		});
+	}
+	return best;
+}
+
 export interface LanguageLearningAssistant {
 	transformContent(content: string, instruction: string, signal?: AbortSignal): Promise<string>;
 	explainSelection(selection: LearningSelection, responseLanguage: string, signal?: AbortSignal): Promise<string>;
+	/** One `explain` request over the leading lines that fit `MAX_GRAMMAR_SOURCE_CHARS`. */
+	analyzeTranscriptGrammar(
+		lines: TranscriptGrammarLine[],
+		responseLanguage: string,
+		signal?: AbortSignal
+	): Promise<TranscriptGrammarAnalysis>;
 	translateTranscript(
 		segments: string[],
 		targetLanguage: string,
@@ -213,6 +317,33 @@ export function createLanguageLearningAssistant(
 			}, signal);
 			throwIfRequestAborted(signal);
 			return explanation;
+		},
+
+		async analyzeTranscriptGrammar(
+			lines: TranscriptGrammarLine[],
+			responseLanguage: string,
+			signal?: AbortSignal
+		): Promise<TranscriptGrammarAnalysis> {
+			throwIfRequestAborted(signal);
+			const analyzed = limitGrammarLines(lines.filter(line => line.text.trim()));
+			if (analyzed.length === 0) return { points: [], analyzedLines: 0, totalLines: lines.length };
+			const instruction = [
+				`You are a language teacher. List the grammar patterns a learner should study in this transcript, in ${responseLanguage}.`,
+				`Use only ${responseLanguage} for meanings; keep each pattern in the transcript's language (for example 〜っていう or 〜ばいい).`,
+				`Pick at most ${MAX_GRAMMAR_POINTS} patterns, most useful first; skip trivial particles unless used in a notable way.`,
+				'For each pattern give a short meaning and usage note, an optional level (such as JLPT N3 or CEFR B1), and up to 3 example lines from the transcript by their id, quoting the relevant part of the line exactly.',
+				'Respond with one JSON object of the form {"points":[{"pattern":"…","meaning":"…","level":"…","examples":[{"id":0,"quote":"…"}]}]}, with no Markdown code fence.'
+			].join('\n');
+			const content = JSON.stringify({
+				lines: analyzed.map(line => ({ id: line.id, ...(line.time ? { time: line.time } : {}), text: line.text }))
+			});
+			const reply = await sendRequest('explain', { instruction, content, maxTokens: 6000 }, signal);
+			throwIfRequestAborted(signal);
+			return {
+				points: parseTranscriptGrammar(reply, analyzed),
+				analyzedLines: analyzed.length,
+				totalLines: lines.length
+			};
 		},
 
 		async annotateJapaneseTranscript(

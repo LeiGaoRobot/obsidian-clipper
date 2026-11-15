@@ -1291,6 +1291,21 @@
 	"readerAutoScrollDescription": {
 		"message": "自动滚动字幕稿以跟随播放进度。"
 	},
+	"readerGrammarAnalysis": {
+		"message": "语法解析"
+	},
+	"readerGrammarAnalyzing": {
+		"message": "正在解析语法…"
+	},
+	"readerGrammarEmpty": {
+		"message": "这个范围里没有找到语法点。"
+	},
+	"readerGrammarJump": {
+		"message": "从 $1 开始播放：$2"
+	},
+	"readerGrammarTruncated": {
+		"message": "范围太长，只解析了前 $1 行（共 $2 行）。选择更短的 AI 范围可解析后面的部分。"
+	},
 	"readerPlaybackControls": {
 		"message": "播放"
 	},
