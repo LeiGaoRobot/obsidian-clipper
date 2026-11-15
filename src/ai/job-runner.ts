@@ -33,6 +33,12 @@ import type { AiDiagnosticEntry, ConnectionKind } from './types';
 export const MAX_SPLITS = 3;
 /** Retries of one group. */
 export const MAX_GROUP_RETRIES = 2;
+/**
+ * How many times a group's unanswered part may be sent again: a reply that could not be read is
+ * split in half, and the ids a partly answered reply left out (cut off by the output limit, or
+ * not placeable on their source) go out once more. Each such request spends the job retry budget.
+ */
+export const MAX_RECOVERY_DEPTH = 2;
 /** The upper bound of `jobRetryBudget`. */
 export const MAX_JOB_RETRIES = 8;
 export const RETRY_BASE_DELAY_MS = 1000;
@@ -112,9 +118,9 @@ export function translationMaxTokens(group: TranscriptPromptGroup): number {
 	return Math.min(8000, Math.max(1600, Math.ceil(group.sourceChars * 1.2 + group.segments.length * 15)));
 }
 
-/** Token objects cost more output than the source text they annotate. */
+/** Kanji words and their readings, with JSON around each pair, cost more output than the source. */
 export function readingMaxTokens(group: TranscriptPromptGroup): number {
-	return Math.min(16000, Math.max(2000, Math.ceil(group.sourceChars * 5)));
+	return Math.min(16000, Math.max(2000, Math.ceil(group.sourceChars * 3)));
 }
 
 export function transcriptGroupMaxTokens(task: TranscriptJobTask, group: TranscriptPromptGroup): number {
@@ -562,26 +568,52 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		return retryDelayMs(attempt + 1, error.retryAfterMs, random);
 	};
 
-	const runGroup = async (job: Job, group: TranscriptPromptGroup, kind: ConnectionKind): Promise<GroupOutcome> => {
+	// Spends one request of the job retry budget on resending part of a group.
+	const takeRecovery = (job: Job, depth: number): boolean => {
+		if (depth >= MAX_RECOVERY_DEPTH || stopped(job) || job.retriesThisRun >= job.retryBudget) return false;
+		job.retriesThisRun += 1;
+		job.record.attempts.retries += 1;
+		checkpoint(job);
+		return true;
+	};
+
+	const subgroup = (segments: TranscriptSegment[]): TranscriptPromptGroup => ({
+		segments,
+		sourceChars: segments.reduce((total, segment) => total + segment.text.length, 0)
+	});
+
+	const runGroup = async (job: Job, group: TranscriptPromptGroup, kind: ConnectionKind, depth = 0): Promise<GroupOutcome> => {
 		const input = {
 			instruction: job.input.instruction,
 			segments: group.segments,
 			maxTokens: transcriptGroupMaxTokens(job.task, group)
 		};
-		for (let attempt = 0; ; attempt += 1) {
+		let result: JobExecuteResult | undefined;
+		for (let attempt = 0; !result; attempt += 1) {
 			job.record.attempts.requests += 1;
 			try {
-				const result = await deps.execute(job.task, input, {
+				result = await deps.execute(job.task, input, {
 					...(job.record.profileId ? { profileId: job.record.profileId } : {}),
 					signal: job.cancelController.signal
 				});
-				return accept(job, group, result.output);
 			} catch (thrown) {
 				if (job.cancelled) return NOT_OK;
 				const error = toAiError(thrown);
 				if (isCliKind(kind) && error.code === 'timeout') {
 					requestSplit(job, kind, error);
 					return NOT_OK;
+				}
+				if (error.code === 'bad-response') {
+					// A reply that could not be read: try each half on its own.
+					if (group.segments.length > 1 && takeRecovery(job, depth)) {
+						const middle = Math.ceil(group.segments.length / 2);
+						const first = await runGroup(job, subgroup(group.segments.slice(0, middle)), kind, depth + 1);
+						if (stopped(job)) return NOT_OK;
+						const second = await runGroup(job, subgroup(group.segments.slice(middle)), kind, depth + 1);
+						return first.ok || second.ok ? { ok: true, items: [...first.items, ...second.items] } : NOT_OK;
+					}
+					// Part of a group already being recovered stays unanswered; the job ends incomplete.
+					if (depth > 0) return { ok: true, items: [] };
 				}
 				const delayMs = retryDelay(job, error, attempt);
 				if (delayMs === undefined || stopped(job)) {
@@ -607,6 +639,14 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 				if (stopped(job)) return NOT_OK;
 			}
 		}
+		const outcome = accept(job, group, result.output);
+		const missing = group.segments.filter(segment => !(segment.id in job.record.results));
+		// A reply that answered part of the group: send the rest once more.
+		if (!outcome.ok || missing.length === 0 || missing.length === group.segments.length || !takeRecovery(job, depth)) {
+			return outcome;
+		}
+		const rest = await runGroup(job, subgroup(missing), kind, depth + 1);
+		return { ok: true, items: [...outcome.items, ...rest.items] };
 	};
 
 	const planGroups = (job: Job, kind: ConnectionKind) => buildTranscriptPromptGroups(

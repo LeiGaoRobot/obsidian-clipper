@@ -835,7 +835,7 @@ describe('Configured language learning runtime', () => {
 		expect(mocks.runTranscriptJob).toHaveBeenCalledWith(
 			'reading',
 			{
-				instruction: expect.stringContaining('Annotate each Japanese transcript segment'),
+				instruction: expect.stringContaining('Give the hiragana reading of every kanji'),
 				segments: [{ id: 0, text: '日本語' }],
 				identity: READINGS
 			},

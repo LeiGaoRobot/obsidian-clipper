@@ -116,7 +116,8 @@ export function renderMessages<T extends AiTask>(task: T, input: AiTaskInput<T>)
 			return {
 				system: [
 					instruction.trim(),
-					'Respond with one JSON object of the form {"readings":[{"id":0,"tokens":[{"text":"…","reading":"…"}]}]}.',
+					'Respond with one JSON object of the form {"readings":[{"id":0,"words":[["漢字","かんじ"]]}]}.',
+					'Each word is [text, reading]: text copied exactly from the segment, reading in hiragana. List the words in order; use [] for a segment without kanji.',
 					'Include every segment id from the input exactly once.',
 					JSON_ONLY
 				].join('\n'),
@@ -170,9 +171,9 @@ export function outputSpec<T extends AiTask>(task: T, input: AiTaskInput<T>): St
 						type: 'array',
 						items: strictObject({
 							id: { type: 'integer' },
-							tokens: {
+							words: {
 								type: 'array',
-								items: strictObject({ text: { type: 'string' }, reading: { type: 'string' } })
+								items: { type: 'array', items: { type: 'string' } }
 							}
 						})
 					}
@@ -504,12 +505,108 @@ export function realignReadingTokens(tokens: ReadingToken[], source: string): Re
 	return isCompleteTranscriptReadingSegment(realigned, source) ? realigned : undefined;
 }
 
+/** A kanji word in a reading reply: its text as written in the segment and its hiragana reading. */
+export type ReadingWord = [text: string, reading: string];
+
+/** Parses a reply's `words` list: `[text, reading]` pairs, or `{text, reading}` objects. */
+export function parseReadingWords(value: unknown): ReadingWord[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const words: ReadingWord[] = [];
+	for (const item of value) {
+		const candidate = Array.isArray(item) ? { text: item[0], reading: item[1] } : item;
+		if (!isRecord(candidate) || typeof candidate.text !== 'string' || typeof candidate.reading !== 'string') return undefined;
+		words.push([candidate.text, candidate.reading]);
+	}
+	return words;
+}
+
+function findWord(source: string[], word: string[], from: number): number {
+	for (let start = from; start + word.length <= source.length; start += 1) {
+		if (word.every((char, offset) => sameCharacter(char, source[start + offset]))) return start;
+	}
+	return -1;
+}
+
+/**
+ * Builds full reading tokens from the kanji words a model listed. Each word is found in the source
+ * after the previous one (width differences are allowed) and the text between words becomes plain
+ * tokens, so the result always uses the source's own text. A word that is not in the source, such
+ * as a corrected mis-transcription (漕いで for 濃いで), lends its reading to the kanji run between
+ * its neighbours when that stretch holds exactly as many kanji runs as unplaced words. Returns
+ * undefined when a kanji in the source is left without a reading.
+ */
+export function expandReadingWords(words: ReadingWord[], source: string): ReadingToken[] | undefined {
+	if (!source) return words.length === 0 ? [] : undefined;
+	const sourceChars = Array.from(source);
+	const placed: Array<{ start: number; end: number; reading: string }> = [];
+	// Readings of words that were not found, by the index of the next placed word.
+	const unplaced: string[][] = [[]];
+	let cursor = 0;
+	for (const [text, rawReading] of words) {
+		const word = Array.from(text.trim());
+		const reading = rawReading.trim();
+		if (word.length === 0 || !JAPANESE_KANJI.test(text) || !reading) continue;
+		const start = findWord(sourceChars, word, cursor);
+		if (start < 0) {
+			unplaced[placed.length].push(reading);
+			continue;
+		}
+		placed.push({ start, end: start + word.length, reading });
+		unplaced.push([]);
+		cursor = start + word.length;
+	}
+
+	const tokens: ReadingToken[] = [];
+	const pushPlain = (text: string) => {
+		if (!text) return;
+		const last = tokens[tokens.length - 1];
+		if (last && !last.reading) last.text += text;
+		else tokens.push({ text, reading: '' });
+	};
+	const fillGap = (from: number, to: number, readings: string[]): boolean => {
+		const gap = sourceChars.slice(from, to);
+		const runs: Array<{ start: number; end: number }> = [];
+		gap.forEach((char, index) => {
+			if (!JAPANESE_KANJI.test(char)) return;
+			const last = runs[runs.length - 1];
+			if (last && last.end === index) last.end = index + 1;
+			else runs.push({ start: index, end: index + 1 });
+		});
+		if (runs.length === 0) {
+			pushPlain(gap.join(''));
+			return true;
+		}
+		if (runs.length !== readings.length) return false;
+		let position = 0;
+		runs.forEach((run, index) => {
+			pushPlain(gap.slice(position, run.start).join(''));
+			tokens.push({ text: gap.slice(run.start, run.end).join(''), reading: readings[index] });
+			position = run.end;
+		});
+		pushPlain(gap.slice(position).join(''));
+		return true;
+	};
+
+	let position = 0;
+	for (let index = 0; index < placed.length; index += 1) {
+		const word = placed[index];
+		if (!fillGap(position, word.start, unplaced[index])) return undefined;
+		tokens.push({ text: sourceChars.slice(word.start, word.end).join(''), reading: word.reading });
+		position = word.end;
+	}
+	if (!fillGap(position, sourceChars.length, unplaced[placed.length])) return undefined;
+	return isCompleteTranscriptReadingSegment(tokens, source) ? tokens : undefined;
+}
+
 function parseReadings(text: string, input: AiTaskInputs['reading']): SegmentReading[] {
 	const sources = new Map(input.segments.map(segment => [segment.id, segment.text]));
-	// A reading that cannot be realigned to its source, or leaves a kanji unread, counts as missing.
+	// Replies list kanji words (`words`); older ones carry full `tokens`. A reading that cannot be
+	// placed on its source, or leaves a kanji unread, counts as missing.
 	const readings = parseSegmentItems(text, input.segments, 'readings', (item, id) => {
-		const parsed = parseReadingTokens(item.tokens);
-		const tokens = parsed && realignReadingTokens(parsed, sources.get(id) ?? '');
+		const source = sources.get(id) ?? '';
+		const words = parseReadingWords(item.words);
+		const parsed = words ? undefined : parseReadingTokens(item.tokens);
+		const tokens = words ? expandReadingWords(words, source) : parsed && realignReadingTokens(parsed, source);
 		return tokens ? { id, tokens } : undefined;
 	});
 	if (!readings) throw badResponse(text, 'The reply did not contain a readings list.');

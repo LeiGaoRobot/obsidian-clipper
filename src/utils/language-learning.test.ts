@@ -54,12 +54,11 @@ const TRANSLATION_INSTRUCTION = [
 ].join('\n');
 
 const READING_INSTRUCTION = [
-	'Annotate each Japanese transcript segment with hiragana readings for every kanji.',
-	'Preserve every segment exactly and do not merge or omit text.',
-	'Keep every space, symbol, and transcription error as written; do not correct or normalize the text.',
-	'Split each segment into tokens. Concatenating the token texts must reproduce the segment exactly.',
-	'Give each token that contains kanji its hiragana reading. Use an empty reading for kana, Latin letters, numbers, spaces, and punctuation.',
-	'Split mixed kanji and kana into separate tokens so every kanji has its own reading.'
+	'Give the hiragana reading of every kanji in each Japanese transcript segment.',
+	'For each segment, list every word that contains kanji, in the order it appears, with its reading. List a word again each time it appears.',
+	'Copy each word exactly as written in the segment, including transcription errors; do not correct or normalize it.',
+	'Keep okurigana out of the word where you can (部分, 憧 in 憧れてる) so the reading covers the kanji only.',
+	'Leave out kana-only words, Latin letters, numbers, spaces, and punctuation.'
 ].join('\n');
 
 interface FakeJobCall {

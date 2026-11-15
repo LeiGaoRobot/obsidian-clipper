@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
 	isCompleteTranscriptReadingSegment,
 	isCompleteTranscriptReadings,
+	expandReadingWords,
 	outputSpec,
 	parseJsonCandidates,
 	parseOutput,
@@ -51,7 +52,7 @@ describe('renderMessages', () => {
 		expect(system.startsWith('Translate each transcript segment into English.')).toBe(true);
 		expect(system).toContain('{"translations":[{"id":0,"text":"…"}]}');
 		expect(JSON.parse(user)).toEqual({ segments });
-		expect(renderMessages('reading', reading).system).toContain('"tokens":[{"text":"…","reading":"…"}]');
+		expect(renderMessages('reading', reading).system).toContain('"words":[["漢字","かんじ"]]');
 	});
 
 	test('joins system and user for CLIs', () => {
@@ -148,6 +149,39 @@ describe('parseOutput', () => {
 			.toThrow(expect.objectContaining({ code: 'bad-response' }));
 		expect(() => parseOutput('translate', translate, 'nothing'))
 			.toThrow(expect.objectContaining({ code: 'bad-response' }));
+	});
+
+	test('builds full reading tokens from the kanji words of a segment', () => {
+		const reply = JSON.stringify({
+			readings: [
+				{ id: 3, words: [['今日', 'きょう']] },
+				{ id: 4, words: [{ text: '雨', reading: 'あめ' }] }
+			]
+		});
+		expect(parseOutput('reading', reading, reply)).toEqual([
+			{ id: 3, tokens: [{ text: '今日', reading: 'きょう' }, { text: 'は', reading: '' }] },
+			{ id: 4, tokens: [{ text: '雨', reading: 'あめ' }, { text: 'です', reading: '' }] }
+		]);
+	});
+
+	test('accepts an empty word list only for a segment without kanji', () => {
+		const kana = { instruction: 'x', segments: [{ id: 0, text: 'うん。' }, { id: 1, text: '雨です' }] };
+		expect(parseOutput('reading', kana, '{"readings":[{"id":0,"words":[]},{"id":1,"words":[]}]}'))
+			.toEqual([{ id: 0, tokens: [{ text: 'うん。', reading: '' }] }]);
+	});
+
+	test('counts a segment with an unread kanji as missing', () => {
+		const reply = JSON.stringify({ readings: [{ id: 3, words: [['今', 'いま']] }, { id: 4, words: [['雨', 'あめ']] }] });
+		expect(parseOutput('reading', reading, reply)).toEqual([
+			{ id: 4, tokens: [{ text: '雨', reading: 'あめ' }, { text: 'です', reading: '' }] }
+		]);
+	});
+
+	test('salvages complete word lists from a reply cut off by the output limit', () => {
+		const cut = '{"readings":[{"id":3,"words":[["今日","きょう"]]},{"id":4,"words":[["雨","あ';
+		expect(parseOutput('reading', reading, cut)).toEqual([
+			{ id: 3, tokens: [{ text: '今日', reading: 'きょう' }, { text: 'は', reading: '' }] }
+		]);
 	});
 
 	test('validates reading tokens per segment and accepts legacy tuples', () => {
@@ -296,6 +330,49 @@ describe('parseOutput', () => {
 	test('finds JSON after a stray quote in leading prose', () => {
 		expect(parseOutput('interpret', interpret, 'He said "hi. {"prompt_1":"A","prompt_2":"B"}'))
 			.toEqual({ responses: { prompt_1: 'A', prompt_2: 'B' }, missing: [] });
+	});
+});
+
+describe('expandReadingWords', () => {
+	test('places repeated words in order and keeps the source text', () => {
+		expect(expandReadingWords([['買', 'か'], ['買', 'か']], '買って、また買う')).toEqual([
+			{ text: '買', reading: 'か' },
+			{ text: 'って、また', reading: '' },
+			{ text: '買', reading: 'か' },
+			{ text: 'う', reading: '' }
+		]);
+	});
+
+	test('matches words across character width and keeps the source width', () => {
+		expect(expandReadingWords([['１人', 'ひとり']], '1人で')).toEqual([
+			{ text: '1人', reading: 'ひとり' },
+			{ text: 'で', reading: '' }
+		]);
+	});
+
+	test('keeps okurigana a word carried', () => {
+		expect(expandReadingWords([['憧れてる', 'あこがれてる']], 'すごい憧れてる')).toEqual([
+			{ text: 'すごい', reading: '' },
+			{ text: '憧れてる', reading: 'あこがれてる' }
+		]);
+	});
+
+	test('gives a mis-transcribed kanji the reading of its correction', () => {
+		const words: Array<[string, string]> = [['自転車', 'じてんしゃ'], ['漕', 'こ'], ['走', 'はし']];
+		expect(expandReadingWords(words, '自転車を濃いで走る')).toEqual([
+			{ text: '自転車', reading: 'じてんしゃ' },
+			{ text: 'を', reading: '' },
+			{ text: '濃', reading: 'こ' },
+			{ text: 'いで', reading: '' },
+			{ text: '走', reading: 'はし' },
+			{ text: 'る', reading: '' }
+		]);
+	});
+
+	test('rejects a word list that leaves a kanji run unread', () => {
+		expect(expandReadingWords([['家族', 'かぞく'], ['兄', 'あに']], '家族の人間として兄')).toBeUndefined();
+		expect(expandReadingWords([['家族', 'かぞく'], ['人', 'ひと']], '家族の人間')).toBeUndefined();
+		expect(expandReadingWords([['雨', '']], '雨')).toBeUndefined();
 	});
 });
 

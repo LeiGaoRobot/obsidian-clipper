@@ -283,10 +283,10 @@ describe('job runner policy', () => {
 		expect(translationMaxTokens(group(3000, 10))).toBe(Math.ceil(3000 * 1.2 + 150));
 		expect(translationMaxTokens(group(10_000, 10))).toBe(8000);
 		expect(readingMaxTokens(group(100, 1))).toBe(2000);
-		expect(readingMaxTokens(group(1000, 1))).toBe(5000);
+		expect(readingMaxTokens(group(1000, 1))).toBe(3000);
 		expect(readingMaxTokens(group(10_000, 1))).toBe(16000);
 		expect(transcriptGroupMaxTokens('translate', group(3000, 10))).toBe(translationMaxTokens(group(3000, 10)));
-		expect(transcriptGroupMaxTokens('reading', group(1000, 1))).toBe(5000);
+		expect(transcriptGroupMaxTokens('reading', group(1000, 1))).toBe(3000);
 	});
 
 	test('groups keep source ids, stay atomic, and skip excluded ids', () => {
@@ -624,6 +624,55 @@ describe('job runner retry', () => {
 
 // ---------------------------------------------------------------------------------------------
 // CLI timeout split
+
+describe('job runner recovery', () => {
+	const fourShort = ['a', 'b', 'c', 'd'];
+
+	test('splits a group whose reply could not be read and completes from the halves', async () => {
+		const harness = setup({
+			respond: (call, index) => index === 0 ? new AiError('bad-response') : echo(call, index)
+		});
+		const { jobId, input } = jobInput('translate', fourShort);
+		await harness.runner.start(jobId, 'translate', input, undefined, harness.listener);
+		await flush(12);
+		expect(harness.calls.map(call => call.ids)).toEqual([[0, 1, 2, 3], [0, 1], [2, 3]]);
+		expect(harness.retries()).toHaveLength(0);
+		expect(harness.final()).toMatchObject({ status: 'completed', completedSegments: 4, attempts: { requests: 3, retries: 1 } });
+	});
+
+	test('sends the ids a partly answered reply left out once more', async () => {
+		const harness = setup({
+			respond: (call, index) => index === 0
+				? (echo(call, index) as Array<{ id: number }>).filter(item => item.id < 2)
+				: echo(call, index)
+		});
+		const { jobId, input } = jobInput('translate', fourShort);
+		await harness.runner.start(jobId, 'translate', input, undefined, harness.listener);
+		await flush(12);
+		expect(harness.calls.map(call => call.ids)).toEqual([[0, 1, 2, 3], [2, 3]]);
+		expect(harness.final()).toMatchObject({ status: 'completed', completedGroups: 1, completedSegments: 4 });
+	});
+
+	test('a part that still cannot be read stays missing and the job ends incomplete', async () => {
+		const harness = setup({
+			respond: (call, index) => call.ids.includes(3) ? new AiError('bad-response') : echo(call, index)
+		});
+		const { jobId, input } = jobInput('translate', fourShort);
+		await harness.runner.start(jobId, 'translate', input, undefined, harness.listener);
+		await flush(16);
+		expect(harness.calls.map(call => call.ids)).toEqual([[0, 1, 2, 3], [0, 1], [2, 3], [2], [3]]);
+		expect(harness.final()).toMatchObject({ status: 'incomplete', error: { code: 'incomplete' }, completedSegments: 3 });
+	});
+
+	test('an unreadable single-segment group still fails the job', async () => {
+		const harness = setup({ respond: () => new AiError('bad-response') });
+		const { jobId, input } = jobInput('translate', ['hello']);
+		await harness.runner.start(jobId, 'translate', input, undefined, harness.listener);
+		await flush();
+		expect(harness.calls).toHaveLength(1);
+		expect(harness.final()).toMatchObject({ status: 'failed', error: { code: 'bad-response' } });
+	});
+});
 
 describe('job runner CLI split', () => {
 	// 1000-char segments: five per 6000-char group, two per 3000-char group.
