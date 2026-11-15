@@ -383,12 +383,134 @@ export function isCompleteTranscriptReadings(readings: ReadingToken[][], segment
 		&& readings.every((tokens, index) => isCompleteTranscriptReadingSegment(tokens, segments[index]));
 }
 
+/** Above this many character pairs, a segment is too long to realign and must match exactly. */
+const MAX_REALIGN_CELLS = 1_000_000;
+/** Share of a segment's non-space characters a realigned reading may change. */
+const MAX_REALIGN_CHANGE_RATIO = 0.1;
+const WHITESPACE = /^\s$/u;
+
+function sameCharacter(a: string, b: string): boolean {
+	return a === b || a.normalize('NFKC') === b.normalize('NFKC');
+}
+
+/**
+ * Maps a model's tokens back onto the exact source text. Models often drop or move the spaces in
+ * auto-generated captions, normalize character width, or correct a mis-transcribed kanji (濃いで →
+ * 漕いで). The result always uses the source's own text: whitespace differences are free, and other
+ * changes are allowed for at most 10% of the source's non-space characters. A source kanji that was
+ * replaced takes the reading of the token that replaced it. Returns undefined when the tokens cannot
+ * be realigned into a complete reading.
+ */
+export function realignReadingTokens(tokens: ReadingToken[], source: string): ReadingToken[] | undefined {
+	if (isCompleteTranscriptReadingSegment(tokens, source)) return tokens;
+	const sourceChars = Array.from(source);
+	const modelChars: string[] = [];
+	const modelOwner: number[] = [];
+	tokens.forEach((token, index) => {
+		for (const char of Array.from(token.text)) {
+			modelChars.push(char);
+			modelOwner.push(index);
+		}
+	});
+	const n = modelChars.length;
+	const m = sourceChars.length;
+	if (n === 0 || m === 0 || (n + 1) * (m + 1) > MAX_REALIGN_CELLS) return undefined;
+
+	// Longest common subsequence, filled from the end so the walk below can go forward.
+	const width = m + 1;
+	const lcs = new Uint16Array((n + 1) * width);
+	for (let i = n - 1; i >= 0; i -= 1) {
+		for (let j = m - 1; j >= 0; j -= 1) {
+			lcs[i * width + j] = sameCharacter(modelChars[i], sourceChars[j])
+				? lcs[(i + 1) * width + j + 1] + 1
+				: Math.max(lcs[(i + 1) * width + j], lcs[i * width + j + 1]);
+		}
+	}
+	const sourceOwner: Array<number | undefined> = new Array(m).fill(undefined);
+	const matchedPerToken = new Array<number>(tokens.length).fill(0);
+	const modelMatched = new Array<boolean>(n).fill(false);
+	let unmatchedModel = 0;
+	for (let i = 0, j = 0; i < n || j < m;) {
+		if (i < n && j < m && sameCharacter(modelChars[i], sourceChars[j])
+			&& lcs[i * width + j] === lcs[(i + 1) * width + j + 1] + 1) {
+			sourceOwner[j] = modelOwner[i];
+			matchedPerToken[modelOwner[i]] += 1;
+			modelMatched[i] = true;
+			i += 1;
+			j += 1;
+		} else if (j >= m || (i < n && lcs[(i + 1) * width + j] >= lcs[i * width + j + 1])) {
+			if (!WHITESPACE.test(modelChars[i])) unmatchedModel += 1;
+			i += 1;
+		} else {
+			j += 1;
+		}
+	}
+	const nonSpace = sourceChars.filter(char => !WHITESPACE.test(char)).length;
+	const unmatchedSource = sourceChars.filter((char, j) => sourceOwner[j] === undefined && !WHITESPACE.test(char)).length;
+	const allowance = Math.floor(nonSpace * MAX_REALIGN_CHANGE_RATIO);
+	if (unmatchedSource > allowance || unmatchedModel > allowance) return undefined;
+
+	const tokenStart: number[] = [];
+	modelOwner.forEach((owner, i) => { if (tokenStart[owner] === undefined) tokenStart[owner] = i; });
+	const startsChanged = (token: number) => !modelMatched[tokenStart[token]];
+	const endsChanged = (token: number) => {
+		const next = token + 1 < tokens.length ? tokenStart[token + 1] : n;
+		return !modelMatched[(next ?? n) - 1];
+	};
+
+	// Each run of unmatched source characters becomes one piece: inside a token it joins that token;
+	// without kanji it is plain text; with kanji it takes the readings of the tokens it replaced.
+	type Piece = { text: string; reading: string; owner?: number };
+	const pieces: Piece[] = [];
+	for (let j = 0; j < m;) {
+		const owner = sourceOwner[j];
+		if (owner !== undefined) {
+			const last = pieces[pieces.length - 1];
+			if (last && last.owner === owner) last.text += sourceChars[j];
+			else pieces.push({ text: sourceChars[j], reading: tokens[owner].reading, owner });
+			j += 1;
+			continue;
+		}
+		let end = j;
+		while (end < m && sourceOwner[end] === undefined) end += 1;
+		const run = sourceChars.slice(j, end).join('');
+		const before = j > 0 ? sourceOwner[j - 1] : undefined;
+		const after = end < m ? sourceOwner[end] : undefined;
+		j = end;
+		if (before !== undefined && before === after) {
+			pieces[pieces.length - 1].text += run;
+			continue;
+		}
+		if (!JAPANESE_KANJI.test(run)) {
+			pieces.push({ text: run, reading: '' });
+			continue;
+		}
+		const first = before === undefined ? 0 : before + 1;
+		const last = after === undefined ? tokens.length - 1 : after - 1;
+		const replaced = tokens.slice(first, last + 1).filter((_, offset) => matchedPerToken[first + offset] === 0);
+		const reading = replaced.map(token => token.reading).join('');
+		if (reading.trim()) {
+			pieces.push({ text: run, reading });
+		} else if (after !== undefined && startsChanged(after)) {
+			// The next token changed its head (漕いで for 濃いで): the run joins it.
+			pieces.push({ text: run, reading: tokens[after].reading, owner: after });
+		} else if (before !== undefined && endsChanged(before)) {
+			pieces[pieces.length - 1].text += run;
+		} else {
+			return undefined;
+		}
+	}
+	const realigned = pieces.map(piece => ({ text: piece.text, reading: piece.reading }));
+	return isCompleteTranscriptReadingSegment(realigned, source) ? realigned : undefined;
+}
+
 function parseReadings(text: string, input: AiTaskInputs['reading']): SegmentReading[] {
 	const sources = new Map(input.segments.map(segment => [segment.id, segment.text]));
-	// A reading that drops text or leaves a kanji unread counts as missing, not as an answer.
+	// A reading that cannot be realigned to its source, or leaves a kanji unread, counts as missing.
 	const readings = parseSegmentItems(text, input.segments, 'readings', (item, id) => {
-		const tokens = parseReadingTokens(item.tokens);
-		return tokens && isCompleteTranscriptReadingSegment(tokens, sources.get(id) ?? '') ? { id, tokens } : undefined;
+		const parsed = parseReadingTokens(item.tokens);
+		const tokens = parsed && realignReadingTokens(parsed, sources.get(id) ?? '');
+		return tokens ? { id, tokens } : undefined;
 	});
 	if (!readings) throw badResponse(text, 'The reply did not contain a readings list.');
 	if (readings.length === 0) throw badResponse(text, 'The reply contained no reading for a requested segment.');

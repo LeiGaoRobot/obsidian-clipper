@@ -53,6 +53,7 @@ const TRANSLATION_INSTRUCTION = [
 const READING_INSTRUCTION = [
 	'Annotate each Japanese transcript segment with hiragana readings for every kanji.',
 	'Preserve every segment exactly and do not merge or omit text.',
+	'Keep every space, symbol, and transcription error as written; do not correct or normalize the text.',
 	'Split each segment into tokens. Concatenating the token texts must reproduce the segment exactly.',
 	'Give each token that contains kanji its hiragana reading. Use an empty reading for kana, Latin letters, numbers, spaces, and punctuation.',
 	'Split mixed kanji and kana into separate tokens so every kanji has its own reading.'

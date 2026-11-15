@@ -5,6 +5,7 @@ import {
 	outputSpec,
 	parseJsonCandidates,
 	parseOutput,
+	realignReadingTokens,
 	renderCliPrompt,
 	renderMessages,
 	type JsonSchema
@@ -193,6 +194,62 @@ describe('parseOutput', () => {
 		expect(parseOutput('reading', reading, unread)).toEqual([
 			{ id: 4, tokens: [{ text: '雨', reading: 'あめ' }, { text: 'です', reading: '' }] }
 		]);
+	});
+
+	test('realigns readings whose text differs from a caption only in spaces or width', () => {
+		const source = '自転車 でバランスを 崩さない！';
+		const tokens = [
+			{ text: '自転車', reading: 'じてんしゃ' },
+			{ text: 'で', reading: '' },
+			{ text: 'バランス', reading: '' },
+			{ text: 'を', reading: '' },
+			{ text: '崩', reading: 'くず' },
+			{ text: 'さない!', reading: '' }
+		];
+		const realigned = realignReadingTokens(tokens, source);
+		expect(realigned?.map(token => token.text).join('')).toBe(source);
+		expect(realigned).toEqual([
+			{ text: '自転車', reading: 'じてんしゃ' },
+			{ text: ' ', reading: '' },
+			{ text: 'で', reading: '' },
+			{ text: 'バランス', reading: '' },
+			{ text: 'を', reading: '' },
+			{ text: ' ', reading: '' },
+			{ text: '崩', reading: 'くず' },
+			{ text: 'さない！', reading: '' }
+		]);
+	});
+
+	test('keeps a mis-transcribed kanji in the source with the reading of its correction', () => {
+		const source = 'だけど最初から自転車を濃いであの走るっていうのは絶対にできない';
+		const corrected = [
+			{ text: 'だけど', reading: '' },
+			{ text: '最初', reading: 'さいしょ' },
+			{ text: 'から', reading: '' },
+			{ text: '自転車', reading: 'じてんしゃ' },
+			{ text: 'を', reading: '' },
+			{ text: '漕', reading: 'こ' },
+			{ text: 'いであの', reading: '' },
+			{ text: '走', reading: 'はし' },
+			{ text: 'るっていうのは', reading: '' },
+			{ text: '絶対', reading: 'ぜったい' },
+			{ text: 'にできない', reading: '' }
+		];
+		const realigned = realignReadingTokens(corrected, source);
+		expect(realigned?.map(token => token.text).join('')).toBe(source);
+		expect(realigned).toContainEqual({ text: '濃', reading: 'こ' });
+
+		const merged = corrected.flatMap(token => token.text === '漕'
+			? []
+			: token.text === 'いであの' ? [{ text: '漕いで', reading: 'こいで' }, { text: 'あの', reading: '' }] : [token]);
+		expect(realignReadingTokens(merged, source)).toContainEqual({ text: '濃いで', reading: 'こいで' });
+	});
+
+	test('does not realign a reading that changes too much of its source', () => {
+		const source = '今日は雨です';
+		expect(realignReadingTokens([{ text: '明日', reading: 'あした' }, { text: 'は晴れです', reading: 'はれ' }], source))
+			.toBeUndefined();
+		expect(realignReadingTokens([{ text: '今日', reading: 'きょう' }, { text: 'は', reading: '' }], source)).toBeUndefined();
 	});
 
 	test('reports a reply whose readings are all incomplete as a bad response', () => {
