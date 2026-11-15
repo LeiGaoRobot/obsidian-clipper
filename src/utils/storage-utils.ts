@@ -46,7 +46,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
 		addToObsidian: 0,
 		saveFile: 0,
 		copyToClipboard: 0,
-		share: 0
+		share: 0,
+		readerMode: 0
 	},
 	history: [],
 	ratings: []
@@ -107,6 +108,7 @@ interface StorageData {
 		saveFile: number;
 		copyToClipboard: number;
 		share: number;
+		readerMode?: number;
 	};
 	history?: HistoryEntry[];
 	ratings?: Rating[];
@@ -170,7 +172,7 @@ export async function loadSettings(): Promise<Settings> {
 			learningFolder: data.reader_settings?.learningFolder ?? defaultSettings.readerSettings.learningFolder,
 			customCss: data.reader_settings?.customCss ?? defaultSettings.readerSettings.customCss
 		},
-		stats: data.stats || defaultSettings.stats,
+		stats: { ...defaultSettings.stats, ...data.stats },
 		history: data.history || defaultSettings.history,
 		ratings: data.ratings || defaultSettings.ratings,
 		saveBehavior: data.general_settings?.saveBehavior ?? defaultSettings.saveBehavior

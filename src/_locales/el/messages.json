@@ -325,6 +325,14 @@
 	"highlights": {
 		"message": "Επισημάνσεις"
 	},
+	"highlightsImportSuccess": {
+		"message": "Εισήχθησαν $1 επισημάνσεις.",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
 	"highlightsNotFound": {
 		"message": "Δεν βρέθηκαν επισημάνσεις στο άρθρο"
 	},
@@ -345,6 +353,12 @@
 	},
 	"importFailed": {
 		"message": "Η εισαγωγή απέτυχε. Ελέγξτε την κονσόλα για περισσότερες πληροφορίες."
+	},
+	"importHighlights": {
+		"message": "Εισαγωγή επισημάνσεων"
+	},
+	"importHighlightsDescription": {
+		"message": "Εισαγωγή επισημάνσεων από αρχείο. Οι υπάρχουσες επισημάνσεις διατηρούνται."
 	},
 	"importModalTitle": {
 		"message": "Εισαγωγή"
@@ -503,6 +517,12 @@
 	"pageVariables": {
 		"message": "Μεταβλητές σελίδας"
 	},
+	"pagesRead": {
+		"message": "σελίδα διαβάστηκε"
+	},
+	"pagesReadPlural": {
+		"message": "σελίδες διαβάστηκαν"
+	},
 	"pagesSaved": {
 		"message": "σελίδα αποθηκεύτηκε"
 	},
@@ -571,6 +591,9 @@
 	},
 	"rateExtensionDescription": {
 		"message": "Σας αρέσει το Web Clipper; Βοηθήστε μας δίνοντάς του μια αξιολόγηση."
+	},
+	"read": {
+		"message": "Διαβασμένες"
 	},
 	"reader": {
 		"message": "Αναγνώστης"
@@ -763,6 +786,9 @@
 	},
 	"saveBehaviorLabel": {
 		"message": "Συμπεριφορά αποθήκευσης"
+	},
+	"saved": {
+		"message": "Αποθηκευμένες"
 	},
 	"saveFile": {
 		"message": "Αποθήκευση αρχείου..."

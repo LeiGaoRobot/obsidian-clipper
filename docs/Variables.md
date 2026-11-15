@@ -68,6 +68,18 @@ Prompts can transform page content into JSON that can be manipulated with [[Filt
 ```
 
 
+### Model variables
+
+Model variables record which model filled your prompt variables. Like prompt variables, they are replaced only once [[Interpret web pages|Interpreter]] has run, and they compile to nothing when AI features are off.
+
+| Variable | Description |
+| --- | --- |
+| `{{model}}` | The name of the model that ran, as shown in the model menu |
+| `{{modelId}}` | The provider's model ID, empty for a CLI model that uses the CLI default |
+| `{{modelProvider}}` | The name of the connection the model belongs to |
+
+Model variables accept [[filters]], e.g. `{{model|lower}}`. With the command-line tool's `--execution-mode`, `{{modelProvider}}` is `Codex CLI` or `Grok CLI`, and `{{model}}` and `{{modelId}}` are the `--model` value.
+
 ## Meta variables
 
 Meta variables allow you to extract data from [meta elements](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta) in the page, including [Open Graph](https://ogp.me/) data used to populate social share previews.

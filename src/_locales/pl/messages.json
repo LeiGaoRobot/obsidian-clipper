@@ -9,7 +9,7 @@
 		"message": "Zapisz w Obsidian"
 	},
 	"addVaultPlaceholder": {
-		"message": "Kliknij enter, aby dodać sejf"
+		"message": "Kliknij Enter, aby dodać sejf"
 	},
 	"advanced": {
 		"message": "Zaawansowane"
@@ -30,19 +30,19 @@
 		"message": "Wyświetl zapisane wyróżnienia po wczytaniu strony. Wyłącz, aby wyświetlać wyróżnienia tylko wtedy, gdy włączony jest tryb zakreślacza."
 	},
 	"apiKeysWarning": {
-		"message": "Korzystając z usług zewnętrznego operatora, użytkownik akceptuje jego regulamin i politykę prywatności. Zapytania użytkowników wysyłane są bezpośrednio do wybranego operatora. Obsidian nie gromadzi ani nie przechowuje żadnych danych dotyczących zapytań."
+		"message": "Korzystając z usług zewnętrznego dostawcy, użytkownik akceptuje jego regulamin i politykę prywatności. Zapytania użytkowników wysyłane są bezpośrednio do wybranego dostawcy. Obsidian nie gromadzi ani nie przechowuje żadnych danych dotyczących zapytań."
 	},
 	"appendToDaily": {
-		"message": "Zapisz na końcu w dzienniku"
+		"message": "Dodaj na końcu dziennika"
 	},
 	"appendToExisting": {
-		"message": "Zapisz na końcu istniejącej notatki"
+		"message": "Dodaj na końcu istniejącej notatki"
 	},
 	"autoRunInterpreter": {
 		"message": "Uruchom automatycznie"
 	},
 	"autoRunInterpreterDescription": {
-		"message": "Natychmiast wywołuje odpowiednie zapytania, jeśli szablon je zawiera. Spowoduje to zużycie kredytów API u operatora modelu. Wyłącz, jeśli chcesz uruchamiać skrypt ręcznie."
+		"message": "Natychmiast wywołuje odpowiednie zapytania, jeśli szablon je zawiera. Spowoduje to zużycie kredytów API u dostawcy modelu. Wyłącz, jeśli chcesz uruchamiać interpreter ręcznie."
 	},
 	"behavior": {
 		"message": "Sposób działania"
@@ -100,7 +100,7 @@
 		"message": "Zamknij"
 	},
 	"commandOpenClipper": {
-		"message": "Otwórz schowek Obsidian"
+		"message": "Otwórz Obsidian Web Clipper"
 	},
 	"commandQuickClip": {
 		"message": "Przechwyć"
@@ -260,7 +260,7 @@
 		"message": "Błąd podczas importowania szablonu. Sprawdź plik i spróbuj ponownie."
 	},
 	"failedToInitialize": {
-		"message": "Spróbuj odświeżyć rozszerzenie."
+		"message": "Nie udało się uruchomić. Spróbuj odświeżyć rozszerzenie."
 	},
 	"failedToInitializeContent": {
 		"message": "Nie udało się uruchomić zawartości strony."
@@ -272,10 +272,10 @@
 		"message": "Nie udało się zresetować domyślnego szablonu. Spróbuj ponownie."
 	},
 	"failedToSave": {
-		"message": "Nie udało się zapisać pliku"
+		"message": "Nie udało się zapisać pliku."
 	},
 	"failedToSaveFile": {
-		"message": "Nie udało się zapisać pliku"
+		"message": "Nie udało się zapisać pliku."
 	},
 	"feedback": {
 		"message": "Opinia"
@@ -311,7 +311,7 @@
 		"message": "Wyróżnij stronę"
 	},
 	"highlightSelection": {
-		"message": "Podświetl"
+		"message": "Wyróżnij"
 	},
 	"highlighter": {
 		"message": "Zakreślacz"
@@ -376,13 +376,13 @@
 		"message": "Importuj szablon"
 	},
 	"interpreter": {
-		"message": "Tłumacz"
+		"message": "Interpreter"
 	},
 	"interpreterContext": {
 		"message": "Kontekst zapytania"
 	},
 	"interpreterContextDescription": {
-		"message": "Kontekst używany do przetwarzania zapytań. Zastępuje domyślny kontekst zdefiniowany w $link_start$ustawieniach tłumacza$link_end$. Można tu używać zmiennych.",
+		"message": "Kontekst używany do przetwarzania zapytań. Zastępuje domyślny kontekst zdefiniowany w $link_start$ustawieniach Interpretera$link_end$. Można tu używać zmiennych.",
 		"placeholders": {
 			"link_end": {
 				"content": "</a>"
@@ -405,10 +405,10 @@
 		"message": "Ostatnio używane"
 	},
 	"legacyMode": {
-		"message": "Tryb klasyczny"
+		"message": "Tryb starszy"
 	},
 	"legacyModeDescription": {
-		"message": "Używa URI jako sposobu wyodrębniania treści, który jest kompatybilny z Obsidian w wersji 1.6.7 lub starszej. Należy pamiętać, że długość treści, którą można wyodrębnić, jest ograniczona przez przeglądarkę i system operacyjny. Część stron może nie działać pomimo braku błędów."
+		"message": "Używa URI jako sposobu wyodrębniania treści, który jest zgodny z Obsidian w wersji 1.6.7 lub starszej. Należy pamiętać, że długość treści, którą można wyodrębnić, jest ograniczona przez przeglądarkę i system operacyjny. Część stron może nie działać pomimo braku błędów."
 	},
 	"loadArticle": {
 		"message": "Czytaj artykuł"
@@ -527,16 +527,16 @@
 		"message": "Wyskakujące okienko"
 	},
 	"prependToDaily": {
-		"message": "Zapisz na początku w dzienniku"
+		"message": "Dodaj na początku dziennika"
 	},
 	"prependToExisting": {
-		"message": "Zapisz na początku istniejącej notatki"
+		"message": "Dodaj na początku istniejącej notatki"
 	},
 	"preview": {
 		"message": "Podgląd"
 	},
 	"processing": {
-		"message": "przetwarzanie"
+		"message": "Przetwarzanie"
 	},
 	"properties": {
 		"message": "Atrybuty"
@@ -560,7 +560,7 @@
 		"message": "Lista"
 	},
 	"propertyTypeNumber": {
-		"message": "Numer"
+		"message": "Liczba"
 	},
 	"propertyTypeText": {
 		"message": "Tekst"
@@ -617,7 +617,7 @@
 		"message": "Zwiń komentarz"
 	},
 	"readerColorLinks": {
-		"message": "Koloruj linki"
+		"message": "Koloruj łącza"
 	},
 	"readerColorSchemeDefault": {
 		"message": "Domyślny"
@@ -758,7 +758,7 @@
 		"message": "Resetuj"
 	},
 	"resetDefaultTemplate": {
-		"message": "Resetuj domyślny szablon"
+		"message": "Zresetuj domyślny szablon"
 	},
 	"resetDefaultTemplateDescription": {
 		"message": "Usuń wszelkie zmiany wprowadzone w domyślnym szablonie."
@@ -797,19 +797,19 @@
 		"message": "Udostępnij..."
 	},
 	"shortcutInstructionsBrave": {
-		"message": "Aby zmienić skróty klawiszowe przejdź do $1"
+		"message": "Aby zmienić skróty klawiszowe, przejdź do $1"
 	},
 	"shortcutInstructionsChrome": {
-		"message": "Aby zmienić skróty klawiszowe przejdź do $1"
+		"message": "Aby zmienić skróty klawiszowe, przejdź do $1"
 	},
 	"shortcutInstructionsDefault": {
-		"message": "Aby zmienić skróty klawiszowe użyj ustawień rozszerzeń przeglądarki."
+		"message": "Aby zmienić skróty klawiszowe, użyj ustawień rozszerzeń przeglądarki."
 	},
 	"shortcutInstructionsEdge": {
-		"message": "Aby zmienić skróty klawiszowe przejdź do $1"
+		"message": "Aby zmienić skróty klawiszowe, przejdź do $1"
 	},
 	"shortcutInstructionsFirefox": {
-		"message": "Aby zmienić skróty klawiszowe przejdź do $1, kliknij ikonę koła zębatego i wybierz „Zarządzaj skrótami klawiszowymi”."
+		"message": "Aby zmienić skróty klawiszowe, przejdź do $1, kliknij ikonę koła zębatego i wybierz \"Zarządzaj skrótami klawiszowymi\"."
 	},
 	"shortcutInstructionsIntro": {
 		"message": "Skróty klawiszowe zapewniają szybki dostęp do funkcji rozszerzenia."
@@ -818,7 +818,7 @@
 		"message": "Nie można zmieniać skrótów klawiszowych w przeglądarce Safari."
 	},
 	"shortcutNotSet": {
-		"message": "Nie ustawione"
+		"message": "Nie ustawiono"
 	},
 	"showActionsButton": {
 		"message": "Pokaż przycisk akcji"
@@ -890,7 +890,7 @@
 		"message": "Wyzwalacze szablonu"
 	},
 	"templateTriggersDescription": {
-		"message": "Zdefiniuj reguły umożliwiające automatyczne wybieranie tego szablonu, jeśli pasuje on do wzorca adresu URL lub zawiera dane schema.org. Jedna reguła na linię."
+		"message": "Zdefiniuj reguły umożliwiające automatyczne wybieranie tego szablonu, jeśli pasuje on do wzorca adresu URL lub zawiera dane schema.org. Jedna reguła na wiersz."
 	},
 	"templateValid": {
 		"message": "Składnia szablonu jest poprawna"
@@ -899,7 +899,7 @@
 		"message": "Szablony"
 	},
 	"thinking": {
-		"message": "analizowanie"
+		"message": "Analizowanie"
 	},
 	"updateAvailable": {
 		"message": "Dostępna jest aktualizacja."

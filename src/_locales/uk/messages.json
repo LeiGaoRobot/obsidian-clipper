@@ -325,6 +325,14 @@
 	"highlights": {
 		"message": "Виділення"
 	},
+	"highlightsImportSuccess": {
+		"message": "Імпортовано $1 виділень.",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
 	"highlightsNotFound": {
 		"message": "У статті не знайдено виділень"
 	},
@@ -345,6 +353,12 @@
 	},
 	"importFailed": {
 		"message": "Імпорт не вдався. Перевірте консоль для деталей."
+	},
+	"importHighlights": {
+		"message": "Імпортувати виділення"
+	},
+	"importHighlightsDescription": {
+		"message": "Імпортуйте виділення з файлу. Наявні виділення буде збережено."
 	},
 	"importModalTitle": {
 		"message": "Імпорт"
@@ -503,6 +517,12 @@
 	"pageVariables": {
 		"message": "Змінні сторінки"
 	},
+	"pagesRead": {
+		"message": "Сторінку прочитано"
+	},
+	"pagesReadPlural": {
+		"message": "Сторінок прочитано"
+	},
 	"pagesSaved": {
 		"message": "Сторінку збережено"
 	},
@@ -571,6 +591,9 @@
 	},
 	"rateExtensionDescription": {
 		"message": "Подобається Web Clipper? Допоможіть нам, поставивши оцінку."
+	},
+	"read": {
+		"message": "Прочитано"
 	},
 	"reader": {
 		"message": "Читач"
@@ -763,6 +786,9 @@
 	},
 	"saveBehaviorLabel": {
 		"message": "Поведінка збереження"
+	},
+	"saved": {
+		"message": "Збережено"
 	},
 	"saveFile": {
 		"message": "Зберегти файл..."

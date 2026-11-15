@@ -9,8 +9,52 @@ import { createElementWithClass, createElementWithHTML } from '../utils/dom-util
 import { showSettingsSection } from './settings-section-ui';
 import { updatePropertyType } from './property-types-manager';
 import { getMessage } from '../utils/i18n';
-import { parse, validateVariables, validateFilters } from '../utils/parser';
+import {
+	parse,
+	standardFilterMetadata,
+	validateFilters,
+	validateVariables,
+	type FilterMetadata,
+} from 'knap';
+
+// The template editor (CodeMirror) loads on first use: the popup reaches this module through the
+// template manager and must not bundle an editor it never shows.
+type TemplateEditorModule = typeof import('../utils/template-editor');
+type TemplateField = HTMLInputElement | HTMLTextAreaElement;
+let templateEditor: TemplateEditorModule | undefined;
+let templateEditorLoad: Promise<TemplateEditorModule> | undefined;
+
+function createTemplateEditor(field: TemplateField): void {
+	if (templateEditor) {
+		templateEditor.createTemplateEditor(field);
+		return;
+	}
+	templateEditorLoad ??= import(/* webpackChunkName: 'template-editor' */ '../utils/template-editor')
+		.then(module => (templateEditor = module));
+	// A field removed while the editor loaded (the form was re-rendered) gets no editor.
+	void templateEditorLoad.then(module => {
+		if (field.isConnected) module.createTemplateEditor(field);
+	});
+}
+
+function destroyTemplateEditors(root: HTMLElement): void {
+	templateEditor?.destroyTemplateEditors(root);
+}
+
+function setTemplateEditorValue(field: TemplateField, value: string): void {
+	if (templateEditor) templateEditor.setTemplateEditorValue(field, value);
+	else field.value = value;
+}
 let hasUnsavedChanges = false;
+const validationTimers = new Map<HTMLInputElement | HTMLTextAreaElement, ReturnType<typeof setTimeout>>();
+const validationFields = new WeakSet<HTMLInputElement | HTMLTextAreaElement>();
+
+const clipperFilterMetadata: Record<string, FilterMetadata> = {
+	...standardFilterMetadata,
+	markdown: {},
+	html_to_json: {},
+	remove_html: {},
+};
 
 export function resetUnsavedChanges(): void {
 	hasUnsavedChanges = false;
@@ -136,6 +180,10 @@ async function deleteTemplateFromList(templateId: string): Promise<void> {
 }
 
 export function showTemplateEditor(template: Template | null): void {
+	for (const timer of validationTimers.values()) clearTimeout(timer);
+	validationTimers.clear();
+	const form = document.getElementById('template-settings-form');
+	if (form) destroyTemplateEditors(form);
 	let editingTemplate: Template;
 
 	if (!template) {
@@ -257,6 +305,9 @@ export function showTemplateEditor(template: Template | null): void {
 	}
 
 	updateUrl('templates', editingTemplate.id);
+	[noteContentFormat, noteNameFormat, pathInput, promptContextTextarea].forEach(field => {
+		if (field) createTemplateEditor(field);
+	});
 }
 
 function updateBehaviorFields(): void {
@@ -370,17 +421,18 @@ export function addPropertyToEditor(name: string = '', value: string = '', id: s
 	propertyDiv.appendChild(propertyRow);
 
 	// Add validation for property value (will appear after the row, inside propertyDiv)
-	valueInput.addEventListener('blur', () => validateTemplateField(valueInput, false, propertyDiv));
+	addValidationListener(valueInput, false, propertyDiv);
 	// Validate on load if there's a value
 	if (value) {
 		validateTemplateField(valueInput, false, propertyDiv);
 	}
 
 	templateProperties.appendChild(propertyDiv);
+	createTemplateEditor(valueInput);
 
 	propertyDiv.addEventListener('mousedown', (event) => {
 		const target = event.target as HTMLElement;
-		if (!target.closest('input, select, button')) {
+		if (!target.closest('input, select, button, .knap-editor')) {
 			propertyDiv.setAttribute('draggable', 'true');
 			templateProperties.querySelectorAll('.property-editor').forEach((el) => {
 				if (el !== propertyDiv) {
@@ -421,6 +473,7 @@ export function addPropertyToEditor(name: string = '', value: string = '', id: s
 
 	if (removeBtn) {
 		removeBtn.addEventListener('click', () => {
+			destroyTemplateEditors(propertyDiv);
 			templateProperties.removeChild(propertyDiv);
 		});
 	}
@@ -451,7 +504,7 @@ export function addPropertyToEditor(name: string = '', value: string = '', id: s
 			
 			// Fill in the default value if it exists and the value input is empty
 			if (selectedType.defaultValue && !valueInput.value) {
-				valueInput.value = selectedType.defaultValue;
+				setTemplateEditorValue(valueInput, selectedType.defaultValue);
 			}
 
 			// Immediately update the template form
@@ -465,7 +518,7 @@ export function addPropertyToEditor(name: string = '', value: string = '', id: s
 		if (selectedType) {
 			// Fill in the default value if it exists, regardless of current value
 			if (selectedType.defaultValue) {
-				valueInput.value = selectedType.defaultValue;
+				setTemplateEditorValue(valueInput, selectedType.defaultValue);
 			}
 		}
 	});
@@ -546,6 +599,8 @@ export function updateTemplateFromForm(): void {
 }
 
 function clearTemplateEditor(): void {
+	const form = document.getElementById('template-settings-form');
+	if (form) destroyTemplateEditors(form);
 	setEditingTemplateIndex(-1);
 	const templateEditorTitle = document.getElementById('template-editor-title');
 	const templateName = document.getElementById('template-name') as HTMLInputElement;
@@ -583,6 +638,7 @@ function handleAddProperty(): void {
 			nameInput.focus();
 			nameInput.addEventListener('blur', () => {
 				if (nameInput.value.trim() === '') {
+					destroyTemplateEditors(newPropertyDiv);
 					templateProperties.removeChild(newPropertyDiv);
 				} else {
 					updateTemplateFromForm();
@@ -674,6 +730,8 @@ function updateErrorSummary(): void {
  * @param appendTo Optional element to append the validation to (defaults to inserting after the field)
  */
 function validateTemplateField(field: HTMLInputElement | HTMLTextAreaElement, showLineNumbers: boolean = false, appendTo?: HTMLElement): void {
+	clearTimeout(validationTimers.get(field));
+	validationTimers.delete(field);
 	const content = field.value;
 	const validationId = `${field.id}-validation`;
 
@@ -685,7 +743,9 @@ function validateTemplateField(field: HTMLInputElement | HTMLTextAreaElement, sh
 		if (appendTo) {
 			appendTo.appendChild(validationEl);
 		} else {
-			field.parentNode?.insertBefore(validationEl, field.nextSibling);
+			const editor = field.nextElementSibling;
+			const anchor = editor?.classList.contains('knap-editor') ? editor : field;
+			anchor.after(validationEl);
 		}
 	}
 
@@ -705,7 +765,7 @@ function validateTemplateField(field: HTMLInputElement | HTMLTextAreaElement, sh
 
 	// Validate variable names and filter usage
 	const variableWarnings = validateVariables(result.ast);
-	const filterWarnings = validateFilters(result.ast);
+	const filterWarnings = validateFilters(result.ast, clipperFilterMetadata);
 
 	// Combine errors and warnings into a single list
 	const issues: { line: number; message: string; isError: boolean }[] = [
@@ -748,12 +808,21 @@ function validateTemplateField(field: HTMLInputElement | HTMLTextAreaElement, sh
 }
 
 /**
- * Add validation listener to a template field.
+ * Validate on blur, optionally also after a pause in editing.
  */
-function addValidationListener(field: HTMLInputElement | HTMLTextAreaElement | null, showLineNumbers: boolean = false): void {
-	if (field) {
-		field.addEventListener('blur', () => validateTemplateField(field, showLineNumbers));
+function addValidationListener(field: HTMLInputElement | HTMLTextAreaElement | null, showLineNumbers: boolean = false, appendTo?: HTMLElement, validateOnInput: boolean = false): void {
+	if (!field || validationFields.has(field)) return;
+	validationFields.add(field);
+	if (validateOnInput) {
+		field.addEventListener('input', () => {
+			clearTimeout(validationTimers.get(field));
+			validationTimers.set(field, setTimeout(() => {
+				validationTimers.delete(field);
+				if (field.isConnected) validateTemplateField(field, showLineNumbers, appendTo);
+			}, 300));
+		});
 	}
+	field.addEventListener('blur', () => validateTemplateField(field, showLineNumbers, appendTo));
 }
 
 /**
@@ -762,7 +831,7 @@ function addValidationListener(field: HTMLInputElement | HTMLTextAreaElement | n
 export function initializeTemplateValidation(): void {
 	// Note content (multiline, show line numbers)
 	const noteContentFormat = document.getElementById('note-content-format') as HTMLTextAreaElement;
-	addValidationListener(noteContentFormat, true);
+	addValidationListener(noteContentFormat, true, undefined, true);
 
 	// Note name format (single line)
 	const noteNameFormat = document.getElementById('note-name-format') as HTMLInputElement;

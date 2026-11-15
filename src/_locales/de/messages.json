@@ -325,6 +325,14 @@
 	"highlights": {
 		"message": "Hervorhebungen"
 	},
+	"highlightsImportSuccess": {
+		"message": "$1 Highlights importiert.",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
 	"highlightsNotFound": {
 		"message": "Keine Hervorhebungen im Artikel gefunden"
 	},
@@ -345,6 +353,12 @@
 	},
 	"importFailed": {
 		"message": "Import fehlgeschlagen. Bitte überprüfe die Konsole für weitere Details."
+	},
+	"importHighlights": {
+		"message": "Highlights importieren"
+	},
+	"importHighlightsDescription": {
+		"message": "Highlights aus einer Datei importieren. Vorhandene Highlights bleiben erhalten."
 	},
 	"importModalTitle": {
 		"message": "Importieren"
@@ -511,6 +525,12 @@
 	"pageVariables": {
 		"message": "Seitenvariablen"
 	},
+	"pagesRead": {
+		"message": "Seite gelesen"
+	},
+	"pagesReadPlural": {
+		"message": "Seiten gelesen"
+	},
 	"pagesSaved": {
 		"message": "Seite gespeichert"
 	},
@@ -579,6 +599,9 @@
 	},
 	"rateExtensionDescription": {
 		"message": "Gefällt Ihnen der Web Clipper? Helfen Sie uns, indem Sie ihm eine Bewertung geben."
+	},
+	"read": {
+		"message": "Gelesen"
 	},
 	"reader": {
 		"message": "Leser"
@@ -771,6 +794,9 @@
 	},
 	"saveBehaviorLabel": {
 		"message": "Speicherverhalten"
+	},
+	"saved": {
+		"message": "Gespeichert"
 	},
 	"saveFile": {
 		"message": "Datei speichern..."

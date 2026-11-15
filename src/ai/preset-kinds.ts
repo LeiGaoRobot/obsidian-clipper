@@ -15,6 +15,7 @@ export const PRESET_KINDS: Readonly<Record<string, ConnectionKind>> = Object.fre
 	deepseek: 'openai-compatible',
 	'google-gemini': 'openai-compatible',
 	meta: 'openai-compatible',
+	moonshot: 'openai-compatible',
 	openai: 'openai-compatible',
 	openrouter: 'openai-compatible',
 	xai: 'openai-compatible'

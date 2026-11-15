@@ -4,8 +4,12 @@
 
 import DefuddleClass from 'defuddle';
 import { createMarkdownContent } from 'defuddle/full';
-import { compileTemplate, SelectorProcessor } from './utils/template-compiler';
-import { AsyncResolver, RenderContext } from './utils/renderer';
+import {
+	compileTemplate,
+	type AsyncResolver,
+	type RenderContext,
+	type SelectorProcessor,
+} from './utils/template-compiler';
 import { applyFilters } from './utils/filters';
 import { buildVariables, generateFrontmatter, extractContentBySelector, selectorContentToString, formatPropertyValue } from './utils/shared';
 import { sanitizeFileName } from './utils/string-utils';

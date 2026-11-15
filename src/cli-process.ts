@@ -10,6 +10,7 @@ import {
 	type CliExecutionMode
 } from './utils/cli-execution-contract';
 import { formatPropertyValue, generateFrontmatter } from './utils/shared';
+import { fillModelVariables, type ModelVariableValues } from './utils/variables/model';
 import { sanitizeFileName } from './utils/string-utils';
 
 export interface CliProcessInvocation {
@@ -146,9 +147,13 @@ export function fillPromptResponses(
 	target: PromptFillTarget,
 	promptVariables: PromptVariable[],
 	responses: Record<string, unknown>,
-	currentUrl: string
+	currentUrl: string,
+	modelValues?: ModelVariableValues
 ): { fullContent: string; noteName: string } {
-	const fill = (value: string) => replacePromptVariables(value, promptVariables, responses, currentUrl);
+	const fill = (value: string) => {
+		const filled = replacePromptVariables(value, promptVariables, responses, currentUrl);
+		return modelValues ? fillModelVariables(filled, modelValues) : filled;
+	};
 
 	let propertiesChanged = false;
 	const properties = target.properties.map((property, index) => {

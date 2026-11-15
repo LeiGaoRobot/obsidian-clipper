@@ -21,6 +21,7 @@ const legacyWireKinds: Record<string, ConnectionKind> = {
 	'google-gemini': 'openai-compatible',
 	huggingface: 'huggingface',
 	meta: 'openai-compatible',
+	moonshot: 'openai-compatible',
 	ollama: 'ollama',
 	openai: 'openai-compatible',
 	openrouter: 'openai-compatible',

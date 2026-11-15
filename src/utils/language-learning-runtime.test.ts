@@ -109,7 +109,8 @@ const settings: Settings & V1AiSettings = {
 		addToObsidian: 0,
 		saveFile: 0,
 		copyToClipboard: 0,
-		share: 0
+		share: 0,
+		readerMode: 0
 	},
 	history: [],
 	ratings: [],

@@ -81,6 +81,7 @@ module.exports = (env, argv) => {
 	const mainConfig = {
 		mode: argv.mode,
 		entry: {
+			'content-loader': './src/content-loader.ts',
 			popup: './src/core/popup.ts',
 			settings: './src/core/settings.ts',
 			highlights: './src/core/highlights.ts',

@@ -16,11 +16,17 @@ import { createAiAction, type AiAction, type AiActionStatus } from '../ai/ui/act
 import { renderAiErrorCard } from '../ai/ui/error-card';
 import { refreshPromptChips, type PromptChipState } from './prompt-chips';
 import {
+	connectionDisplayName,
+	findProfileConnection,
 	listEnabledProfileGroups,
 	profileDisplayName,
 	routedProfileId,
 	saveTaskProfile
 } from './ai-profiles';
+import { loadAiSettings } from './ai-settings';
+import { fillModelVariables, type ModelVariableValues } from './variables/model';
+
+export type { ModelVariableValues };
 
 
 // Store event listeners for cleanup
@@ -276,7 +282,27 @@ export async function initializeInterpreter(
 	}
 }
 
-type InterpretResult = AiTaskResult<'interpret'>;
+type InterpretResult = AiTaskResult<'interpret'> & { modelValues?: ModelVariableValues };
+
+/**
+ * The model variables for the profile that ran: the explicit one, else the one routing names for
+ * `interpret`. Undefined when it cannot be found.
+ */
+async function modelVariableValues(profileId: string | undefined): Promise<ModelVariableValues | undefined> {
+	try {
+		const view = await loadAiSettings();
+		const found = findProfileConnection(view, profileId ?? routedProfileId(view, 'interpret'));
+		if (!found) return undefined;
+		const { profile, connection } = found;
+		return {
+			model: profileDisplayName(profile, connection),
+			modelId: profile.model?.trim() ?? '',
+			modelProvider: connectionDisplayName(connection)
+		};
+	} catch {
+		return undefined;
+	}
+}
 
 // One controller per popup document: a newer run aborts the previous one, and a settlement that
 // arrives after it (or after a cancel) changes nothing.
@@ -346,7 +372,9 @@ export async function handleInterpreterUI(
 		}
 		const input = { context: promptContextTextarea.value, prompts: promptVariables };
 		// The model select's profile is an explicit choice for this run; without one, routing picks.
-		return runAiTask('interpret', input, runProfileId ? { profileId: runProfileId, signal } : { signal });
+		const result: InterpretResult = await runAiTask('interpret', input, runProfileId ? { profileId: runProfileId, signal } : { signal });
+		const modelValues = await modelVariableValues(runProfileId);
+		return modelValues ? { ...result, modelValues } : result;
 	});
 	// A retry takes the select's current choice, as the Interpret button does; without a select
 	// offering choices it keeps this run's profile.
@@ -454,6 +482,7 @@ function applyInterpretResult(ui: InterpreterElements, promptVariables: PromptVa
 
 	// Update fields with responses; prompts left unanswered keep a chip that says so.
 	replacePromptVariables(promptVariables, promptResponses);
+	if (result.modelValues) replaceModelVariables(result.modelValues);
 	syncPromptChips(state === 'partial' ? 'failed' : 'idle');
 
 	// Adjust height for noteNameField after content is replaced
@@ -601,6 +630,17 @@ function showInterpreterPartial(container: HTMLElement, unanswered: PromptVariab
 	}
 	container.append(title, ` ${body}`, list);
 	container.style.display = 'block';
+}
+
+/** Fills `{{model}}`, `{{modelId}}`, and `{{modelProvider}}` (with their filters) in the popup fields. */
+export function replaceModelVariables(values: ModelVariableValues): void {
+	document.querySelectorAll('input, textarea').forEach(input => {
+		if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement)) return;
+		input.value = fillModelVariables(input.value, values);
+		if (input.id === 'note-name-field' && input instanceof HTMLTextAreaElement) {
+			adjustNoteNameHeight(input);
+		}
+	});
 }
 
 // Similar to replaceVariables, but happens after the LLM response is received

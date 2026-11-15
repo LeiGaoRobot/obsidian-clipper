@@ -14,7 +14,8 @@ describe('model listing URLs', () => {
 		['deepseek', 'https://api.deepseek.com/v1/models'],
 		['openrouter', 'https://openrouter.ai/api/v1/models'],
 		['xai', 'https://api.x.ai/v1/models'],
-		['meta', 'https://api.llama.com/v1/models'],
+		['meta', 'https://api.meta.ai/v1/models'],
+		['moonshot', 'https://api.moonshot.ai/v1/models'],
 		['google-gemini', 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000'],
 		['anthropic', 'https://api.anthropic.com/v1/models?limit=1000'],
 		['ollama', 'http://127.0.0.1:11434/api/tags']
@@ -28,7 +29,7 @@ describe('model listing URLs', () => {
 
 	test('every catalog entry is covered above', () => {
 		expect(CATALOG.map(entry => entry.id).sort()).toEqual(
-			['anthropic', 'azure-openai', 'deepseek', 'google-gemini', 'huggingface', 'meta', 'ollama', 'openai', 'openrouter', 'perplexity', 'xai']
+			['anthropic', 'azure-openai', 'deepseek', 'google-gemini', 'huggingface', 'meta', 'moonshot', 'ollama', 'openai', 'openrouter', 'perplexity', 'xai']
 		);
 	});
 

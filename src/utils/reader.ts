@@ -1494,9 +1494,11 @@ export class Reader {
 		if (codeBlocks.length === 0 && !Array.from(inlineCode).some(code => (
 			code.className.split(' ').some(className => className.startsWith('language-'))
 		))) return;
-		const { default: hljs } = await import(
-			/* webpackChunkName: 'reader-syntax-highlighting' */ 'highlight.js/lib/common'
-		);
+		const [{ default: hljs }, { default: knapSyntax }] = await Promise.all([
+			import(/* webpackChunkName: 'reader-syntax-highlighting' */ 'highlight.js/lib/common'),
+			import(/* webpackChunkName: 'reader-syntax-highlighting' */ 'knap/highlightjs')
+		]);
+		if (!hljs.getLanguage('knap')) hljs.registerLanguage('knap', knapSyntax);
 		codeBlocks.forEach(block => {
 			// Try to detect the language from class
 			const classes = block.className.split(' ');

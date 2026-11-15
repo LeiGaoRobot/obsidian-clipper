@@ -325,6 +325,14 @@
 	"highlights": {
 		"message": "Vurgular"
 	},
+	"highlightsImportSuccess": {
+		"message": "$1 vurgu içe aktarıldı.",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
 	"highlightsNotFound": {
 		"message": "Makalede vurgular bulunamadı"
 	},
@@ -345,6 +353,12 @@
 	},
 	"importFailed": {
 		"message": "İçe aktarma başarısız. Daha fazla ayrıntı için konsolu kontrol edin."
+	},
+	"importHighlights": {
+		"message": "Vurguları içe aktar"
+	},
+	"importHighlightsDescription": {
+		"message": "Bir dosyadan vurguları içe aktarın. Mevcut vurgular korunur."
 	},
 	"importModalTitle": {
 		"message": "İçe aktar"
@@ -511,6 +525,12 @@
 	"pageVariables": {
 		"message": "Sayfa değişkenleri"
 	},
+	"pagesRead": {
+		"message": "sayfa okundu"
+	},
+	"pagesReadPlural": {
+		"message": "sayfalar okundu"
+	},
 	"pagesSaved": {
 		"message": "sayfa kaydedildi"
 	},
@@ -579,6 +599,9 @@
 	},
 	"rateExtensionDescription": {
 		"message": "Web Clipper'ı beğeniyor musunuz? Bize bir puan vererek yardımcı olun."
+	},
+	"read": {
+		"message": "Okundu"
 	},
 	"reader": {
 		"message": "Okuyucu"
@@ -771,6 +794,9 @@
 	},
 	"saveBehaviorLabel": {
 		"message": "Kaydetme davranışı"
+	},
+	"saved": {
+		"message": "Kaydedildi"
 	},
 	"saveFile": {
 		"message": "Dosyayı kaydet..."

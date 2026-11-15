@@ -325,6 +325,14 @@
 	"highlights": {
 		"message": "Markeringer"
 	},
+	"highlightsImportSuccess": {
+		"message": "Importerede $1 fremhævninger.",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
 	"highlightsNotFound": {
 		"message": "Markeringer blev ikke fundet i artiklen"
 	},
@@ -345,6 +353,12 @@
 	},
 	"importFailed": {
 		"message": "Import mislykkedes. Tjek konsollen for detaljer."
+	},
+	"importHighlights": {
+		"message": "Importér fremhævninger"
+	},
+	"importHighlightsDescription": {
+		"message": "Importér fremhævninger fra en fil. Eksisterende fremhævninger bevares."
 	},
 	"importModalTitle": {
 		"message": "Importér"
@@ -503,6 +517,12 @@
 	"pageVariables": {
 		"message": "Sidevariabler"
 	},
+	"pagesRead": {
+		"message": "Side læst"
+	},
+	"pagesReadPlural": {
+		"message": "Sider læst"
+	},
 	"pagesSaved": {
 		"message": "Side gemt"
 	},
@@ -571,6 +591,9 @@
 	},
 	"rateExtensionDescription": {
 		"message": "Kan du lide Web Clipper? Hjælp os ved at give en bedømmelse."
+	},
+	"read": {
+		"message": "Læst"
 	},
 	"reader": {
 		"message": "Læser"
@@ -763,6 +786,9 @@
 	},
 	"saveBehaviorLabel": {
 		"message": "Gem adfærd"
+	},
+	"saved": {
+		"message": "Gemt"
 	},
 	"saveFile": {
 		"message": "Gem fil..."

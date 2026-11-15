@@ -5,6 +5,7 @@ import { clip, createAsyncResolver, createSelectorProcessor, matchTemplate, Docu
 import { openInObsidian } from './utils/cli-utils';
 import { CliExecutionMode, collectPromptVariables } from './utils/cli-execution-contract';
 import { executePromptVariables, fillPromptResponses, promptContextOf } from './cli-process';
+import { hasModelVariables } from './utils/variables/model';
 import { compileTemplate } from './utils/template-compiler';
 import { CodexReasoningEffort, Template } from './types/types';
 import { normalizeCodexModel } from './utils/codex-model';
@@ -308,7 +309,7 @@ async function main(): Promise<void> {
 			effort: args.codexEffort
 		});
 		// `clip` returns the note name sanitized, which strips the placeholders' quotes and filters.
-		const compiledNoteName = collectPromptVariables([template.noteNameFormat]).length > 0
+		const compiledNoteName = collectPromptVariables([template.noteNameFormat]).length > 0 || hasModelVariables(template.noteNameFormat)
 			? await compileTemplate(0, template.noteNameFormat, result.variables, args.url, {
 				asyncResolver: createAsyncResolver(parsedDocument),
 				selectorProcessor: createSelectorProcessor(parsedDocument),
@@ -319,7 +320,12 @@ async function main(): Promise<void> {
 			{ ...result, template, propertyTypes, compiledNoteName },
 			promptVariables,
 			promptResponses,
-			args.url
+			args.url,
+			{
+				model: args.codexModel ?? '',
+				modelId: args.codexModel ?? '',
+				modelProvider: args.executionMode === 'codex' ? 'Codex CLI' : 'Grok CLI'
+			}
 		));
 	}
 
