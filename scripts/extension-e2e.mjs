@@ -143,6 +143,16 @@ const fixtureHtml = createYouTubeTranscriptFixtureHtml(
 	'Reader integration fixture',
 	'const verified = true;'
 );
+// Defuddle escapes a YouTube description, so the transcript fixture cannot carry a code block; the
+// lazy syntax-highlighting chunk is checked on this article instead.
+const articleFixtureHtml = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Reader code fixture</title></head>
+<body><article>
+<h1>Reader code fixture</h1>
+<p>${'This article checks that Reader highlights code blocks with its lazily loaded chunk. '.repeat(12)}</p>
+<pre><code class="language-javascript">const verified = true;</code></pre>
+<p>${'The paragraph after the code block keeps the article long enough to be extracted. '.repeat(12)}</p>
+</article></body></html>`;
 
 if (!existsSync(path.join(extensionPath, 'manifest.json'))) {
 	throw new Error('Built Chrome extension is missing. Run npm run build:chrome first.');
@@ -233,12 +243,13 @@ const server = http.createServer((request, response) => {
 		return;
 	}
 	response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-	response.end(fixtureHtml);
+	response.end(request.url === '/article' ? articleFixtureHtml : fixtureHtml);
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const address = server.address();
 if (!address || typeof address === 'string') throw new Error('Could not start the Reader E2E fixture server.');
 const fixtureUrl = `http://youtube.com.localhost:${address.port}/watch?v=test`;
+const articleFixtureUrl = `http://article.localhost:${address.port}/article`;
 
 const profile = await mkdtemp(path.join(os.tmpdir(), 'clipper-extension-e2e-'));
 const child = spawn(chrome, [
@@ -514,7 +525,6 @@ try {
 	}
 	const readerState = await waitForValue(async () => evaluate(fixture, `(() => {
 		const article = document.querySelector('.obsidian-reader-content article');
-		const code = article?.querySelector('pre > code');
 		const transcript = article?.querySelector('.transcript-study-layout');
 		const translations = Array.from(article?.querySelectorAll('.transcript-segment-translation') || [])
 			.map(element => element.textContent?.trim());
@@ -523,7 +533,6 @@ try {
 		if (
 			!document.documentElement.classList.contains('obsidian-reader-active')
 			|| !article
-			|| !code?.classList.contains('hljs')
 			|| translations.length !== ${transcriptTranslations.length}
 			|| readings.length !== ${transcriptReadings.flat().filter(token => token.reading).length}
 		) return null;
@@ -540,7 +549,7 @@ try {
 			errorVisible: document.querySelector('.language-learning-card')?.style.display === 'block',
 			chunks: performance.getEntriesByType('resource').map(entry => entry.name).filter(name => name.includes('/chunks/'))
 		};
-	})()`), 'Reader mode or its lazy syntax-highlighting chunk did not initialize.').catch(error => {
+	})()`), 'Reader mode or its transcript checkpoints did not initialize.').catch(error => {
 		throw new Error(`${error.message} ${JSON.stringify({ toggleResponse, fixtureErrors, chunkNetwork, stderr })}`);
 	});
 	if (!readerState.text?.includes('Reader integration fixture')) {
@@ -564,7 +573,7 @@ try {
 			.filter(entry => entry.status === 200 && typeof entry.url === 'string')
 			.map(entry => entry.url)
 	];
-	for (const chunk of ['reader-content-extraction', 'reader-syntax-highlighting', 'reader-language-learning']) {
+	for (const chunk of ['reader-content-extraction', 'reader-language-learning']) {
 		if (!loadedChunkUrls.some(url => url.includes(chunk))) {
 			throw new Error(`Reader did not load expected lazy chunk ${chunk}: ${JSON.stringify(loadedChunkUrls)}`);
 		}
@@ -572,6 +581,35 @@ try {
 	if (readerState.transcript && (readerState.layout !== 'focus' || !readerState.compact)) {
 		throw new Error(`Reader transcript preferences were not applied: ${JSON.stringify(readerState)}`);
 	}
+
+	// Code highlighting: Reader on an article with a code block loads the syntax chunk on demand.
+	const articleTab = await evaluate(settings, `chrome.tabs.create({ url: ${JSON.stringify(articleFixtureUrl)}, active: true })`);
+	const articleTarget = await waitForValue(async () => (
+		(await listTargets(port)).find(target => target.type === 'page' && target.url.startsWith(articleFixtureUrl))
+	), 'Chrome did not open the Reader code fixture tab.');
+	const articlePage = await connectCdp(articleTarget.webSocketDebuggerUrl);
+	clients.push(articlePage);
+	// Chunks load in the content script's world, out of the page's resource timing: watch the network.
+	const articleChunks = [];
+	articlePage.on('Network.responseReceived', event => {
+		if (event.response?.url?.includes('/chunks/') && event.response.status === 200) articleChunks.push(event.response.url);
+	});
+	await articlePage.send('Runtime.enable');
+	await articlePage.send('Network.enable');
+	await waitForValue(async () => evaluate(articlePage, 'document.readyState === "complete"'), 'Reader code fixture did not load.');
+	const articleToggle = await evaluate(settings, `chrome.runtime.sendMessage({
+		action: 'toggleReaderMode',
+		tabId: ${Number(articleTab.id)}
+	})`);
+	if (!articleToggle?.success) {
+		throw new Error(`Reader activation on the code fixture failed: ${JSON.stringify(articleToggle)}`);
+	}
+	await waitForValue(async () => (
+		await evaluate(articlePage, `document.querySelector('.obsidian-reader-content article pre > code')?.classList.contains('hljs') || null`)
+		&& articleChunks.some(url => url.includes('/chunks/reader-syntax-highlighting'))
+	) || null, 'Reader did not highlight the code block with its lazy syntax-highlighting chunk.');
+	await evaluate(settings, `chrome.tabs.remove(${Number(articleTab.id)})`);
+	await evaluate(settings, `chrome.tabs.update(${Number(tab.id)}, { active: true })`);
 	const providerUrl = `http://127.0.0.1:${address.port}/v1/chat/completions`;
 	// A v1 configuration as an older build stored it; nothing in this build writes it.
 	const v1InterpreterSeed = {
