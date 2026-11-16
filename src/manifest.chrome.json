@@ -17,9 +17,7 @@
 		"nativeMessaging"
 	],
 	"host_permissions": [
-		"<all_urls>",
-		"http://*/*",
-		"https://*/*"
+		"<all_urls>"
 	],
 	"action": {
 		"default_popup": "popup.html"
