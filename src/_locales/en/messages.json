@@ -663,7 +663,7 @@
 		"message": "Display your saved highlights when you load a page. Turn off to only display highlights when highlighter mode is activated."
 	},
 	"apiKeysWarning": {
-		"message": "By using an external provider you agree to their terms and privacy policy. Requests from AI features, including Interpreter, AI edits, Reader translations, readings, and explanations, and connection Tests, are sent directly to the provider you choose. Obsidian does not gather or store any data about your requests."
+		"message": "By using an external provider you agree to their terms and privacy policy. Requests from AI features, including Interpreter, AI edits, Reader translations, readings, and explanations, and connection Tests, are sent directly to the provider you choose. This extension does not gather or store any data about your requests."
 	},
 	"appendToDaily": {
 		"message": "Add to daily note, at the bottom"
