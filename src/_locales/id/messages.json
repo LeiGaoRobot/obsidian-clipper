@@ -30,7 +30,7 @@
 		"message": "Tampilkan sorotan yang tersimpan saat memuat laman web. Matikan untuk hanya menampilkan sorotan saat mode sorotan diaktifkan."
 	},
 	"apiKeysWarning": {
-		"message": "Dengan menggunakan penyedia eksternal, Anda menyetujui persyaratan dan kebijakan privasi mereka. Permintaan interpreter dikirim langsung ke penyedia yang Anda pilih. Obsidian tidak mengumpulkan atau menyimpan data apa pun tentang permintaan Anda."
+		"message": "Dengan menggunakan penyedia eksternal, Anda menyetujui persyaratan dan kebijakan privasi mereka. Permintaan interpreter dikirim langsung ke penyedia yang Anda pilih. Ekstensi ini tidak mengumpulkan atau menyimpan data apa pun tentang permintaan Anda."
 	},
 	"appendToDaily": {
 		"message": "Tambah ke catatan harian, di bagian akhir"

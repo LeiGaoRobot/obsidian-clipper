@@ -30,7 +30,7 @@
 		"message": "Exiba suas marcações salvos ao carregar a página. Desative para exibir as marcações somente quando o modo marcador estiver ativado."
 	},
 	"apiKeysWarning": {
-		"message": "Ao usar um provedor externo, você concorda com seus termos e política de privacidade. As solicitações do interpretador são enviadas diretamente ao provedor que você escolher. O Obsidian não coleta nem armazena nenhum dado sobre suas solicitações."
+		"message": "Ao usar um provedor externo, você concorda com seus termos e política de privacidade. As solicitações do interpretador são enviadas diretamente ao provedor que você escolher. Esta extensão não coleta nem armazena nenhum dado sobre suas solicitações."
 	},
 	"appendToDaily": {
 		"message": "Adicionar à nota diária, no final"

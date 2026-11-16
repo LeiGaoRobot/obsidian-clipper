@@ -30,7 +30,7 @@
 		"message": "Mostra i tuoi evidenziatori salvati quando carichi una pagina. Disattiva per visualizzare gli evidenziatori solo quando la modalità evidenziatore è attivata."
 	},
 	"apiKeysWarning": {
-		"message": "Utilizzando un fornitore esterno, accetti i loro termini e la loro politica sulla privacy. Le richieste dell'interprete vengono inviate direttamente al fornitore che scegli. Obsidian non raccoglie o memorizza alcun dato sulle tue richieste."
+		"message": "Utilizzando un fornitore esterno, accetti i loro termini e la loro politica sulla privacy. Le richieste dell'interprete vengono inviate direttamente al fornitore che scegli. Questa estensione non raccoglie o memorizza alcun dato sulle tue richieste."
 	},
 	"appendToDaily": {
 		"message": "Aggiungi alla nota giornaliera, in fondo"

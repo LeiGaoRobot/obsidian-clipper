@@ -30,7 +30,7 @@
 		"message": "Affiche vos surlignages sauvegardés lors du chargement d'une page. Désactivez pour n'afficher les surlignages que lorsque le mode surlignage est activé."
 	},
 	"apiKeysWarning": {
-		"message": "En utilisant un fournisseur externe, vous acceptez leurs conditions d'utilisation et leur politique de confidentialité. Les requêtes de l'interpréteur sont envoyées directement au fournisseur que vous choisissez. Obsidian ne collecte et ne stocke aucune donnée concernant vos requêtes."
+		"message": "En utilisant un fournisseur externe, vous acceptez leurs conditions d'utilisation et leur politique de confidentialité. Les requêtes de l'interpréteur sont envoyées directement au fournisseur que vous choisissez. Cette extension ne collecte et ne stocke aucune donnée concernant vos requêtes."
 	},
 	"appendToDaily": {
 		"message": "Ajouter à la note quotidienne, à la fin"

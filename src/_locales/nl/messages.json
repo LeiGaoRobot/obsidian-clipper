@@ -30,7 +30,7 @@
 		"message": "Toon je opgeslagen markeringen wanneer je een pagina laadt. Schakel uit om markeringen alleen te tonen wanneer de markeerder actief is."
 	},
 	"apiKeysWarning": {
-		"message": "Door een externe provider te gebruiken ga je akkoord met hun voorwaarden en privacybeleid. Interpreter-verzoeken worden direct naar de provider van jouw keuze gestuurd. Obsidian verzamelt of bewaart geen gegevens over je verzoeken."
+		"message": "Door een externe provider te gebruiken ga je akkoord met hun voorwaarden en privacybeleid. Interpreter-verzoeken worden direct naar de provider van jouw keuze gestuurd. Deze extensie verzamelt of bewaart geen gegevens over je verzoeken."
 	},
 	"appendToDaily": {
 		"message": "Toevoegen aan dagelijkse notitie, onderaan"

@@ -30,7 +30,7 @@
 		"message": "Mostra els teus ressaltats guardats quan carregues una pàgina. Desactiva per mostrar els ressaltats només quan el mode ressaltador està activat."
 	},
 	"apiKeysWarning": {
-		"message": "En usar un proveïdor extern, accepta els seus termes i política de privacitat. Les sol·licituds de l'intèrpret s'envien directament al proveïdor que esculli. Obsidian no recopila ni emmagatzema cap dada sobre les seves sol·licituds."
+		"message": "En usar un proveïdor extern, accepta els seus termes i política de privacitat. Les sol·licituds de l'intèrpret s'envien directament al proveïdor que esculli. Aquesta extensió no recopila ni emmagatzema cap dada sobre les seves sol·licituds."
 	},
 	"appendToDaily": {
 		"message": "Agregar a la nota diària, al final"

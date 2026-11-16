@@ -30,7 +30,7 @@
 		"message": "Muestra tus resaltados guardados cuando cargas una página. Desactiva para mostrar los resaltados solo cuando el modo resaltador está activado."
 	},
 	"apiKeysWarning": {
-		"message": "Al usar un proveedor externo, aceptas sus términos y política de privacidad. Las solicitudes del intérprete se envían directamente al proveedor que elijas. Obsidian no recopila ni almacena ningún dato sobre tus solicitudes."
+		"message": "Al usar un proveedor externo, aceptas sus términos y política de privacidad. Las solicitudes del intérprete se envían directamente al proveedor que elijas. Esta extensión no recopila ni almacena ningún dato sobre tus solicitudes."
 	},
 	"appendToDaily": {
 		"message": "Agregar a la nota diaria, al final"

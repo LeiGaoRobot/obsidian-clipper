@@ -30,7 +30,7 @@
 		"message": "Wyświetl zapisane wyróżnienia po wczytaniu strony. Wyłącz, aby wyświetlać wyróżnienia tylko wtedy, gdy włączony jest tryb zakreślacza."
 	},
 	"apiKeysWarning": {
-		"message": "Korzystając z usług zewnętrznego dostawcy, użytkownik akceptuje jego regulamin i politykę prywatności. Zapytania użytkowników wysyłane są bezpośrednio do wybranego dostawcy. Obsidian nie gromadzi ani nie przechowuje żadnych danych dotyczących zapytań."
+		"message": "Korzystając z usług zewnętrznego dostawcy, użytkownik akceptuje jego regulamin i politykę prywatności. Zapytania użytkowników wysyłane są bezpośrednio do wybranego dostawcy. To rozszerzenie nie gromadzi ani nie przechowuje żadnych danych dotyczących zapytań."
 	},
 	"appendToDaily": {
 		"message": "Dodaj na końcu dziennika"

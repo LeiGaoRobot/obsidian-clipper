@@ -30,7 +30,7 @@
 		"message": "A mentett kiemelések megjelenítése az oldal betöltésekor. Kapcsold ki, ha csak akkor szeretnéd megjeleníteni a kiemeléseket, amikor a kiemelő mód aktiválva van."
 	},
 	"apiKeysWarning": {
-		"message": "Külső szolgáltató használatával elfogadod annak feltételeit és adatvédelmi irányelveit. Az interpreter kérései közvetlenül a választott szolgáltatóhoz kerülnek elküldésre. Az Obsidian nem gyűjt és nem tárol semmilyen adatot a kéréseidről."
+		"message": "Külső szolgáltató használatával elfogadod annak feltételeit és adatvédelmi irányelveit. Az interpreter kérései közvetlenül a választott szolgáltatóhoz kerülnek elküldésre. Ez a bővítmény nem gyűjt és nem tárol semmilyen adatot a kéréseidről."
 	},
 	"appendToDaily": {
 		"message": "Hozzáadás a napi jegyzethez, alul"

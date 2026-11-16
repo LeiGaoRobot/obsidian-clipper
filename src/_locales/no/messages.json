@@ -30,7 +30,7 @@
 		"message": "Vis lagrede uthevinger når siden lastes. Deaktiver for å bare vise uthevinger når uthevingsmodus er aktiv."
 	},
 	"apiKeysWarning": {
-		"message": "Ved å bruke en ekstern leverandør godtar du deres vilkår og personvernregler. Tolkningsforespørsler sendes direkte til din valgte leverandør. Obsidian samler ikke inn eller lagrer informasjon om dine forespørsler."
+		"message": "Ved å bruke en ekstern leverandør godtar du deres vilkår og personvernregler. Tolkningsforespørsler sendes direkte til din valgte leverandør. Denne utvidelsen samler ikke inn eller lagrer informasjon om dine forespørsler."
 	},
 	"appendToDaily": {
 		"message": "Legg til i daglig notat, på slutten"

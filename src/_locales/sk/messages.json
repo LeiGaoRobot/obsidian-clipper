@@ -30,7 +30,7 @@
 		"message": "Zobrazovať uložené zvýraznenia pri načítaní stránky. Vypnite, ak chcete zvýraznenia zobrazovať iba pri aktivovanom režime zvýrazňovania."
 	},
 	"apiKeysWarning": {
-		"message": "Používaním externého poskytovateľa súhlasíte s jeho podmienkami a zásadami ochrany súkromia. Požiadavky tlmočníka sa odosielajú priamo poskytovateľovi, ktorého si vyberiete. Obsidian nezhromažďuje ani neukladá žiadne údaje o vašich požiadavkách."
+		"message": "Používaním externého poskytovateľa súhlasíte s jeho podmienkami a zásadami ochrany súkromia. Požiadavky tlmočníka sa odosielajú priamo poskytovateľovi, ktorého si vyberiete. Toto rozšírenie nezhromažďuje ani neukladá žiadne údaje o vašich požiadavkách."
 	},
 	"appendToDaily": {
 		"message": "Pridať do dennej poznámky, na koniec"

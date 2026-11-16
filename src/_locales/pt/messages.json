@@ -30,7 +30,7 @@
 		"message": "Mostre os seus destaques guardados ao carregar uma página. Desative para mostrar os destaques apenas quando o modo de realce estiver ativado."
 	},
 	"apiKeysWarning": {
-		"message": "Ao utilizar um fornecedor externo, concorda com os respetivos termos e política de privacidade. Os pedidos do intérprete são enviados diretamente para o fornecedor que escolher. O Obsidian não recolhe nem armazena quaisquer dados sobre os seus pedidos."
+		"message": "Ao utilizar um fornecedor externo, concorda com os respetivos termos e política de privacidade. Os pedidos do intérprete são enviados diretamente para o fornecedor que escolher. Esta extensão não recolhe nem armazena quaisquer dados sobre os seus pedidos."
 	},
 	"appendToDaily": {
 		"message": "Adicionar à nota diária, no fim"

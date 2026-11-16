@@ -30,7 +30,7 @@
 		"message": "Hiển thị các đánh dấu đã lưu khi tải trang. Tắt để chỉ hiển thị đánh dấu khi chế độ đánh dấu được kích hoạt."
 	},
 	"apiKeysWarning": {
-		"message": "Bằng cách sử dụng nhà cung cấp bên ngoài, bạn đồng ý với điều khoản và chính sách bảo mật của họ. Các yêu cầu thông dịch được gửi trực tiếp đến nhà cung cấp bạn chọn. Obsidian không thu thập hoặc lưu trữ bất kỳ dữ liệu nào về các yêu cầu của bạn."
+		"message": "Bằng cách sử dụng nhà cung cấp bên ngoài, bạn đồng ý với điều khoản và chính sách bảo mật của họ. Các yêu cầu thông dịch được gửi trực tiếp đến nhà cung cấp bạn chọn. Tiện ích mở rộng này không thu thập hoặc lưu trữ bất kỳ dữ liệu nào về các yêu cầu của bạn."
 	},
 	"appendToDaily": {
 		"message": "Thêm vào ghi chú hàng ngày, ở cuối"

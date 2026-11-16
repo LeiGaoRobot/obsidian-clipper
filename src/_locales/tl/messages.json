@@ -30,7 +30,7 @@
 		"message": "Ipakita ang mga naka-save na highlight kapag nag-load ang pahina. I-disable para ipakita lang ang mga highlight kapag aktibo ang highlight mode."
 	},
 	"apiKeysWarning": {
-		"message": "Sa paggamit ng external provider, tinatanggap mo ang kanilang mga tuntunin at patakaran sa privacy. Ang mga kahilingan sa interpreter ay direktang ipinapadala sa iyong napiling provider. Hindi nangongolekta o nag-iimbak ang Obsidian ng impormasyon tungkol sa iyong mga kahilingan."
+		"message": "Sa paggamit ng external provider, tinatanggap mo ang kanilang mga tuntunin at patakaran sa privacy. Ang mga kahilingan sa interpreter ay direktang ipinapadala sa iyong napiling provider. Hindi nangongolekta o nag-iimbak ang extension na ito ng impormasyon tungkol sa iyong mga kahilingan."
 	},
 	"appendToDaily": {
 		"message": "Idagdag sa daily note, sa dulo"

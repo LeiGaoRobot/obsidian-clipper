@@ -30,7 +30,7 @@
 		"message": "Visa dina sparade markeringar när du laddar en sida. Stäng av för att endast visa markeringar när markeringsläget är aktiverat."
 	},
 	"apiKeysWarning": {
-		"message": "Genom att använda en extern leverantör godkänner du deras villkor och sekretesspolicy. Tolkningsförfrågningar skickas direkt till leverantören du väljer. Obsidian samlar inte in eller lagrar någon data om dina förfrågningar."
+		"message": "Genom att använda en extern leverantör godkänner du deras villkor och sekretesspolicy. Tolkningsförfrågningar skickas direkt till leverantören du väljer. Detta tillägg samlar inte in eller lagrar någon data om dina förfrågningar."
 	},
 	"appendToDaily": {
 		"message": "Lägg till i daglig anteckning, i slutet"

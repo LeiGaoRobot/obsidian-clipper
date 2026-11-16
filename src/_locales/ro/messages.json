@@ -30,7 +30,7 @@
 		"message": "Afișează evidențierile salvate la încărcarea paginii. Dezactivează pentru a afișa evidențierile doar când modul de evidențiere este activ."
 	},
 	"apiKeysWarning": {
-		"message": "Folosind un furnizor extern, ești de acord cu termenii și condițiile lor de utilizare și politica de confidențialitate. Cererile interpretorului sunt trimise direct către furnizorul ales. Obsidian nu colectează și nu stochează informații despre cererile tale."
+		"message": "Folosind un furnizor extern, ești de acord cu termenii și condițiile lor de utilizare și politica de confidențialitate. Cererile interpretorului sunt trimise direct către furnizorul ales. Această extensie nu colectează și nu stochează informații despre cererile tale."
 	},
 	"appendToDaily": {
 		"message": "Adaugă la nota zilnică, la sfârșit"

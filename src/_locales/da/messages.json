@@ -30,7 +30,7 @@
 		"message": "Vis gemte fremhævninger når siden indlæses. Deaktiver for kun at vise fremhævninger når fremhævningstilstand er aktiv."
 	},
 	"apiKeysWarning": {
-		"message": "Ved at bruge en ekstern udbyder accepterer du deres vilkår og betingelser samt privatlivspolitik. Fortolkerforespørgsler sendes direkte til din valgte udbyder. Obsidian indsamler eller gemmer ikke information om dine forespørgsler."
+		"message": "Ved at bruge en ekstern udbyder accepterer du deres vilkår og betingelser samt privatlivspolitik. Fortolkerforespørgsler sendes direkte til din valgte udbyder. Denne udvidelse indsamler eller gemmer ikke information om dine forespørgsler."
 	},
 	"appendToDaily": {
 		"message": "Tilføj til daglig note, i slutningen"

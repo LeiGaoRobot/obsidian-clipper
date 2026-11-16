@@ -30,7 +30,7 @@
 		"message": "Näytä tallennetut korostukset sivun latautuessa. Poista käytöstä näyttääksesi korostukset vain kun korostustila on aktivoitu."
 	},
 	"apiKeysWarning": {
-		"message": "Käyttämällä ulkoista palveluntarjoajaa hyväksyt heidän käyttöehtonsa ja tietosuojakäytäntönsä. Tulkin pyynnöt lähetetään suoraan valitsemallesi palveluntarjoajalle. Obsidian ei kerää tai tallenna mitään tietoja pyynnöistäsi."
+		"message": "Käyttämällä ulkoista palveluntarjoajaa hyväksyt heidän käyttöehtonsa ja tietosuojakäytäntönsä. Tulkin pyynnöt lähetetään suoraan valitsemallesi palveluntarjoajalle. Tämä laajennus ei kerää tai tallenna mitään tietoja pyynnöistäsi."
 	},
 	"appendToDaily": {
 		"message": "Lisää päivittäiseen muistiinpanoon, loppuun"
