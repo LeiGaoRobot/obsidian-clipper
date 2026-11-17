@@ -15,9 +15,7 @@
 		"webRequestBlocking"
 	],
 	"host_permissions": [
-		"<all_urls>",
-		"http://*/*",
-		"https://*/*"
+		"<all_urls>"
 	],
 	"optional_host_permissions": [
 		"<all_urls>"
