@@ -2,11 +2,12 @@ import { getMessage } from '../../utils/i18n';
 import type { TranscriptGrammarAnalysis, TranscriptGrammarLine } from '../../utils/language-learning';
 import { throwIfRequestAborted } from '../../ai/abort';
 import { cacheGrammarAnalysis, getCachedGrammarAnalysis } from './cache';
-import type { LearningCard } from './card';
+import type { GrammarPanel } from './grammar-panel';
 import type { TranscriptFeatureContext, TranscriptFlow } from './types';
 
 // Grammar analysis: one request over the selected AI range lists the grammar patterns it uses,
-// each with example lines that jump the player to that line. It runs on the transcript action, so
+// each with example lines that jump the player to that line. The result opens in the side panel,
+// which stays open while examples are followed. It runs on the transcript action, so
 // it replaces a running translation or readings task as either of those replaces the other. A
 // cached analysis of the same lines opens without a request.
 
@@ -16,7 +17,7 @@ export interface GrammarFeature {
 }
 
 export interface GrammarFeatureOptions {
-	card: LearningCard;
+	panel: GrammarPanel;
 	seekToSegment?: (index: number) => void;
 }
 
@@ -24,7 +25,7 @@ function segmentTime(segment: HTMLElement): string | undefined {
 	return segment.querySelector('.timestamp')?.textContent?.trim() || undefined;
 }
 
-export function createGrammarFeature(ctx: TranscriptFeatureContext, { card, seekToSegment }: GrammarFeatureOptions): GrammarFeature {
+export function createGrammarFeature(ctx: TranscriptFeatureContext, { panel, seekToSegment }: GrammarFeatureOptions): GrammarFeature {
 	const { doc, segments, originalTexts, tools, responseLanguage, signal, taskBar } = ctx;
 
 	const button = doc.createElement('button');
@@ -45,15 +46,13 @@ export function createGrammarFeature(ctx: TranscriptFeatureContext, { card, seek
 	const jump = (id: number) => {
 		const segment = segments[id];
 		if (!segment?.isConnected) return;
+		// Focus stays on the example in the panel, so the next example is one Tab away.
 		segment.scrollIntoView({ block: 'center' });
-		const focusTarget = segment.querySelector<HTMLElement>('.timestamp') ?? segment;
-		if (!focusTarget.hasAttribute('tabindex') && focusTarget.tabIndex < 0) focusTarget.setAttribute('tabindex', '-1');
-		focusTarget.focus({ preventScroll: true });
 		seekToSegment?.(id);
 	};
 	const show = (analysis: TranscriptGrammarAnalysis) => {
 		if (signal.aborted) return;
-		card.showGrammar(getMessage('readerGrammarAnalysis'), analysis, { timeOf, onJump: jump, returnFocus: button });
+		panel.show(getMessage('readerGrammarAnalysis'), analysis, { timeOf, onJump: jump, returnFocus: button });
 	};
 
 	const analyze = async () => {

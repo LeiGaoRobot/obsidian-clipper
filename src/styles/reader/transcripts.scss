@@ -888,6 +888,74 @@
 	white-space: pre-wrap;
 	user-select: text;
 }
+// The grammar panel docks at the right edge and stays open beside the transcript (not modal).
+// While open, `--learning-panel-width` holds its width and the Reader content narrows by it.
+.language-learning-grammar-panel {
+	position: fixed;
+	top: 0;
+	bottom: 0;
+	inset-inline-end: 0;
+	z-index: var(--layer-menu);
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	width: min(400px, 100vw);
+	font-family: var(--font-ui);
+	font-size: var(--font-ui-small);
+	line-height: 1.6;
+	color: var(--text-normal);
+	background: var(--background-primary);
+	border-inline-start: 1px solid var(--background-modifier-border);
+	box-shadow: var(--shadow-s);
+	&[hidden] {
+		display: none;
+	}
+	&:focus {
+		outline: none;
+	}
+}
+.language-learning-grammar-panel-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	flex-shrink: 0;
+	min-height: 46px;
+	padding: 10px 16px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	strong {
+		color: var(--text-accent-hover);
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+}
+.language-learning-grammar-panel-body {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	padding: 16px;
+	user-select: text;
+}
+.language-learning-grammar-panel-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	justify-content: flex-end;
+	flex-shrink: 0;
+	padding: 10px 16px;
+	border-top: 1px solid var(--background-modifier-border);
+	&:has(> .language-learning-card-action[hidden]):has(> .language-learning-card-feedback:empty) {
+		display: none;
+	}
+}
+@media (min-width: 769px) {
+	.obsidian-reader-container {
+		box-sizing: border-box;
+		padding-inline-end: var(--learning-panel-width, 0px);
+	}
+}
 .language-learning-grammar {
 	display: flex;
 	flex-direction: column;
@@ -951,6 +1019,9 @@
 		outline: 2px solid var(--text-accent-hover);
 		outline-offset: 1px;
 	}
+}
+.language-learning-grammar-example.is-active {
+	background: var(--text-selection);
 }
 .language-learning-grammar-time {
 	color: var(--text-accent-hover);
@@ -1120,10 +1191,10 @@
 // `100vw` includes the page's vertical scrollbar; `--transcript-scrollbar-width` (measured by
 // updateTranscriptScrollbarWidth) takes it out, so the wide layouts never scroll sideways.
 html.transcript-layout-notebook .obsidian-reader-content {
-	width: min(1120px, calc(100vw - var(--transcript-scrollbar-width, 0px) - var(--sidebar-width) - var(--clipper-sidebar-width, 0px))) !important;
+	width: min(1120px, calc(100vw - var(--transcript-scrollbar-width, 0px) - var(--sidebar-width) - var(--clipper-sidebar-width, 0px) - var(--learning-panel-width, 0px))) !important;
 }
 html.transcript-layout-focus .obsidian-reader-content {
-	width: min(1320px, calc(100vw - var(--transcript-scrollbar-width, 0px) - var(--sidebar-width) - var(--clipper-sidebar-width, 0px))) !important;
+	width: min(1320px, calc(100vw - var(--transcript-scrollbar-width, 0px) - var(--sidebar-width) - var(--clipper-sidebar-width, 0px) - var(--learning-panel-width, 0px))) !important;
 }
 
 .transcript-layout-reading {
@@ -1362,7 +1433,7 @@ html.transcript-layout-focus .language-learning-card {
 @media (max-width: 1050px) {
 	html.transcript-layout-notebook .obsidian-reader-content,
 	html.transcript-layout-focus .obsidian-reader-content {
-		width: min(760px, calc(100vw - var(--transcript-scrollbar-width, 0px) - var(--sidebar-width) - var(--clipper-sidebar-width, 0px))) !important;
+		width: min(760px, calc(100vw - var(--transcript-scrollbar-width, 0px) - var(--sidebar-width) - var(--clipper-sidebar-width, 0px) - var(--learning-panel-width, 0px))) !important;
 	}
 	.transcript-layout-notebook,
 	.transcript-layout-focus {

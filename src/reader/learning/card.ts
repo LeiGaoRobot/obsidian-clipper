@@ -1,6 +1,6 @@
 import browser from '../../utils/browser-polyfill';
 import { getMessage } from '../../utils/i18n';
-import type { LearningSelection, TranscriptGrammarAnalysis } from '../../utils/language-learning';
+import type { LearningSelection } from '../../utils/language-learning';
 import { renderLanguageLearningCenter } from '../../utils/language-learning-center';
 import { trapFocus } from '../../utils/focus-trap';
 import { AiError } from '../../ai/errors';
@@ -14,7 +14,7 @@ import type { ReaderAiTask, TranscriptLanguageLearning, TranscriptProfileOption 
 // card control that can start model work or change settings ignores untrusted clicks.
 
 /** What the card currently shows; null while it is closed. */
-export type LearningCardOwner = 'explain' | 'transcript' | 'center' | 'grammar';
+export type LearningCardOwner = 'explain' | 'transcript' | 'center';
 
 export interface LearningCardErrorOptions {
 	/** The flow's own task, for an error that names none. */
@@ -51,31 +51,8 @@ export interface LearningCard {
 	/** Fills the explanation card and its actions; does nothing once another view took the card. */
 	showExplanation(selection: LearningSelection, explanation: string): Promise<void>;
 	showError(owner: LearningCardOwner, title: string, error: AiError, options: LearningCardErrorOptions): void;
-	/** Shows a grammar analysis; an example's button closes the card and calls `onJump`. */
-	showGrammar(title: string, analysis: TranscriptGrammarAnalysis, options: LearningCardGrammarOptions): void;
 	showCenter(): Promise<void>;
 	hide(): void;
-}
-
-export interface LearningCardGrammarOptions {
-	/** The timestamp label of a source segment. */
-	timeOf: (id: number) => string | undefined;
-	/** Called after a trusted click on an example, once the card has closed. */
-	onJump: (id: number) => void;
-	/** Where focus returns when the card closes. */
-	returnFocus?: HTMLElement;
-}
-
-/** The analysis as Markdown, for Copy. */
-export function formatGrammarAnalysis(analysis: TranscriptGrammarAnalysis, timeOf: (id: number) => string | undefined): string {
-	return analysis.points.map(point => [
-		`## ${point.pattern}${point.level ? ` (${point.level})` : ''}`,
-		point.meaning,
-		...point.examples.map(example => {
-			const time = timeOf(example.id);
-			return `- ${time ? `${time} ` : ''}${example.quote}`;
-		})
-	].join('\n')).join('\n\n');
 }
 
 export interface LearningCardOptions {
@@ -179,7 +156,6 @@ export function createLearningCard({ doc, tools, signal, onClose }: LearningCard
 	let owner: LearningCardOwner | null = null;
 	let returnFocus: HTMLElement | null = null;
 	let currentExplanation: { selection: LearningSelection; explanation: string } | null = null;
-	let currentGrammarText: string | null = null;
 	// Bumped by every view change, so a profile listing for an error no longer shown is dropped.
 	let view = 0;
 
@@ -212,7 +188,6 @@ export function createLearningCard({ doc, tools, signal, onClose }: LearningCard
 	};
 	const hideExplanationActions = () => {
 		currentExplanation = null;
-		currentGrammarText = null;
 		favoriteButton.hidden = true;
 		copyButton.hidden = true;
 		saveButton.hidden = true;
@@ -320,7 +295,7 @@ export function createLearningCard({ doc, tools, signal, onClose }: LearningCard
 		if (!event.isTrusted || !tools.copyLearningText) return;
 		const text = currentExplanation
 			? [currentExplanation.selection.text, currentExplanation.explanation].join('\n\n')
-			: currentGrammarText;
+			: null;
 		if (!text) return;
 		const copied = await tools.copyLearningText(text);
 		feedback.textContent = getMessage(copied ? 'copied' : 'error');
@@ -370,78 +345,6 @@ export function createLearningCard({ doc, tools, signal, onClose }: LearningCard
 			}
 		},
 		showError,
-		showGrammar(heading, analysis, { timeOf, onJump, returnFocus: preferredFocus }) {
-			rememberReturnFocus(preferredFocus);
-			beginView('grammar', heading);
-			body.replaceChildren();
-			const list = doc.createElement('div');
-			list.className = 'language-learning-grammar';
-			if (analysis.analyzedLines < analysis.totalLines) {
-				const note = doc.createElement('p');
-				note.className = 'language-learning-grammar-note';
-				note.textContent = getMessage('readerGrammarTruncated', [String(analysis.analyzedLines), String(analysis.totalLines)]);
-				list.appendChild(note);
-			}
-			if (analysis.points.length === 0) {
-				const empty = doc.createElement('p');
-				empty.textContent = getMessage('readerGrammarEmpty');
-				list.appendChild(empty);
-			}
-			analysis.points.forEach(point => {
-				const section = doc.createElement('section');
-				section.className = 'language-learning-grammar-point';
-				const patternHeading = doc.createElement('h4');
-				patternHeading.className = 'language-learning-grammar-pattern';
-				patternHeading.textContent = point.pattern;
-				if (point.level) {
-					const level = doc.createElement('span');
-					level.className = 'language-learning-grammar-level';
-					level.textContent = point.level;
-					patternHeading.append(' ', level);
-				}
-				const meaning = doc.createElement('p');
-				meaning.className = 'language-learning-grammar-meaning';
-				meaning.textContent = point.meaning;
-				section.append(patternHeading, meaning);
-				if (point.examples.length > 0) {
-					const examples = doc.createElement('ul');
-					examples.className = 'language-learning-grammar-examples';
-					point.examples.forEach(example => {
-						const item = doc.createElement('li');
-						const button = doc.createElement('button');
-						button.type = 'button';
-						button.className = 'language-learning-grammar-example';
-						const time = timeOf(example.id);
-						if (time) {
-							const timeElement = doc.createElement('span');
-							timeElement.className = 'language-learning-grammar-time';
-							timeElement.textContent = time;
-							button.append(timeElement, ' ');
-						}
-						button.append(example.quote);
-						button.setAttribute('aria-label', getMessage('readerGrammarJump', [time ?? '', example.quote]));
-						button.addEventListener('click', event => {
-							if (!event.isTrusted) return;
-							event.preventDefault();
-							event.stopPropagation();
-							// The segment takes focus instead of the toolbar button.
-							returnFocus = null;
-							hide();
-							onJump(example.id);
-						});
-						item.appendChild(button);
-						examples.appendChild(item);
-					});
-					section.appendChild(examples);
-				}
-				list.appendChild(section);
-			});
-			body.appendChild(list);
-			currentGrammarText = analysis.points.length > 0 ? formatGrammarAnalysis(analysis, timeOf) : null;
-			copyButton.hidden = !tools.copyLearningText || !currentGrammarText;
-			feedback.textContent = '';
-			open();
-		},
 		async showCenter() {
 			rememberReturnFocus();
 			beginView('center', getMessage('readerLearningCenter'));

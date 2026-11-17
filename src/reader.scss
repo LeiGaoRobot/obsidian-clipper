@@ -91,7 +91,7 @@
 	.obsidian-reader-content {
 		padding: max(4rem, 4vh) 1rem 0 !important;	
 		width: var(--line-width);
-		max-width: calc(100vw - var(--sidebar-width) - var(--clipper-sidebar-width, 0px));
+		max-width: calc(100vw - var(--sidebar-width) - var(--clipper-sidebar-width, 0px) - var(--learning-panel-width, 0px));
 		overflow: clip;
 		> article {
 			margin: 0 auto;

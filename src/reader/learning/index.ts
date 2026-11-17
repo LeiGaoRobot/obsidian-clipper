@@ -3,6 +3,7 @@ import { createAiAction, type AiActionRun, type AiActionStatus } from '../../ai/
 import { createLearningCard } from './card';
 import { createExplainFeature } from './explain';
 import { createGrammarFeature } from './grammar';
+import { createGrammarPanel, removeGrammarPanel } from './grammar-panel';
 import { createReadingsFeature } from './readings';
 import { getOriginalSegmentText, wireSelectionTrigger } from './selection';
 import { createTaskBar } from './task-bar';
@@ -15,7 +16,7 @@ import type {
 	TranscriptRestoreState
 } from './types';
 
-// Reader transcript learning: composes the task bar, the learning card, bilingual subtitles,
+// Reader transcript learning: composes the task bar, the learning card, the grammar panel, bilingual subtitles,
 // Japanese readings, grammar analysis, explanations and the selection trigger for one transcript. Two action
 // controllers carry the model work: one per transcript (bilingual, readings and grammar share it, so a new
 // transcript task aborts the previous one) and one for explanations. Nothing here starts model
@@ -55,6 +56,7 @@ export function cleanupTranscriptLanguageLearning(doc: Document): void {
 	doc.querySelector('.language-learning-selection-action')?.remove();
 	doc.querySelectorAll(LEARNING_CONTROL_SELECTOR).forEach(element => element.remove());
 	doc.querySelector('.language-learning-card')?.remove();
+	removeGrammarPanel(doc);
 }
 
 export function wireTranscriptLanguageLearning({
@@ -190,7 +192,8 @@ export function wireTranscriptLanguageLearning({
 	};
 	const translations = createTranslationsFeature(context);
 	const readings = createReadingsFeature(context);
-	const grammar = createGrammarFeature(context, { card, seekToSegment });
+	const grammarPanel = createGrammarPanel({ doc, tools, signal });
+	const grammar = createGrammarFeature(context, { panel: grammarPanel, seekToSegment });
 
 	const vocabularyButton = doc.createElement('button');
 	vocabularyButton.type = 'button';

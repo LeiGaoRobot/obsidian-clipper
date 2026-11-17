@@ -88,15 +88,19 @@ describe('Reader grammar analysis', () => {
 			],
 			expect.any(AbortSignal)
 		);
-		const card = document.querySelector<HTMLElement>('.language-learning-card');
-		expect(card?.style.display).toBe('block');
-		expect(card?.querySelector('.language-learning-grammar-pattern')?.textContent).toBe('〜っていう N3');
-		expect(card?.querySelector('.language-learning-grammar-meaning')?.textContent).toBe('quoting');
-		expect(card?.querySelector('.language-learning-grammar-example')?.textContent).toBe('1:00 できないっていう');
-		expect(card?.querySelector('.language-learning-grammar-note')).toBeNull();
+		const panel = document.querySelector<HTMLElement>('.language-learning-grammar-panel');
+		expect(panel?.hidden).toBe(false);
+		expect(panel?.getAttribute('role')).toBe('complementary');
+		expect(panel?.querySelector('.language-learning-grammar-pattern')?.textContent).toBe('〜っていう N3');
+		expect(panel?.querySelector('.language-learning-grammar-meaning')?.textContent).toBe('quoting');
+		expect(panel?.querySelector('.language-learning-grammar-example')?.textContent).toBe('1:00 できないっていう');
+		expect(panel?.querySelector('.language-learning-grammar-note')).toBeNull();
+		// Not modal: the modal card stays closed and nothing behind the panel is made inert.
+		expect(document.querySelector<HTMLElement>('.language-learning-card')?.style.display).toBe('none');
+		expect(document.querySelector('[inert]')).toBeNull();
 	});
 
-	test('an example jumps to its line and closes the card', async () => {
+	test('an example jumps to its line and the panel stays open', async () => {
 		const { button, segments, seekToSegment } = wire({ analyzeTranscriptGrammar: vi.fn().mockResolvedValue(ANALYSIS) });
 		segments[1].scrollIntoView = vi.fn();
 		await clicks.click(button);
@@ -109,7 +113,48 @@ describe('Reader grammar analysis', () => {
 		await clicks.click(example);
 		expect(seekToSegment).toHaveBeenCalledWith(1);
 		expect(segments[1].scrollIntoView).toHaveBeenCalled();
-		expect(document.querySelector<HTMLElement>('.language-learning-card')?.style.display).toBe('none');
+		expect(document.querySelector<HTMLElement>('.language-learning-grammar-panel')?.hidden).toBe(false);
+		expect(example?.classList.contains('is-active')).toBe(true);
+	});
+
+	test('close and Escape hide the panel and return focus to the button', async () => {
+		const { button } = wire({ analyzeTranscriptGrammar: vi.fn().mockResolvedValue(ANALYSIS) });
+		await clicks.click(button);
+		await flushPromises();
+		const panel = document.querySelector<HTMLElement>('.language-learning-grammar-panel');
+		expect(document.activeElement).toBe(panel);
+
+		panel?.querySelector<HTMLButtonElement>('.language-learning-grammar-panel-close')?.click();
+		expect(panel?.hidden).toBe(false);
+		await clicks.click(panel?.querySelector('.language-learning-grammar-panel-close') ?? null);
+		expect(panel?.hidden).toBe(true);
+		expect(document.activeElement).toBe(button);
+
+		await clicks.click(button);
+		await flushPromises();
+		panel?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		expect(panel?.hidden).toBe(true);
+	});
+
+	test('Copy copies the analysis as Markdown', async () => {
+		const copyLearningText = vi.fn().mockResolvedValue(true);
+		const { button } = wire({ analyzeTranscriptGrammar: vi.fn().mockResolvedValue(ANALYSIS), copyLearningText });
+		await clicks.click(button);
+		await flushPromises();
+
+		await clicks.click(document.querySelector('.language-learning-grammar-panel-copy'));
+		await flushPromises();
+		expect(copyLearningText).toHaveBeenCalledWith('## 〜っていう (N3)\nquoting\n- 1:00 できないっていう');
+	});
+
+	test('cleanup on navigation removes the panel', async () => {
+		const { button } = wire({ analyzeTranscriptGrammar: vi.fn().mockResolvedValue(ANALYSIS) });
+		await clicks.click(button);
+		await flushPromises();
+
+		cleanupTranscriptLanguageLearning(document);
+		expect(document.querySelector('.language-learning-grammar-panel')).toBeNull();
+		expect(document.documentElement.style.getPropertyValue('--learning-panel-width')).toBe('');
 	});
 
 	test('reuses the analysis of the same lines without another request', async () => {
@@ -117,13 +162,13 @@ describe('Reader grammar analysis', () => {
 		const { button } = wire({ analyzeTranscriptGrammar });
 		await clicks.click(button);
 		await flushPromises();
-		await clicks.click(document.querySelector('.language-learning-card-close'));
+		await clicks.click(document.querySelector('.language-learning-grammar-panel-close'));
 
 		await clicks.click(button);
 		await flushPromises();
 
 		expect(analyzeTranscriptGrammar).toHaveBeenCalledTimes(1);
-		expect(document.querySelector<HTMLElement>('.language-learning-card')?.style.display).toBe('block');
+		expect(document.querySelector<HTMLElement>('.language-learning-grammar-panel')?.hidden).toBe(false);
 	});
 
 	test('says when a long range was analyzed only from its start', async () => {
@@ -151,7 +196,7 @@ describe('Reader grammar analysis', () => {
 
 		expect(analyzeTranscriptGrammar).toHaveBeenCalledTimes(2);
 		expect(analyzeTranscriptGrammar.mock.calls[1][0]).toEqual(analyzeTranscriptGrammar.mock.calls[0][0]);
-		expect(card?.querySelector('.language-learning-grammar-pattern')).not.toBeNull();
+		expect(document.querySelector('.language-learning-grammar-panel .language-learning-grammar-pattern')).not.toBeNull();
 	});
 
 	test('the task bar Cancel stops a running analysis, and its late result shows nothing', async () => {
